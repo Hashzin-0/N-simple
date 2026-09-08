@@ -2,7 +2,6 @@ import type {Metadata} from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css'; // Global styles
 import { ThemeProvider } from '@/components/ThemeProvider';
-import DarkMode3DTransition from '@/components/DarkMode3DTransition';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -48,7 +47,6 @@ export default function RootLayout({children}: {children: React.ReactNode}) {
       </head>
       <body suppressHydrationWarning className="antialiased transition-colors duration-300 overflow-x-clip">
         <ThemeProvider>
-          <DarkMode3DTransition />
           {children}
         </ThemeProvider>
       </body>

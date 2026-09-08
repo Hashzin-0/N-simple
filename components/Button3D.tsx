@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
-import { motion, useMotionValue, useTransform } from 'motion/react';
+import React from 'react';
 
 interface Button3DProps {
   id?: string;
@@ -66,91 +65,28 @@ export default function Button3D({
   iconRight,
   tooltip,
 }: Button3DProps) {
-  const [isHovered, setIsHovered] = useState(false);
-  const mouseX = useMotionValue(0);
-  const mouseY = useMotionValue(0);
-
-  const rotateX = useTransform(mouseY, [-0.5, 0.5], [8, -8]);
-  const rotateY = useTransform(mouseX, [-0.5, 0.5], [-8, 8]);
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width - 0.5;
-    const y = (e.clientY - rect.top) / rect.height - 0.5;
-    mouseX.set(x);
-    mouseY.set(y);
-  };
-
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-    mouseX.set(0);
-    mouseY.set(0);
-  };
-
   const styles = VARIANT_STYLES[variant];
   const sizeStyle = SIZE_STYLES[size];
 
-  const computedClass = `font-bold inline-flex items-center justify-center border transition-colors relative overflow-hidden cursor-pointer select-none ${
+  const computedClass = `font-bold inline-flex items-center justify-center border transition-all duration-150 relative overflow-hidden cursor-pointer select-none hover:scale-[1.03] active:scale-[0.97] ${
     styles.base
   } ${sizeStyle} ${
     active ? styles.active : styles.hover
   } ${
-    disabled ? 'opacity-50 cursor-not-allowed' : ''
+    disabled ? 'opacity-50 cursor-not-allowed hover:scale-100 active:scale-100' : ''
   } ${className}`;
 
   return (
-    <motion.button
+    <button
       id={id}
       onClick={disabled ? undefined : onClick}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={handleMouseLeave}
       disabled={disabled}
       className={computedClass}
-      style={{ perspective: 500, transformStyle: 'preserve-3d' }}
-      whileHover={
-        disabled
-          ? undefined
-          : {
-              rotateX: 5,
-              rotateY: -3,
-              scale: 1.04,
-              z: 10,
-            }
-      }
-      whileTap={
-        disabled
-          ? undefined
-          : {
-              scale: 0.94,
-              rotateX: 0,
-              rotateY: 0,
-            }
-      }
-      transition={{
-        type: 'spring',
-        stiffness: 500,
-        damping: 25,
-      }}
       title={tooltip}
     >
-      {/* Glow overlay on hover */}
-      {isHovered && !disabled && (
-        <motion.div
-          className="absolute inset-0 pointer-events-none"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          style={{
-            background:
-              'radial-gradient(circle at center, rgba(255,255,255,0.15) 0%, transparent 70%)',
-          }}
-        />
-      )}
-
       {icon && <span className="shrink-0">{icon}</span>}
       <span className="relative z-10">{children}</span>
       {iconRight && <span className="shrink-0">{iconRight}</span>}
-    </motion.button>
+    </button>
   );
 }

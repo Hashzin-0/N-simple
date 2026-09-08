@@ -4,7 +4,6 @@ import React, {
   createContext,
   useContext,
   useEffect,
-  useState,
   useCallback,
   useSyncExternalStore,
 } from 'react';
@@ -94,8 +93,6 @@ interface ThemeContextType {
   mounted: boolean;
   toggleTheme: () => void;
   setTheme: (t: Theme) => void;
-  trigger3DTransition: boolean;
-  clear3DTransition: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -103,7 +100,6 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, getThemeServerSnapshot);
   const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
-  const [trigger3DTransition, setTrigger3DTransition] = useState<boolean>(false);
 
   useEffect(() => {
     applyThemeToDOM(theme);
@@ -120,7 +116,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     applyThemeToDOM(t);
     themeListeners.forEach((fn) => fn());
-    setTrigger3DTransition(true);
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -136,11 +131,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     applyThemeToDOM(next);
     themeListeners.forEach((fn) => fn());
-    setTrigger3DTransition(true);
-  }, []);
-
-  const clear3DTransition = useCallback(() => {
-    setTrigger3DTransition(false);
   }, []);
 
   return (
@@ -151,8 +141,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         mounted,
         toggleTheme,
         setTheme,
-        trigger3DTransition,
-        clear3DTransition,
       }}
     >
       {children}

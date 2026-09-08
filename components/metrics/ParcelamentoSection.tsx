@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
-import { Scale, ArrowRightLeft, ArrowLeftRight } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState } from 'react';
+import { Scale, ArrowLeftRight, ArrowRightLeft } from 'lucide-react';
 import CalculationIsland from '@/components/CalculationIsland';
 import CalculationMemoryPanel from '@/components/CalculationMemoryPanel';
 import { useTheme } from '@/components/ThemeProvider';
@@ -22,15 +21,6 @@ interface SwapToggle3DProps {
   title: string;
 }
 
-const SQUASH_CLASSES =
-  'origin-bottom [will-change:transform] [-webkit-tap-highlight-color:transparent] ' +
-  '[transition:scale_300ms_cubic-bezier(0.3,0.7,0.4,1.5)] ' +
-  'hover:[scale:1.04] ' +
-  'focus:outline-none focus-visible:outline-none ' +
-  'active:[scale:var(--jelly-press)] active:[transition:scale_120ms_cubic-bezier(0.3,0.7,0.4,1)] ' +
-  'data-[pressed=true]:[scale:var(--jelly-press)] data-[pressed=true]:[transition:scale_120ms_cubic-bezier(0.3,0.7,0.4,1)] ' +
-  'motion-reduce:[transition:none] motion-reduce:hover:[scale:1] motion-reduce:active:[scale:1]';
-
 function SwapToggle3D({
   isActive,
   defaultLabel,
@@ -41,118 +31,36 @@ function SwapToggle3D({
   onClick,
   title,
 }: SwapToggle3DProps) {
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const [isHovered, setIsHovered] = useState(false);
-
   const activeColor = isDark ? darkAccentColor : accentColor;
-
-  const handleMouseMove = useCallback(() => {
-    setIsHovered(true);
-  }, []);
-
-  const handleMouseLeave = useCallback(() => {
-    setIsHovered(false);
-  }, []);
 
   return (
     <button
-      ref={buttonRef}
       type="button"
       onClick={onClick}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-      className={`absolute -top-1 -right-1 z-20 group cursor-pointer select-none ${SQUASH_CLASSES}`}
-      style={{ '--jelly-press': '1.132 0.868' } as React.CSSProperties}
+      className="absolute -top-1 -right-1 z-20 group cursor-pointer select-none transition-transform duration-150 hover:scale-105 active:scale-95"
       title={title}
     >
-      <div className="relative" style={{ transformStyle: 'preserve-3d' }}>
-        {/* SHADOW LAYER — MagicButton inspired */}
-        <div
-          className={`absolute inset-0 rounded-bl-2xl pointer-events-none ${isActive ? 'translate-y-[1px]' : isHovered ? 'translate-y-[4px]' : 'translate-y-[2px]'} ${
-            isActive ? 'animate-magic-rainbow' : ''
-          }`}
-          style={{
-            background: isActive
-              ? 'linear-gradient(90deg, var(--rainbow-1), var(--rainbow-5), var(--rainbow-3), var(--rainbow-4), var(--rainbow-2))'
-              : isDark
-              ? 'linear-gradient(135deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.25) 100%)'
-              : 'linear-gradient(135deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.12) 100%)',
-            backgroundSize: isActive ? '200% 100%' : undefined,
-            filter: isActive ? 'blur(10px)' : 'blur(6px)',
-            opacity: isActive ? 0.6 : 1,
-            transition: 'translate 300ms cubic-bezier(0.3,0.7,0.4,1), filter 300ms, opacity 300ms',
-          }}
-          aria-hidden="true"
-        />
+      <div
+        className="relative flex items-center justify-center h-8 rounded-bl-2xl px-2.5 gap-1.5"
+        style={{
+          backgroundColor: activeColor,
+          boxShadow: isActive
+            ? `inset 0 1px 0 rgba(255,255,255,0.15), 0 0 14px ${activeColor}88, 0 4px 12px rgba(0,0,0,0.2)`
+            : `inset 0 1px 0 rgba(255,255,255,0.1), 0 2px 8px rgba(0,0,0,0.15)`,
+          transition: 'box-shadow 0.3s ease',
+        }}
+      >
+        <span className="text-white text-[10px] font-bold whitespace-nowrap relative z-10 pointer-events-none">
+          {isActive ? activeLabel : defaultLabel}
+        </span>
 
-        {/* EDGE LAYER — MagicButton inspired, shows accent color depth */}
-        <div
-          className={`absolute inset-0 rounded-bl-2xl pointer-events-none ${isActive ? 'translate-y-[0px]' : isHovered ? 'translate-y-[2px]' : 'translate-y-[1px]'} ${
-            isActive ? 'animate-magic-rainbow' : ''
-          }`}
-          style={{
-            background: isActive
-              ? 'linear-gradient(90deg, var(--rainbow-1), var(--rainbow-5), var(--rainbow-3), var(--rainbow-4), var(--rainbow-2))'
-              : `linear-gradient(135deg, ${activeColor}dd 0%, ${activeColor}99 50%, ${activeColor}bb 100%)`,
-            backgroundSize: isActive ? '200% 100%' : undefined,
-            transition: 'translate 300ms cubic-bezier(0.3,0.7,0.4,1)',
-          }}
-          aria-hidden="true"
-        />
-
-        {/* FRONT FACE — the actual toggle content */}
-        <div
-          className="relative flex items-center justify-center h-8 rounded-bl-2xl px-2.5 gap-1.5 pointer-events-auto"
-          style={{
-            backgroundColor: activeColor,
-            boxShadow: isActive
-              ? `inset 0 1px 0 rgba(255,255,255,0.15), 0 0 14px ${activeColor}88, 0 4px 12px rgba(0,0,0,0.2)`
-              : `inset 0 1px 0 rgba(255,255,255,0.1), 0 2px 8px rgba(0,0,0,0.15)`,
-            transition: 'box-shadow 0.3s ease',
-          }}
-        >
-          {/* Shimmer overlay on hover */}
-          <motion.div
-            className="absolute inset-0 pointer-events-none"
-            animate={{
-              background: isHovered
-                ? `linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.12) 50%, transparent 70%)`
-                : 'none',
-            }}
-            transition={{ duration: 0.4 }}
-          />
-
-          <AnimatePresence mode="wait">
-            <motion.span
-              key={isActive ? 'active' : 'default'}
-              initial={{ rotateX: -90, opacity: 0 }}
-              animate={{ rotateX: 0, opacity: 1 }}
-              exit={{ rotateX: 90, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-              className="text-white text-[10px] font-bold whitespace-nowrap relative z-10 pointer-events-none"
-              style={{ transformOrigin: 'center' }}
-            >
-              {isActive ? activeLabel : defaultLabel}
-            </motion.span>
-          </AnimatePresence>
-
-          <motion.div
-            animate={{ rotate: isActive ? 180 : 0 }}
-            transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-            className="relative z-10 pointer-events-none"
-          >
-            <ArrowLeftRight className="w-3 h-3 text-white/80" />
-          </motion.div>
-
-          {isActive && (
-            <motion.span
-              className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#D4A373] border border-white z-10 pointer-events-none"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-            />
-          )}
+        <div className="relative z-10 pointer-events-none">
+          <ArrowLeftRight className="w-3 h-3 text-white/80" />
         </div>
+
+        {isActive && (
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#D4A373] border border-white z-10 pointer-events-none" />
+        )}
       </div>
     </button>
   );
@@ -264,11 +172,9 @@ export default function ParcelamentoSection({ animKey,
           />
           <div
             className="relative"
-            style={{ perspective: '800px' }}
+            
           >
-          <motion.div
-            whileTap={{ scale: 0.88, originY: 1 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          <div
           >
           {/* Toggle button for agronomic default — hidden when baseDoseMode is single */}
           {baseDoseMode !== 'single' && v4v6UserDiffersFromDefault && (
@@ -300,21 +206,11 @@ export default function ParcelamentoSection({ animKey,
             </div>
           </div>
 
-          <AnimatePresence mode="wait">
+          
             {baseDoseMode === 'single' ? (
-              <motion.div
+              <div
                 key="locked-single-v4v6"
-                initial={{ rotateX: -90, opacity: 0 }}
-                animate={{ rotateX: 0, opacity: 1 }}
-                exit={{ rotateX: 90, opacity: 0 }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 200,
-                  damping: 22,
-                  mass: 0.8,
-                  opacity: { duration: 0.2 },
-                }}
-                style={{ transformOrigin: 'top center' }}
+                
                 className="pt-2 border-t border-[#F0EDE5] dark:border-[#2C3328] text-center"
               >
                 <div className="bg-white dark:bg-[#232821] p-3 rounded-lg border border-[#E5E2D9] dark:border-[#2C3328]">
@@ -323,21 +219,11 @@ export default function ParcelamentoSection({ animKey,
                     {calculations.v4v6_1_kg.toFixed(2)} <span className="text-xs font-normal text-[#8C897E] dark:text-[#9EA399]">kg/ha</span>
                   </span>
                 </div>
-              </motion.div>
+              </div>
             ) : showAgronomicV4V6 ? (
-              <motion.div
+              <div
                 key="agronomic-v4v6"
-                initial={{ rotateX: -90, opacity: 0 }}
-                animate={{ rotateX: 0, opacity: 1 }}
-                exit={{ rotateX: 90, opacity: 0 }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 200,
-                  damping: 22,
-                  mass: 0.8,
-                  opacity: { duration: 0.2 },
-                }}
-                style={{ transformOrigin: 'top center' }}
+                
                 className="grid grid-cols-2 gap-4 pt-2 border-t border-[#F0EDE5] dark:border-[#2C3328] text-center"
               >
                 <div className="bg-white dark:bg-[#232821] p-2.5 rounded-lg border border-[#E5E2D9] dark:border-[#2C3328]">
@@ -352,21 +238,11 @@ export default function ParcelamentoSection({ animKey,
                     <NumberTicker key={animKey} value={calculations.v4v6_60} decimalPlaces={2} className="text-base font-bold text-[#3D3D3D] dark:text-[#E8E6DF]" /> <span className="text-xs font-normal text-[#8C897E] dark:text-[#9EA399]">kg/ha</span>
                   </span>
                 </div>
-              </motion.div>
+              </div>
             ) : isV4V6Range ? (
-              <motion.div
+              <div
                 key="user-range-v4v6"
-                initial={{ rotateX: -90, opacity: 0 }}
-                animate={{ rotateX: 0, opacity: 1 }}
-                exit={{ rotateX: 90, opacity: 0 }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 200,
-                  damping: 22,
-                  mass: 0.8,
-                  opacity: { duration: 0.2 },
-                }}
-                style={{ transformOrigin: 'top center' }}
+                
                 className="grid grid-cols-2 gap-4 pt-2 border-t border-[#F0EDE5] dark:border-[#2C3328] text-center"
               >
                 <div className="bg-white dark:bg-[#232821] p-2.5 rounded-lg border border-[#E5E2D9] dark:border-[#2C3328]">
@@ -381,21 +257,11 @@ export default function ParcelamentoSection({ animKey,
                     {calculations.v4v6_2_kg.toFixed(2)} <span className="text-xs font-normal text-[#8C897E] dark:text-[#9EA399]">kg/ha</span>
                   </span>
                 </div>
-              </motion.div>
+              </div>
             ) : (
-              <motion.div
+              <div
                 key="user-single-v4v6"
-                initial={{ rotateX: -90, opacity: 0 }}
-                animate={{ rotateX: 0, opacity: 1 }}
-                exit={{ rotateX: 90, opacity: 0 }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 200,
-                  damping: 22,
-                  mass: 0.8,
-                  opacity: { duration: 0.2 },
-                }}
-                style={{ transformOrigin: 'top center' }}
+                
                 className="pt-2 border-t border-[#F0EDE5] dark:border-[#2C3328] text-center"
               >
                 <div className="bg-white dark:bg-[#232821] p-3 rounded-lg border border-[#E5E2D9] dark:border-[#2C3328]">
@@ -404,10 +270,10 @@ export default function ParcelamentoSection({ animKey,
                     {calculations.v4v6_1_kg.toFixed(2)} <span className="text-xs font-normal text-[#8C897E] dark:text-[#9EA399]">kg/ha</span>
                   </span>
                 </div>
-              </motion.div>
+              </div>
             )}
-          </AnimatePresence>
-          </motion.div>
+          
+          </div>
           </div>
           <CalculationMemoryPanel isVisible={showCalcV4V6} isDark={isDark}>
             <div className={`p-3 rounded-lg border text-[11px] leading-relaxed space-y-1.5 ${
@@ -448,11 +314,9 @@ export default function ParcelamentoSection({ animKey,
           />
           <div
             className="relative"
-            style={{ perspective: '800px' }}
+            
           >
-          <motion.div
-            whileTap={{ scale: 0.88, originY: 1 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          <div
           >
           {/* Toggle button for agronomic default — hidden when baseDoseMode is single */}
           {baseDoseMode !== 'single' && v8v10UserDiffersFromDefault && (
@@ -484,21 +348,11 @@ export default function ParcelamentoSection({ animKey,
             </div>
           </div>
 
-          <AnimatePresence mode="wait">
+          
             {baseDoseMode === 'single' ? (
-              <motion.div
+              <div
                 key="auto-v8v10"
-                initial={{ rotateX: -90, opacity: 0 }}
-                animate={{ rotateX: 0, opacity: 1 }}
-                exit={{ rotateX: 90, opacity: 0 }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 200,
-                  damping: 22,
-                  mass: 0.8,
-                  opacity: { duration: 0.2 },
-                }}
-                style={{ transformOrigin: 'top center' }}
+                
                 className="pt-2 border-t border-[#F0EDE5] dark:border-[#2C3328] text-center"
               >
                 <div className="bg-white dark:bg-[#232821] p-3 rounded-lg border border-[#E5E2D9] dark:border-[#2C3328]">
@@ -507,21 +361,11 @@ export default function ParcelamentoSection({ animKey,
                     <NumberTicker key={animKey} value={calculations.v8v10_1_kg} decimalPlaces={2} className="text-xl font-bold text-[#8D6E63] dark:text-[#D4A373]" /> <span className="text-xs font-normal text-[#8C897E] dark:text-[#9EA399]">kg/ha</span>
                   </span>
                 </div>
-              </motion.div>
+              </div>
             ) : showAgronomicV8V10 ? (
-              <motion.div
+              <div
                 key="agronomic-v8v10"
-                initial={{ rotateX: -90, opacity: 0 }}
-                animate={{ rotateX: 0, opacity: 1 }}
-                exit={{ rotateX: 90, opacity: 0 }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 200,
-                  damping: 22,
-                  mass: 0.8,
-                  opacity: { duration: 0.2 },
-                }}
-                style={{ transformOrigin: 'top center' }}
+                
                 className="grid grid-cols-2 gap-4 pt-2 border-t border-[#F0EDE5] dark:border-[#2C3328] text-center"
               >
                 <div className="bg-white dark:bg-[#232821] p-2.5 rounded-lg border border-[#E5E2D9] dark:border-[#2C3328]">
@@ -536,21 +380,11 @@ export default function ParcelamentoSection({ animKey,
                     <NumberTicker key={animKey} value={calculations.v8v10_30} decimalPlaces={2} className="text-base font-bold text-[#3D3D3D] dark:text-[#E8E6DF]" /> <span className="text-xs font-normal text-[#8C897E] dark:text-[#9EA399]">kg/ha</span>
                   </span>
                 </div>
-              </motion.div>
+              </div>
             ) : isV8V10Range ? (
-              <motion.div
+              <div
                 key="user-range-v8v10"
-                initial={{ rotateX: -90, opacity: 0 }}
-                animate={{ rotateX: 0, opacity: 1 }}
-                exit={{ rotateX: 90, opacity: 0 }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 200,
-                  damping: 22,
-                  mass: 0.8,
-                  opacity: { duration: 0.2 },
-                }}
-                style={{ transformOrigin: 'top center' }}
+                
                 className="grid grid-cols-2 gap-4 pt-2 border-t border-[#F0EDE5] dark:border-[#2C3328] text-center"
               >
                 <div className="bg-white dark:bg-[#232821] p-2.5 rounded-lg border border-[#E5E2D9] dark:border-[#2C3328]">
@@ -565,21 +399,11 @@ export default function ParcelamentoSection({ animKey,
                     {calculations.v8v10_2_kg.toFixed(2)} <span className="text-xs font-normal text-[#8C897E] dark:text-[#9EA399]">kg/ha</span>
                   </span>
                 </div>
-              </motion.div>
+              </div>
             ) : (
-              <motion.div
+              <div
                 key="user-single-v8v10"
-                initial={{ rotateX: -90, opacity: 0 }}
-                animate={{ rotateX: 0, opacity: 1 }}
-                exit={{ rotateX: 90, opacity: 0 }}
-                transition={{
-                  type: 'spring',
-                  stiffness: 200,
-                  damping: 22,
-                  mass: 0.8,
-                  opacity: { duration: 0.2 },
-                }}
-                style={{ transformOrigin: 'top center' }}
+                
                 className="pt-2 border-t border-[#F0EDE5] dark:border-[#2C3328] text-center"
               >
 <div className="bg-white dark:bg-[#232821] p-3 rounded-lg border border-[#E5E2D9] dark:border-[#2C3328]">
@@ -588,10 +412,10 @@ export default function ParcelamentoSection({ animKey,
                     <NumberTicker key={animKey} value={calculations.v4v6_1_kg} decimalPlaces={2} className="text-xl font-bold text-[#3D3D3D] dark:text-[#E8E6DF]" /> <span className="text-xs font-normal text-[#8C897E] dark:text-[#9EA399]">kg/ha</span>
                   </span>
                 </div>
-              </motion.div>
+              </div>
             )}
-          </AnimatePresence>
-          </motion.div>
+          
+          </div>
           </div>
           <CalculationMemoryPanel isVisible={showCalcV8V10} isDark={isDark}>
             <div className={`p-3 rounded-lg border text-[11px] leading-relaxed space-y-1.5 ${
