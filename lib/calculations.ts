@@ -14,6 +14,9 @@ export function computeCalculations(inputs: {
   v8v10Percent: number;
   v8v10Percent2: number;
   splitBase: 'dose_perdas' | 'necessidade_liquida';
+  useDirectInput?: boolean;
+  liquidNeedInput?: number;
+  efficiencyAlreadyApplied?: boolean;
 }): Calculations {
   const {
     yieldGoal,
@@ -29,13 +32,27 @@ export function computeCalculations(inputs: {
     v8v10Percent,
     v8v10Percent2,
     splitBase,
+    useDirectInput = false,
+    liquidNeedInput = 0,
+    efficiencyAlreadyApplied = false,
   } = inputs;
 
-  const totalExtraction = Number((yieldGoal * nRequirementPerBag).toFixed(2));
-  const liquidNeed = Number((totalExtraction - mosNContribution - soyNContribution).toFixed(2));
-
   const effDecimal = efficiency / 100;
-  const recommendedDose = Number((liquidNeed / effDecimal).toFixed(2));
+
+  // Modo direto: usar valor do input diretamente
+  const liquidNeed = useDirectInput
+    ? liquidNeedInput
+    : Number((yieldGoal * nRequirementPerBag - mosNContribution - soyNContribution).toFixed(2));
+
+  // Se eficiência já foi aplicada, dose = necessidade líquida (sem dividir)
+  const recommendedDose = useDirectInput && efficiencyAlreadyApplied
+    ? liquidNeedInput
+    : Number((liquidNeed / effDecimal).toFixed(2));
+
+  // Em modo direto, extração total não é calculada (parâmetros intermediários não usados)
+  const totalExtraction = useDirectInput
+    ? 0
+    : Number((yieldGoal * nRequirementPerBag).toFixed(2));
 
   const targetSplitTotal = splitBase === 'dose_perdas' ? recommendedDose : liquidNeed;
 

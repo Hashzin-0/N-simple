@@ -11,6 +11,7 @@ import {
   Printer,
   Sprout,
   Mic,
+  ArrowRightLeft,
 } from 'lucide-react';
 import LoadingSkeleton3D from '@/components/LoadingSkeleton3D';
 import Input3D from '@/components/Input3D';
@@ -106,7 +107,12 @@ export default function Home() {
   const [mosNContribution, setMosNContribution] = useState<number>(0);
   const [soyNContribution, setSoyNContribution] = useState<number>(0);
   const [efficiency, setEfficiency] = useState<number>(0);
-  
+
+  // Direct input mode: user provides liquid need directly
+  const [useDirectInput, setUseDirectInput] = useState<boolean>(false);
+  const [liquidNeedInput, setLiquidNeedInput] = useState<number>(0);
+  const [efficiencyAlreadyApplied, setEfficiencyAlreadyApplied] = useState<boolean>(false);
+
   // Custom interactive split parameters
   const [baseDose, setBaseDose] = useState<number>(0);
   const [baseDose2, setBaseDose2] = useState<number>(0); // 0 = single value mode
@@ -151,6 +157,9 @@ export default function Home() {
       setMosNContribution(preset.mosNContribution);
       setSoyNContribution(preset.soyNContribution);
       setEfficiency(preset.efficiency * 100);
+      setUseDirectInput(false);
+      setLiquidNeedInput(0);
+      setEfficiencyAlreadyApplied(false);
       setBaseDose(preset.baseDose);
       setBaseDose2(preset.baseDose2);
       setV4v6Percent(preset.v4v6Percent);
@@ -182,6 +191,15 @@ export default function Home() {
   const setV8v10Percent2Value = useCallback((v: number) => handleCustomInputChange(() => setV8v10Percent2(v)), [handleCustomInputChange]);
   const setSplitBaseValue = useCallback((v: string) => handleCustomInputChange(() => setSplitBase(v as 'dose_perdas' | 'necessidade_liquida')), [handleCustomInputChange]);
 
+  // Direct input mode handlers
+  const setUseDirectInputValue = useCallback((v: boolean) => {
+    handleCustomInputChange(() => {
+      setUseDirectInput(v);
+    });
+  }, [handleCustomInputChange]);
+  const setLiquidNeedInputValue = useCallback((v: number) => handleCustomInputChange(() => setLiquidNeedInput(Math.max(0, v))), [handleCustomInputChange]);
+  const setEfficiencyAlreadyAppliedValue = useCallback((v: boolean) => handleCustomInputChange(() => setEfficiencyAlreadyApplied(v)), [handleCustomInputChange]);
+
   const handleBaseDoseModeChange = useCallback((v: string) => {
     handleCustomInputChange(() => {
       const newMode = v as 'single' | 'range';
@@ -209,7 +227,10 @@ export default function Home() {
     v8v10Percent,
     v8v10Percent2,
     splitBase,
-  }), [yieldGoal, nRequirementPerBag, mosNContribution, soyNContribution, efficiency, baseDose, baseDose2, baseDoseMode, v4v6Percent, v4v6Percent2, v8v10Percent, v8v10Percent2, splitBase]);
+    useDirectInput,
+    liquidNeedInput,
+    efficiencyAlreadyApplied,
+  }), [yieldGoal, nRequirementPerBag, mosNContribution, soyNContribution, efficiency, baseDose, baseDose2, baseDoseMode, v4v6Percent, v4v6Percent2, v8v10Percent, v8v10Percent2, splitBase, useDirectInput, liquidNeedInput, efficiencyAlreadyApplied]);
 
   // Handle dynamic layout print
   const handlePrint = useCallback(() => {
@@ -223,6 +244,9 @@ export default function Home() {
       setMosNContribution(0);
       setSoyNContribution(0);
       setEfficiency(0);
+      setUseDirectInput(false);
+      setLiquidNeedInput(0);
+      setEfficiencyAlreadyApplied(false);
       setBaseDose(0);
       setBaseDose2(0);
       setBaseDoseMode('single');
@@ -251,6 +275,12 @@ export default function Home() {
     if (mos !== undefined) setMosNContribution(mos);
     if (soy !== undefined) setSoyNContribution(soy);
     if (eff !== undefined) setEfficiency(eff);
+    setActivePreset('personalizado');
+  }, []);
+
+  const onSetLiquidNeed = useCallback((val: number) => {
+    setUseDirectInput(true);
+    setLiquidNeedInput(val);
     setActivePreset('personalizado');
   }, []);
 
@@ -310,6 +340,7 @@ export default function Home() {
     sumOfSplits: calculations.sumOfSplits,
     onSetYieldGoal,
     onSetSoilParameters,
+    onSetLiquidNeed,
     onSetParceling,
     onLoadPreset,
     onSetITRParameters,
@@ -536,91 +567,183 @@ export default function Home() {
                 <p className="text-xs text-[#8C897E] dark:text-[#9EA399] mt-1">Ajuste os dados de produtividade e histórico do solo</p>
               </div>
 
+              {/* Toggle: Modo de Entrada Direta */}
+              <div className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${
+                isDark ? 'border-[#2C3328] bg-[#1C201A]' : 'border-[#E5E2D9] bg-[#F9F8F6]'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <ArrowRightLeft className={`h-4 w-4 ${isDark ? 'text-[#9CB386]' : 'text-[#5A5A40]'}`} />
+                  <span className={`text-xs font-medium ${isDark ? 'text-[#9CB386]' : 'text-[#5A5A40]'}`}>
+                    Entrada Direta
+                  </span>
+                  <span className={`text-[10px] ${isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'}`}>
+                    (Necessidade Líquida)
+                  </span>
+                </div>
+                <button
+                  onClick={() => setUseDirectInputValue(!useDirectInput)}
+                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
+                    useDirectInput ? 'bg-[#2E6F40]' : isDark ? 'bg-[#393E32]' : 'bg-[#D1CFC4]'
+                  }`}
+                  aria-label="Alternar modo de entrada direta"
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${
+                    useDirectInput ? 'translate-x-5' : ''
+                  }`} />
+                </button>
+              </div>
+
               <div className="space-y-5">
-                {/* Product Goal */}
-                <Input3D
-                  id="input_group_yield_goal"
-                  label="Produtividade Alvo"
-                  unit="sc/ha"
-                  value={yieldGoal}
-                  onChange={setYieldGoalValue}
-                  step={5}
-                  min={50}
-                  max={250}
-                  placeholder="Ex: 160"
-                  isDark={isDark}
-                  accentColor="#5A5A40"
-                  hint="Meta de rendimento em sacas de 60kg por hectare."
-                  filling={isFillingPreset}
-                />
+                {!useDirectInput ? (
+                  <>
+                    {/* Modo normal: todos os inputs */}
+                    <Input3D
+                      id="input_group_yield_goal"
+                      label="Produtividade Alvo"
+                      unit="sc/ha"
+                      value={yieldGoal}
+                      onChange={setYieldGoalValue}
+                      step={5}
+                      min={50}
+                      max={250}
+                      placeholder="Ex: 160"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      hint="Meta de rendimento em sacas de 60kg por hectare."
+                      filling={isFillingPreset}
+                    />
 
-                {/* N Requirement */}
-                <Input3D
-                  label="N necessário por saca produzida"
-                  unit="kg N/sc"
-                  value={nRequirementPerBag}
-                  onChange={setNRequirementPerBagValue}
-                  step={0.05}
-                  min={0.5}
-                  max={2.5}
-                  placeholder="Ex: 1.35"
-                  isDark={isDark}
-                  accentColor="#5A5A40"
-                  hint="Extração unitária: 1.2 a 1.5 kg N por saca (padrão: 1.35)."
-                  filling={isFillingPreset}
-                />
+                    <Input3D
+                      label="N necessário por saca produzida"
+                      unit="kg N/sc"
+                      value={nRequirementPerBag}
+                      onChange={setNRequirementPerBagValue}
+                      step={0.05}
+                      min={0.5}
+                      max={2.5}
+                      placeholder="Ex: 1.35"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      hint="Extração unitária: 1.2 a 1.5 kg N por saca (padrão: 1.35)."
+                      filling={isFillingPreset}
+                    />
 
-                {/* MOS Contribution */}
-                <Input3D
-                  id="input_group_soil"
-                  label="N fornecido pela M.O. (MOS)"
-                  unit="kg N/ha"
-                  value={mosNContribution}
-                  onChange={setMosNContributionValue}
-                  step={1}
-                  min={0}
-                  max={150}
-                  placeholder="Ex: 40"
-                  isDark={isDark}
-                  accentColor="#5A5A40"
-                  hint="Mineralização da Matéria Orgânica do Solo."
-                  filling={isFillingPreset}
-                />
+                    <Input3D
+                      id="input_group_soil"
+                      label="N fornecido pela M.O. (MOS)"
+                      unit="kg N/ha"
+                      value={mosNContribution}
+                      onChange={setMosNContributionValue}
+                      step={1}
+                      min={0}
+                      max={150}
+                      placeholder="Ex: 40"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      hint="Mineralização da Matéria Orgânica do Solo."
+                      filling={isFillingPreset}
+                    />
 
-                {/* Soy Credit */}
-                <Input3D
-                  label="Crédito de N pela Soja (cultura anterior)"
-                  unit="kg N/ha"
-                  value={soyNContribution}
-                  onChange={setSoyNContributionValue}
-                  step={1}
-                  min={0}
-                  max={100}
-                  placeholder="Ex: 20"
-                  isDark={isDark}
-                  accentColor="#5A5A40"
-                  hint="Crédito de N da soja: 15 a 30 kg N/ha na sucessão Soja-Milho."
-                  filling={isFillingPreset}
-                />
+                    <Input3D
+                      label="Crédito de N pela Soja (cultura anterior)"
+                      unit="kg N/ha"
+                      value={soyNContribution}
+                      onChange={setSoyNContributionValue}
+                      step={1}
+                      min={0}
+                      max={100}
+                      placeholder="Ex: 20"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      hint="Crédito de N da soja: 15 a 30 kg N/ha na sucessão Soja-Milho."
+                      filling={isFillingPreset}
+                    />
 
-                {/* Efficiency rate */}
-                <Input3D
-                  id="input_group_efficiency"
-                  label="Eficiência de Aplicação (%)"
-                  unit="%"
-                  value={efficiency}
-                  onChange={setEfficiencyValue}
-                  onBlurCustom={setEfficiencyBlur}
-                  step={1}
-                  min={10}
-                  max={100}
-                  placeholder="Ex: 80"
-                  isDark={isDark}
-                  accentColor="#5A5A40"
-                  hint="Eficiência padrão: 80% (fator 0.8). Perdas por volatilização/lixiviação."
-                  filling={isFillingPreset}
-                />
+                    <Input3D
+                      id="input_group_efficiency"
+                      label="Eficiência de Aplicação (%)"
+                      unit="%"
+                      value={efficiency}
+                      onChange={setEfficiencyValue}
+                      onBlurCustom={setEfficiencyBlur}
+                      step={1}
+                      min={10}
+                      max={100}
+                      placeholder="Ex: 80"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      hint="Eficiência padrão: 80% (fator 0.8). Perdas por volatilização/lixiviação."
+                      filling={isFillingPreset}
+                    />
+                  </>
+                ) : (
+                  <>
+                    {/* Modo direto: necessidade líquida + eficiência */}
+                    <Input3D
+                      label="Necessidade Líquida de N"
+                      unit="kg N/ha"
+                      value={liquidNeedInput}
+                      onChange={setLiquidNeedInputValue}
+                      step={1}
+                      min={0}
+                      max={500}
+                      placeholder="Ex: 180"
+                      isDark={isDark}
+                      accentColor="#2E6F40"
+                      hint="N líquido já considerando MOS, Soja e extração unitária."
+                      filling={isFillingPreset}
+                    />
 
+                    {/* Checkbox inline: Eficiência já aplicada */}
+                    <label className={`flex items-center gap-2.5 cursor-pointer group`}>
+                      <div className="relative flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={efficiencyAlreadyApplied}
+                          onChange={(e) => setEfficiencyAlreadyAppliedValue(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className={`w-5 h-5 rounded-md border-2 transition-all duration-200 flex items-center justify-center ${
+                          efficiencyAlreadyApplied
+                            ? 'bg-[#2E6F40] border-[#2E6F40]'
+                            : isDark ? 'border-[#5A5A40] bg-[#242720]' : 'border-[#D1CFC4] bg-white'
+                        }`}>
+                          {efficiencyAlreadyApplied && (
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                      <span className={`text-xs font-medium transition-colors ${
+                        efficiencyAlreadyApplied
+                          ? isDark ? 'text-[#9CB386]' : 'text-[#2E6F40]'
+                          : isDark ? 'text-[#A6A395]' : 'text-[#8C897E]'
+                      }`}>
+                        Eficiência já aplicada
+                      </span>
+                    </label>
+
+                    {!efficiencyAlreadyApplied && (
+                      <Input3D
+                        id="input_group_efficiency"
+                        label="Eficiência de Aplicação (%)"
+                        unit="%"
+                        value={efficiency}
+                        onChange={setEfficiencyValue}
+                        onBlurCustom={setEfficiencyBlur}
+                        step={1}
+                        min={10}
+                        max={100}
+                        placeholder="Ex: 80"
+                        isDark={isDark}
+                        accentColor="#5A5A40"
+                        hint="Eficiência padrão: 80% (fator 0.8). Perdas por volatilização/lixiviação."
+                        filling={isFillingPreset}
+                      />
+                    )}
+                  </>
+                )}
               </div>
 
             </div>
@@ -851,31 +974,37 @@ export default function Home() {
         {/* RESULTS SECTION — core metrics */}
           <section id="results_section" className="space-y-6">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              <ExtracaoTotalCard
-                totalExtraction={calculations.totalExtraction}
-                yieldGoal={yieldGoal}
-                nRequirementPerBag={nRequirementPerBag}
-              />
+              {!useDirectInput && (
+                <ExtracaoTotalCard
+                  totalExtraction={calculations.totalExtraction}
+                  yieldGoal={yieldGoal}
+                  nRequirementPerBag={nRequirementPerBag}
+                />
+              )}
               <NecessidadeLiquidaCard
                 liquidNeed={calculations.liquidNeed}
-                totalExtraction={calculations.totalExtraction}
-                mosNContribution={mosNContribution}
-                soyNContribution={soyNContribution}
+                totalExtraction={useDirectInput ? 0 : calculations.totalExtraction}
+                mosNContribution={useDirectInput ? 0 : mosNContribution}
+                soyNContribution={useDirectInput ? 0 : soyNContribution}
+                useDirectInput={useDirectInput}
               />
               <div id="card_dose_total" className="col-span-2 sm:col-span-3">
                 <DoseRecomendadaCard
                   recommendedDose={calculations.recommendedDose}
                   liquidNeed={calculations.liquidNeed}
-                  efficiency={efficiency}
+                  efficiency={useDirectInput && efficiencyAlreadyApplied ? 100 : efficiency}
+                  efficiencyAlreadyApplied={useDirectInput && efficiencyAlreadyApplied}
                 />
               </div>
             </div>
 
-            <SecondaryCreditsCard
-              totalExtraction={calculations.totalExtraction}
-              mosNContribution={mosNContribution}
-              soyNContribution={soyNContribution}
-            />
+            {!useDirectInput && (
+              <SecondaryCreditsCard
+                totalExtraction={calculations.totalExtraction}
+                mosNContribution={mosNContribution}
+                soyNContribution={soyNContribution}
+              />
+            )}
           </section>
 
         {/* PARCELAMENTO SECTION — split schedule */}

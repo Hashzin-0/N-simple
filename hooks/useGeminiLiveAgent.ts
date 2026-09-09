@@ -36,6 +36,7 @@ export interface SimulatorContext {
   sumOfSplits: number;
   onSetYieldGoal: (val: number) => void;
   onSetSoilParameters: (params: { mos?: number; soy?: number; efficiency?: number }) => void;
+  onSetLiquidNeed: (val: number) => void;
   onSetParceling: (params: { baseDose?: number; v4v6Percent?: number; v8v10Percent?: number }) => void;
   onLoadPreset: (presetId: string) => void;
   onSetITRParameters: (params: { vtn: number; areaTotal: number; areaTributavel?: number; areaAproveitavel?: number; areaUtilizada?: number }) => void;

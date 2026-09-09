@@ -264,7 +264,7 @@ function generateSmartFallbackArticle(
         'ZYLBERSZTAJN, D. Desafios de governança em cooperativas agropecuárias: problemas de agência e horizonte. Revista de Administração, São Paulo, v. 49, n. 2, p. 305-318, 2014.',
       ],
       generatedAt: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }),
-    });
+    };
   }
 
   // Generic comprehensive fallback adapted strictly to cleanTheme

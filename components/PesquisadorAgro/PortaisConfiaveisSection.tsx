@@ -128,6 +128,6 @@ export default function PortaisConfiaveisSection({
           })}
         </div>
       </div>
-    </div>
-  </section>
+    </section>
+  );
 }
