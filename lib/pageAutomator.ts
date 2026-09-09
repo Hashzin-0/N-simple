@@ -13,6 +13,7 @@ export type PageSection =
   | 'eficiencia'
   | 'resultados'
   | 'dose_total'
+  | 'fonte_nitrogenada'
   | 'parcelamento'
   | 'balanco'
   | 'adubos'
@@ -29,6 +30,7 @@ const SECTION_ELEMENT_MAP: Record<PageSection, string> = {
   eficiencia: 'input_group_efficiency',
   resultados: 'results_section',
   dose_total: 'card_dose_total',
+  fonte_nitrogenada: 'fonte_nitrogenada_section',
   parcelamento: 'parceling_section',
   balanco: 'balanco_section',
   adubos: 'fertilizer_equivalent_section',

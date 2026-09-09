@@ -11,9 +11,10 @@ interface Props {
   calculations: Calculations;
   mosNContribution: number;
   soyNContribution: number;
+  useDirectInput?: boolean;
 }
 
-export default function DetailedMathPanel({ calculations, mosNContribution, soyNContribution }: Props) {
+export default function DetailedMathPanel({ calculations, mosNContribution, soyNContribution, useDirectInput = false }: Props) {
   const { isDark } = useTheme();
 
   return (
@@ -22,11 +23,13 @@ export default function DetailedMathPanel({ calculations, mosNContribution, soyN
         <h4 className="font-bold text-[#5A5A40] dark:text-[#9CB386] flex items-center gap-1.5 text-sm">
           <Info className="h-4 w-4 text-[#5A5A40] dark:text-[#9CB386]" /> <ElasticText className="text-sm font-bold" mode="auto" startOnView loop={false}>Resumo de Respostas e Conferência (Pronto para Copiar)</ElasticText>
         </h4>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 py-3 my-1">
-          <div className="text-center">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-[#8C897E] dark:text-[#9EA399] mb-1">Extração</div>
-            <SplitFlapValue value={calculations.totalExtraction} size="sm" unit="kg N/ha" />
-          </div>
+        <div className={`grid grid-cols-2 gap-3 py-3 my-1 ${useDirectInput ? 'md:grid-cols-4' : 'md:grid-cols-5'}`}>
+          {!useDirectInput && (
+            <div className="text-center">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-[#8C897E] dark:text-[#9EA399] mb-1">Extração</div>
+              <SplitFlapValue value={calculations.totalExtraction} size="sm" unit="kg N/ha" />
+            </div>
+          )}
           <div className="text-center">
             <div className="text-[9px] font-bold uppercase tracking-wider text-[#8C897E] dark:text-[#9EA399] mb-1">N Líquida</div>
             <SplitFlapValue value={calculations.liquidNeed} size="sm" unit="kg N/ha" />
@@ -35,14 +38,18 @@ export default function DetailedMathPanel({ calculations, mosNContribution, soyN
             <div className="text-[9px] font-bold uppercase tracking-wider text-[#8C897E] dark:text-[#9EA399] mb-1">Dose Final</div>
             <SplitFlapValue value={calculations.recommendedDose} size="sm" unit="kg N/ha" />
           </div>
-          <div className="text-center">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-[#8C897E] dark:text-[#9EA399] mb-1">MOS</div>
-            <SplitFlapValue value={mosNContribution} size="sm" unit="kg N/ha" />
-          </div>
-          <div className="text-center">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-[#8C897E] dark:text-[#9EA399] mb-1">Soja</div>
-            <SplitFlapValue value={soyNContribution} size="sm" unit="kg N/ha" />
-          </div>
+          {!useDirectInput && (
+            <>
+              <div className="text-center">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-[#8C897E] dark:text-[#9EA399] mb-1">MOS</div>
+                <SplitFlapValue value={mosNContribution} size="sm" unit="kg N/ha" />
+              </div>
+              <div className="text-center">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-[#8C897E] dark:text-[#9EA399] mb-1">Soja</div>
+                <SplitFlapValue value={soyNContribution} size="sm" unit="kg N/ha" />
+              </div>
+            </>
+          )}
           <div className="text-center">
             <div className="text-[9px] font-bold uppercase tracking-wider text-[#8C897E] dark:text-[#9EA399] mb-1">Base</div>
             <SplitFlapValue value={calculations.base1_kg} size="sm" unit="kg N/ha" />

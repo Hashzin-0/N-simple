@@ -24,6 +24,7 @@ import { computeCalculations } from '@/lib/calculations';
 import ExtracaoTotalCard from '@/components/metrics/ExtracaoTotalCard';
 import NecessidadeLiquidaCard from '@/components/metrics/NecessidadeLiquidaCard';
 import DoseRecomendadaCard from '@/components/metrics/DoseRecomendadaCard';
+import FonteNitrogenadaCard from '@/components/metrics/FonteNitrogenadaCard';
 import SecondaryCreditsCard from '@/components/metrics/SecondaryCreditsCard';
 import ParcelamentoSection from '@/components/metrics/ParcelamentoSection';
 import BalancoSection from '@/components/metrics/BalancoSection';
@@ -981,19 +982,28 @@ export default function Home() {
                   nRequirementPerBag={nRequirementPerBag}
                 />
               )}
-              <NecessidadeLiquidaCard
-                liquidNeed={calculations.liquidNeed}
-                totalExtraction={useDirectInput ? 0 : calculations.totalExtraction}
-                mosNContribution={useDirectInput ? 0 : mosNContribution}
-                soyNContribution={useDirectInput ? 0 : soyNContribution}
-                useDirectInput={useDirectInput}
-              />
-              <div id="card_dose_total" className="col-span-2 sm:col-span-3">
-                <DoseRecomendadaCard
-                  recommendedDose={calculations.recommendedDose}
+              {!(useDirectInput && efficiencyAlreadyApplied) && (
+                <NecessidadeLiquidaCard
                   liquidNeed={calculations.liquidNeed}
-                  efficiency={useDirectInput && efficiencyAlreadyApplied ? 100 : efficiency}
-                  efficiencyAlreadyApplied={useDirectInput && efficiencyAlreadyApplied}
+                  totalExtraction={useDirectInput ? 0 : calculations.totalExtraction}
+                  mosNContribution={useDirectInput ? 0 : mosNContribution}
+                  soyNContribution={useDirectInput ? 0 : soyNContribution}
+                  useDirectInput={useDirectInput}
+                />
+              )}
+              {!(useDirectInput && efficiencyAlreadyApplied) && (
+                <div id="card_dose_total" className="col-span-2 sm:col-span-3">
+                  <DoseRecomendadaCard
+                    recommendedDose={calculations.recommendedDose}
+                    liquidNeed={calculations.liquidNeed}
+                    efficiency={useDirectInput && efficiencyAlreadyApplied ? 100 : efficiency}
+                    efficiencyAlreadyApplied={useDirectInput && efficiencyAlreadyApplied}
+                  />
+                </div>
+              )}
+              <div id="fonte_nitrogenada_section" className="col-span-2 sm:col-span-3">
+                <FonteNitrogenadaCard
+                  liquidNeed={calculations.liquidNeed}
                 />
               </div>
             </div>
@@ -1030,6 +1040,7 @@ export default function Home() {
           calculations={calculations}
           mosNContribution={mosNContribution}
           soyNContribution={soyNContribution}
+          useDirectInput={useDirectInput}
         />
           </ScrollStack>
             </div>
