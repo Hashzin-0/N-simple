@@ -37,7 +37,7 @@ export function computeCalculations(inputs: {
     efficiencyAlreadyApplied = false,
   } = inputs;
 
-  const effDecimal = efficiency / 100;
+  const effDecimal = efficiency > 0 ? efficiency / 100 : 0.8;
 
   // Modo direto: usar valor do input diretamente
   const liquidNeed = useDirectInput

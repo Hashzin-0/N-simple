@@ -15,13 +15,14 @@ interface Props {
 
 export default React.memo(function DoseRecomendadaCard({ recommendedDose, liquidNeed, efficiency, efficiencyAlreadyApplied = false, onSaveClick, animKey }: Props) {
   const { isDark } = useTheme();
+  const effectiveEfficiency = efficiency > 0 ? efficiency : 80;
 
   return (
     <MetricCard
       label="Dose Total a Aplicar"
       value={recommendedDose}
       unit="kg N/ha"
-      formulaSummary={efficiencyAlreadyApplied ? 'Eficiência já aplicada na N_Liq' : `Eficiência: ${efficiency}% (Perdas de ${100 - efficiency}%)`}
+      formulaSummary={efficiencyAlreadyApplied ? 'Eficiência já aplicada na N_Liq' : `Eficiência: ${effectiveEfficiency}% (Perdas de ${100 - effectiveEfficiency}%)`}
       isDark={isDark}
       variant="hero"
       {...(onSaveClick ? { saveAction: { label: 'Salvar', onClick: onSaveClick } } : {})}
@@ -43,10 +44,10 @@ export default React.memo(function DoseRecomendadaCard({ recommendedDose, liquid
           <>
             <div className="font-bold text-[#9CB386]">Dose = N_Liq ÷ Efic</div>
             <div className="border-t border-[#2C3328] my-1 pt-1 text-[#D4A373] font-bold">
-              {liquidNeed.toFixed(2)} ÷ {efficiency / 100} = {recommendedDose.toFixed(2)} kg N/ha
+              {liquidNeed.toFixed(2)} ÷ {effectiveEfficiency / 100} = {recommendedDose.toFixed(2)} kg N/ha
             </div>
             <p className="mt-1 text-[#9EA399]">
-              Dose corrigida considerando a eficiência de {efficiency}%. Perdas estimadas: {100 - efficiency}%.
+              Dose corrigida considerando a eficiência de {effectiveEfficiency}%. Perdas estimadas: {100 - effectiveEfficiency}%.
             </p>
           </>
         )}
