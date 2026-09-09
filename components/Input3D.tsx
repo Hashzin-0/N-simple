@@ -51,6 +51,7 @@ export default React.memo(function Input3D({
   filling = false,
 }: Input3DProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const [focusedValue, setFocusedValue] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const prevValueRef = useRef(value);
@@ -214,21 +215,23 @@ export default React.memo(function Input3D({
             step={step}
             min={min}
             max={max}
-            value={value === 0 ? '' : value}
+            value={isFocused ? focusedValue : (value === 0 ? '' : value)}
             placeholder={placeholder || '0'}
             readOnly={readOnly}
             onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              if (!isNaN(val)) onChange(val);
+              setFocusedValue(e.target.value);
             }}
-            onFocus={() => setIsFocused(true)}
+            onFocus={() => {
+              setFocusedValue(value === 0 ? '' : String(value));
+              setIsFocused(true);
+            }}
             onBlur={(e) => {
               setIsFocused(false);
-              const val = parseFloat(e.target.value);
+              const val = parseFloat(focusedValue);
               if (onBlurCustom) {
                 onBlurCustom(isNaN(val) ? 0 : val);
-              } else if (e.target.value === '' || e.target.value === '-') {
-                onChange(0);
+              } else {
+                onChange(isNaN(val) ? 0 : val);
               }
             }}
             className={`w-full p-2.5 rounded-xl border text-sm font-medium focus:outline-none transition-all duration-200 ${
