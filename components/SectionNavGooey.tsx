@@ -20,6 +20,8 @@ import {
   FileText,
   BookOpen,
   ScanSearch,
+  Search,
+  Globe,
 } from 'lucide-react';
 
 interface SectionConfig {
@@ -59,6 +61,12 @@ const ABNT_SECTIONS: SectionConfig[] = [
   { id: 'bibliography_autodetect', label: 'Detector Fontes', shortLabel: 'Detector', icon: ScanSearch, color: '#2E6F40', colorDark: '#86efac' },
 ];
 
+const PESQUISADOR_SECTIONS: SectionConfig[] = [
+  { id: 'pesquisador_fontes', label: 'Pesquisador de Fontes', shortLabel: 'Fontes', icon: Search, color: '#2E6F40', colorDark: '#86efac' },
+  { id: 'pesquisador_portais', label: 'Portais Confiáveis', shortLabel: 'Portais', icon: Globe, color: '#D4A373', colorDark: '#D4A373' },
+  { id: 'pesquisador_automatico', label: 'Pesquisador Automático', shortLabel: 'Artigo ABNT', icon: Sparkles, color: '#5A5A40', colorDark: '#9CB386' },
+];
+
 interface SectionNavGooeyProps {
   activeTab: string;
   activeSectionIds?: string[];
@@ -75,6 +83,7 @@ export default React.memo(function SectionNavGooey({ activeTab, activeSectionIds
       case 'productivity': return CORN_SECTIONS;
       case 'itr': return ITR_SECTIONS;
       case 'abnt': return ABNT_SECTIONS;
+      case 'pesquisador': return PESQUISADOR_SECTIONS;
       default: return NITROGEN_SECTIONS;
     }
   }, [activeTab]);

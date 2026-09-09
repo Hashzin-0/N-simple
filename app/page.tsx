@@ -42,6 +42,7 @@ const SectionNavGooey = dynamic(() => import('@/components/SectionNavGooey'), { 
 const CornYieldCalculator = dynamic(() => import('@/components/CornYieldCalculator'), { ssr: false });
 const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr: false });
 const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
+const PesquisadorAgro = dynamic(() => import('@/components/PesquisadorAgro'), { ssr: false });
 
 const PRESETS: Preset[] = [
   {
@@ -368,6 +369,17 @@ export default function Home() {
       </div>
     ),
     [],
+  );
+
+  const pesquisadorContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
+          <PesquisadorAgro isDark={isDark} />
+        </ScrollStack>
+      </div>
+    ),
+    [isDark],
   );
 
   return (
@@ -896,6 +908,7 @@ export default function Home() {
           productivityContent={productivityContent}
           itrContent={itrContent}
           abntContent={abntContent}
+          pesquisadorContent={pesquisadorContent}
         />
 
         {/* GEMINI LIVE VOICE ASSISTANT HUD WITH 3D ORB */}
