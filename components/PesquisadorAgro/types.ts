@@ -31,6 +31,7 @@ export interface ScientificSource {
   desvantagens?: string[];
   caracteristicas?: string[];
   trigonometricSimilarity?: TrigonometricSimilarity;
+  matchedTopics?: string[];
 }
 
 export interface ReliablePortal {

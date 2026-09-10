@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Landmark, Info, CheckCircle2 } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import Input3D from '@/components/Input3D';
 import { cn } from '@/lib/utils';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 const ALIQUOT_TABLE = [
   { maxArea: 50,      rates: [1.00, 0.70, 0.40, 0.20, 0.03] },
@@ -42,11 +43,11 @@ function lookupAliquot(areaHa: number, gu: number): number {
 export default function ITRCalculator({ isConnected }: { isConnected?: boolean }) {
   const { isDark } = useTheme();
 
-  const [vtn, setVtn] = useState<number>(0);
-  const [areaTotal, setAreaTotal] = useState<number>(0);
-  const [areaTributavel, setAreaTributavel] = useState<number>(0);
-  const [areaAproveitavel, setAreaAproveitavel] = useState<number>(0);
-  const [areaUtilizada, setAreaUtilizada] = useState<number>(0);
+  const [vtn, setVtn] = usePersistedState<number>('itr_vtn', 0);
+  const [areaTotal, setAreaTotal] = usePersistedState<number>('itr_areaTotal', 0);
+  const [areaTributavel, setAreaTributavel] = usePersistedState<number>('itr_areaTributavel', 0);
+  const [areaAproveitavel, setAreaAproveitavel] = usePersistedState<number>('itr_areaAproveitavel', 0);
+  const [areaUtilizada, setAreaUtilizada] = usePersistedState<number>('itr_areaUtilizada', 0);
 
   const result = useMemo(() => {
     if (areaTotal <= 0) return null;

@@ -1,0 +1,32 @@
+{
+  "name": "Agronômica N-Pro — Calculadora de Nitrogênio para Milho",
+  "short_name": "N-Pro",
+  "description": "Calculadora agronômica de adubação nitrogenada e estimativa de produtividade de milho com assistente de voz IA.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1C201A",
+  "theme_color": "#2E6F40",
+  "orientation": "any",
+  "categories": ["education", "productivity", "utilities"],
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

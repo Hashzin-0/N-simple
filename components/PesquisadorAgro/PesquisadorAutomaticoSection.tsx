@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import {
   Sparkles,
   FileText,
@@ -43,10 +44,10 @@ export default function PesquisadorAutomaticoSection({
   currentTheme,
   onThemeChange,
 }: PesquisadorAutomaticoSectionProps) {
-  const [themeInput, setThemeInput] = useState(currentTheme || 'Gessagem e Subsolo: Vantagens e Desvantagens');
+  const [themeInput, setThemeInput] = usePersistedState<string>('pesq_auto_theme', currentTheme || 'Gessagem e Subsolo: Vantagens e Desvantagens');
   const [prevTheme, setPrevTheme] = useState(currentTheme);
-  const [userLinksInput, setUserLinksInput] = useState<string>('');
-  const [topics, setTopics] = useState<string[]>(DEFAULT_RESEARCH_TOPICS);
+  const [userLinksInput, setUserLinksInput] = usePersistedState<string>('pesq_auto_links', '');
+  const [topics, setTopics] = usePersistedState<string[]>('pesq_auto_topics', DEFAULT_RESEARCH_TOPICS);
   const [newTopicInput, setNewTopicInput] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState<string>('');

@@ -1,0 +1,191 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="greenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2E6F40"/>
+      <stop offset="50%" style="stop-color:#3D8B50"/>
+      <stop offset="100%" style="stop-color:#1E5A2E"/>
+    </linearGradient>
+    <linearGradient id="cornGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#D4A373"/>
+      <stop offset="40%" style="stop-color:#E8C899"/>
+      <stop offset="100%" style="stop-color:#B8956A"/>
+    </linearGradient>
+    <linearGradient id="nGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF"/>
+      <stop offset="100%" style="stop-color:#E8E6DF"/>
+    </linearGradient>
+    <linearGradient id="wrenchGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#E8E6DF"/>
+      <stop offset="100%" style="stop-color:#B8B5AA"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glowStrong">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+    <filter id="innerGlow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Fundo circular escuro -->
+  <circle cx="256" cy="256" r="240" fill="#121511" filter="url(#shadow)"/>
+  <circle cx="256" cy="256" r="235" fill="none" stroke="#2E6F40" stroke-width="3" opacity="0.6"/>
+  <circle cx="256" cy="256" r="228" fill="none" stroke="#2E6F40" stroke-width="1" opacity="0.25"/>
+
+  <!-- Anel decorativo tracejado -->
+  <circle cx="256" cy="256" r="218" fill="none" stroke="#5A5A40" stroke-width="2" stroke-dasharray="10,5" opacity="0.35"/>
+
+  <!-- Planta de milho estilizada (fundo) -->
+  <g transform="translate(256, 290)" opacity="0.85">
+    <!-- Raízes -->
+    <g stroke="#8D6E63" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.6">
+      <path d="M0,70 Q-12,88 -22,105"/>
+      <path d="M0,70 Q-6,92 -10,115"/>
+      <path d="M0,70 Q6,92 10,115"/>
+      <path d="M0,70 Q12,88 22,105"/>
+    </g>
+
+    <!-- Caule -->
+    <path d="M0,70 Q-1,35 0,-5" stroke="url(#greenGrad)" stroke-width="7" fill="none" stroke-linecap="round"/>
+
+    <!-- Folhas -->
+    <g fill="url(#greenGrad)">
+      <path d="M0,55 Q-38,45 -65,28 Q-48,50 -18,58 Q-8,56 0,55"/>
+      <path d="M0,50 Q38,40 65,23 Q48,45 18,53 Q8,51 0,50"/>
+      <path d="M-1,38 Q-48,24 -80,-2 Q-55,28 -22,40 Q-10,38 -1,38"/>
+      <path d="M1,33 Q48,19 80,-7 Q55,23 22,35 Q10,33 1,33"/>
+      <path d="M-1,18 Q-42,4 -70,-22 Q-50,6 -18,20 Q-8,18 -1,18"/>
+      <path d="M1,13 Q42,-1 70,-27 Q50,1 18,15 Q8,13 1,13"/>
+    </g>
+
+    <!-- Espiga de milho -->
+    <g transform="translate(0, -20)">
+      <ellipse cx="0" cy="20" rx="15" ry="6" fill="#8D6E63"/>
+      <path d="M-15,20 Q-18,0 -12,-32 Q-6,-45 0,-50 Q6,-45 12,-32 Q18,0 15,20 Z" fill="url(#cornGrad)" stroke="#B8956A" stroke-width="0.8"/>
+
+      <!-- Grãos -->
+      <g fill="#D4A373" opacity="0.85">
+        <ellipse cx="-8" cy="15" rx="3.5" ry="4.5"/>
+        <ellipse cx="0" cy="15" rx="3.5" ry="4.5"/>
+        <ellipse cx="8" cy="15" rx="3.5" ry="4.5"/>
+        <ellipse cx="-12" cy="6" rx="3.5" ry="4.5"/>
+        <ellipse cx="-3" cy="6" rx="3.5" ry="4.5"/>
+        <ellipse cx="5" cy="6" rx="3.5" ry="4.5"/>
+        <ellipse cx="12" cy="6" rx="3.5" ry="4.5"/>
+        <ellipse cx="-8" cy="-4" rx="3" ry="4"/>
+        <ellipse cx="0" cy="-4" rx="3" ry="4"/>
+        <ellipse cx="8" cy="-4" rx="3" ry="4"/>
+        <ellipse cx="-5" cy="-14" rx="2.8" ry="3.5"/>
+        <ellipse cx="3" cy="-14" rx="2.8" ry="3.5"/>
+        <ellipse cx="0" cy="-24" rx="2.2" ry="3"/>
+      </g>
+
+      <!-- Brilho nos grãos -->
+      <g fill="rgba(255,255,255,0.3)">
+        <ellipse cx="-8" cy="13" rx="1.8" ry="2.2"/>
+        <ellipse cx="0" cy="13" rx="1.8" ry="2.2"/>
+        <ellipse cx="8" cy="13" rx="1.8" ry="2.2"/>
+        <ellipse cx="-12" cy="4" rx="1.8" ry="2.2"/>
+        <ellipse cx="-3" cy="4" rx="1.8" ry="2.2"/>
+        <ellipse cx="5" cy="4" rx="1.8" ry="2.2"/>
+        <ellipse cx="12" cy="4" rx="1.8" ry="2.2"/>
+      </g>
+
+      <!-- Barbas -->
+      <g stroke="#8D6E63" stroke-width="1.2" fill="none" stroke-linecap="round" opacity="0.6">
+        <path d="M0,-50 Q-8,-58 -16,-62"/>
+        <path d="M0,-50 Q-4,-60 -7,-67"/>
+        <path d="M0,-50 Q0,-62 0,-70"/>
+        <path d="M0,-50 Q4,-60 7,-67"/>
+        <path d="M0,-50 Q8,-58 16,-62"/>
+      </g>
+
+      <!-- Folhas da espiga -->
+      <path d="M-15,20 Q-30,12 -34,0 Q-25,12 -12,20" fill="#3D8B50" stroke="#2E6F40" stroke-width="0.8"/>
+      <path d="M15,20 Q30,12 34,0 Q25,12 12,20" fill="#3D8B50" stroke="#2E6F40" stroke-width="0.8"/>
+    </g>
+  </g>
+
+  <!-- Letra N principal -->
+  <g transform="translate(256, 235)">
+    <text x="0" y="8"
+          font-family="'Segoe UI', Arial, Helvetica, sans-serif"
+          font-size="130"
+          font-weight="900"
+          text-anchor="middle"
+          dominant-baseline="middle"
+          fill="url(#nGrad)"
+          stroke="url(#greenGrad)"
+          stroke-width="3"
+          filter="url(#glowStrong)">N</text>
+  </g>
+
+  <!-- Mini ícone de chave inglesa (wrench) ao lado da N -->
+  <g transform="translate(340, 195) rotate(45)" filter="url(#glow)">
+    <path d="M0,-28 C6,-28 12,-22 12,-16 C12,-10 8,-6 4,-4 L4,4 L-4,4 L-4,-4 C-8,-6 -12,-10 -12,-16 C-12,-22 -6,-28 0,-28 Z M0,-20 C-3,-20 -5,-18 -5,-15 C-5,-12 -3,-10 0,-10 C3,-10 5,-12 5,-15 C5,-18 3,-20 0,-20 Z"
+          fill="url(#wrenchGrad)" stroke="#8D8D80" stroke-width="1"/>
+    <rect x="-3" y="4" width="6" height="24" rx="2" fill="url(#wrenchGrad)" stroke="#8D8D80" stroke-width="0.8"/>
+    <rect x="-5" y="24" width="10" height="6" rx="1.5" fill="url(#wrenchGrad)" stroke="#8D8D80" stroke-width="0.8"/>
+  </g>
+
+  <!-- Segunda chave inglesa menor -->
+  <g transform="translate(365, 220) rotate(70)" opacity="0.7" filter="url(#glow)">
+    <path d="M0,-20 C4,-20 8,-16 8,-11 C8,-7 6,-4 3,-3 L3,3 L-3,3 L-3,-3 C-6,-4 -8,-7 -8,-11 C-8,-16 -4,-20 0,-20 Z M0,-14 C-2,-14 -3,-13 -3,-11 C-3,-9 -2,-8 0,-8 C2,-8 3,-9 3,-11 C3,-13 2,-14 0,-14 Z"
+          fill="url(#wrenchGrad)" stroke="#8D8D80" stroke-width="0.8"/>
+    <rect x="-2" y="3" width="4" height="16" rx="1.5" fill="url(#wrenchGrad)" stroke="#8D8D80" stroke-width="0.6"/>
+    <rect x="-3.5" y="16" width="7" height="4" rx="1" fill="url(#wrenchGrad)" stroke="#8D8D80" stroke-width="0.6"/>
+  </g>
+
+  <!-- Terceira chave (fenda) menor -->
+  <g transform="translate(148, 215) rotate(-30)" opacity="0.65" filter="url(#glow)">
+    <circle cx="0" cy="-14" r="8" fill="none" stroke="url(#wrenchGrad)" stroke-width="3"/>
+    <circle cx="0" cy="-14" r="3" fill="#121511"/>
+    <rect x="-2" y="-6" width="4" height="22" rx="1.5" fill="url(#wrenchGrad)" stroke="#8D8D80" stroke-width="0.6"/>
+    <rect x="-3.5" y="12" width="7" height="4" rx="1" fill="url(#wrenchGrad)" stroke="#8D8D80" stroke-width="0.6"/>
+  </g>
+
+  <!--Texto "TOOLS" estilizado -->
+  <g transform="translate(256, 355)">
+    <text x="0" y="0"
+          font-family="'Segoe UI', Arial, Helvetica, sans-serif"
+          font-size="30"
+          font-weight="700"
+          text-anchor="middle"
+          dominant-baseline="middle"
+          fill="#D4A373"
+          letter-spacing="10"
+          filter="url(#glow)">TOOLS</text>
+  </g>
+
+  <!-- Linha decorativa abaixo de TOOLS -->
+  <line x1="180" y1="378" x2="332" y2="378" stroke="#2E6F40" stroke-width="1.5" opacity="0.4"/>
+
+  <!-- Pontos decorativos nos cantos -->
+  <g fill="#2E6F40" opacity="0.5">
+    <circle cx="115" cy="115" r="3"/>
+    <circle cx="397" cy="115" r="3"/>
+    <circle cx="115" cy="397" r="3"/>
+    <circle cx="397" cy="397" r="3"/>
+  </g>
+
+  <!-- Arcos decorativos -->
+  <path d="M140,125 Q256,70 372,125" stroke="url(#greenGrad)" stroke-width="1.5" fill="none" opacity="0.3"/>
+  <path d="M140,387 Q256,442 372,387" stroke="url(#greenGrad)" stroke-width="1.5" fill="none" opacity="0.3"/>
+
+  <!-- Brilho ambiental central -->
+  <ellipse cx="256" cy="256" rx="100" ry="100" fill="url(#greenGrad)" opacity="0.06"/>
+</svg>

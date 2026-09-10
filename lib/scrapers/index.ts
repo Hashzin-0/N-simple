@@ -36,22 +36,34 @@ function deduplicateSources(sources: ScientificSource[]): ScientificSource[] {
     const existing = seen.get(key);
     if (!existing) {
       seen.set(key, src);
-    } else if (src.abstract.length > existing.abstract.length) {
-      seen.set(key, src);
+    } else {
+      if (src.abstract.length > existing.abstract.length) {
+        seen.set(key, src);
+      }
+      const merged = seen.get(key)!;
+      if (src.matchedTopics && src.matchedTopics.length > 0) {
+        const existingTopics = new Set(merged.matchedTopics || []);
+        for (const t of src.matchedTopics) {
+          existingTopics.add(t);
+        }
+        merged.matchedTopics = Array.from(existingTopics);
+      }
     }
   }
 
   return Array.from(seen.values());
 }
 
-export async function searchAllSources(query: string): Promise<ScrapedResult> {
+async function runScrapersForQuery(
+  query: string
+): Promise<{ sources: ScientificSource[]; errors: string[] }> {
   const errors: string[] = [];
-  const allResults: ScientificSource[] = [];
+  const results: ScientificSource[] = [];
 
   const searchPromises = SCRAPERS.map(async (scraper) => {
     try {
-      const results = await scraper.fn(query, scraper.max);
-      return { name: scraper.name, results, error: null };
+      const scraperResults = await scraper.fn(query, scraper.max);
+      return { name: scraper.name, results: scraperResults, error: null };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[Scrapers] ${scraper.name} failed:`, msg);
@@ -63,13 +75,61 @@ export async function searchAllSources(query: string): Promise<ScrapedResult> {
 
   for (const result of settled) {
     if (result.status === 'fulfilled') {
-      const { name, results, error } = result.value;
-      allResults.push(...results);
+      const { name, results: scraperResults, error } = result.value;
+      results.push(...scraperResults);
       if (error) {
         errors.push(`${name}: ${error}`);
       }
     } else {
       errors.push(`Promise rejected: ${result.reason}`);
+    }
+  }
+
+  return { sources: results, errors };
+}
+
+export async function searchAllSources(
+  query: string,
+  topics?: string[]
+): Promise<ScrapedResult> {
+  const allErrors: string[] = [];
+  const allResults: ScientificSource[] = [];
+
+  if (!topics || topics.length === 0) {
+    const { sources, errors } = await runScrapersForQuery(query);
+    allErrors.push(...errors);
+
+    const deduplicated = deduplicateSources(sources);
+
+    return {
+      sources: deduplicated,
+      query,
+      totalFound: deduplicated.length,
+      errors: allErrors,
+    };
+  }
+
+  const topicSearchPromises = topics.map(async (topic) => {
+    const combinedQuery = `${query} ${topic}`;
+    const { sources, errors } = await runScrapersForQuery(combinedQuery);
+
+    const tagged = sources.map((src) => ({
+      ...src,
+      matchedTopics: [topic],
+    }));
+
+    return { topic, sources: tagged, errors };
+  });
+
+  const topicResults = await Promise.allSettled(topicSearchPromises);
+
+  for (const result of topicResults) {
+    if (result.status === 'fulfilled') {
+      const { sources, errors } = result.value;
+      allResults.push(...sources);
+      allErrors.push(...errors);
+    } else {
+      allErrors.push(`Topic search rejected: ${result.reason}`);
     }
   }
 
@@ -79,6 +139,6 @@ export async function searchAllSources(query: string): Promise<ScrapedResult> {
     sources: deduplicated,
     query,
     totalFound: deduplicated.length,
-    errors,
+    errors: allErrors,
   };
 }

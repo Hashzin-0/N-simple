@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, startTransition } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { motion, AnimatePresence } from 'motion/react';
 import dynamic from 'next/dynamic';
 import {
@@ -12,6 +13,7 @@ import {
   Sprout,
   Mic,
   ArrowRightLeft,
+  Hand,
 } from 'lucide-react';
 import LoadingSkeleton3D from '@/components/LoadingSkeleton3D';
 import Input3D from '@/components/Input3D';
@@ -45,6 +47,8 @@ const CornYieldCalculator = dynamic(() => import('@/components/CornYieldCalculat
 const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr: false });
 const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
 const PesquisadorAgro = dynamic(() => import('@/components/PesquisadorAgro'), { ssr: false });
+const AccessibilityPanel = dynamic(() => import('@/components/AccessibilityPanel'), { ssr: false });
+const VLibrasWidget = dynamic(() => import('@/components/LibrasWidget'), { ssr: false });
 
 const PRESETS: Preset[] = [
   {
@@ -102,43 +106,46 @@ export default function Home() {
   const { withLock } = useAnimationLock(400);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Input states
-  const [yieldGoal, setYieldGoal] = useState<number>(0);
-  const [nRequirementPerBag, setNRequirementPerBag] = useState<number>(0);
-  const [mosNContribution, setMosNContribution] = useState<number>(0);
-  const [soyNContribution, setSoyNContribution] = useState<number>(0);
-  const [efficiency, setEfficiency] = useState<number>(0);
+  // Input states (persisted to localStorage)
+  const [yieldGoal, setYieldGoal] = usePersistedState<number>('n_calc_yieldGoal', 0);
+  const [nRequirementPerBag, setNRequirementPerBag] = usePersistedState<number>('n_calc_nReq', 0);
+  const [mosNContribution, setMosNContribution] = usePersistedState<number>('n_calc_mos', 0);
+  const [soyNContribution, setSoyNContribution] = usePersistedState<number>('n_calc_soy', 0);
+  const [efficiency, setEfficiency] = usePersistedState<number>('n_calc_efficiency', 0);
 
   // Direct input mode: user provides liquid need directly
-  const [useDirectInput, setUseDirectInput] = useState<boolean>(false);
-  const [liquidNeedInput, setLiquidNeedInput] = useState<number>(0);
-  const [efficiencyAlreadyApplied, setEfficiencyAlreadyApplied] = useState<boolean>(false);
+  const [useDirectInput, setUseDirectInput] = usePersistedState<boolean>('n_calc_directInput', false);
+  const [liquidNeedInput, setLiquidNeedInput] = usePersistedState<number>('n_calc_liquidNeed', 0);
+  const [efficiencyAlreadyApplied, setEfficiencyAlreadyApplied] = usePersistedState<boolean>('n_calc_effApplied', false);
 
   // Custom interactive split parameters
-  const [baseDose, setBaseDose] = useState<number>(0);
-  const [baseDose2, setBaseDose2] = useState<number>(0); // 0 = single value mode
-  const [v4v6Percent, setV4v6Percent] = useState<number>(0);
-  const [v4v6Percent2, setV4v6Percent2] = useState<number>(0); // 0 = single value mode
-  const [v8v10Percent, setV8v10Percent] = useState<number>(0);
-  const [v8v10Percent2, setV8v10Percent2] = useState<number>(0); // 0 = single value mode
-  
+  const [baseDose, setBaseDose] = usePersistedState<number>('n_calc_baseDose', 0);
+  const [baseDose2, setBaseDose2] = usePersistedState<number>('n_calc_baseDose2', 0);
+  const [v4v6Percent, setV4v6Percent] = usePersistedState<number>('n_calc_v4v6', 0);
+  const [v4v6Percent2, setV4v6Percent2] = usePersistedState<number>('n_calc_v4v6_2', 0);
+  const [v8v10Percent, setV8v10Percent] = usePersistedState<number>('n_calc_v8v10', 0);
+  const [v8v10Percent2, setV8v10Percent2] = usePersistedState<number>('n_calc_v8v10_2', 0);
+
   // Toggle for 1 vs 2 values per application
-  const [baseDoseMode, setBaseDoseMode] = useState<'single' | 'range'>('single');
-  
+  const [baseDoseMode, setBaseDoseMode] = usePersistedState<'single' | 'range'>('n_calc_doseMode', 'single');
+
   // Split base configuration: dose with losses (Dose de N a aplicar) or net requirement (Necessidade Líquida)
-  const [splitBase, setSplitBase] = useState<'dose_perdas' | 'necessidade_liquida'>('dose_perdas');
+  const [splitBase, setSplitBase] = usePersistedState<'dose_perdas' | 'necessidade_liquida'>('n_calc_splitBase', 'dose_perdas');
 
   // Active scenario preset
-  const [activePreset, setActivePreset] = useState<string>('personalizado');
-  
+  const [activePreset, setActivePreset] = usePersistedState<string>('n_calc_preset', 'personalizado');
+
   // Animation state for filling fields when loading presets (single boolean to prevent re-render thrashing)
   const [isFillingPreset, setIsFillingPreset] = useState(false);
   const fillingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<TabId>('nitrogen');
+  const [activeTab, setActiveTab] = usePersistedState<TabId>('n_calc_activeTab', 'nitrogen');
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [bibliographyRef, setBibliographyRef] = useState<ABNTReference | null>(null);
+
+  // Accessibility panel state
+  const [isAccessibilityPanelOpen, setIsAccessibilityPanelOpen] = useState(false);
 
 
   // Handle preset loading — batch state updates with startTransition (instant, no lag)
@@ -469,6 +476,14 @@ export default function Home() {
               >
                 <Mic className={`h-4 w-4 ${voiceAgent.state.isConnected ? 'animate-bounce text-white' : 'text-[#5A5A40] dark:text-[#C5D9B0]'}`} />
                 <span>{voiceAgent.state.isConnected ? 'Puck Conectado' : 'Falar com Puck'}</span>
+              </button>
+              <button
+                id="btn_header_accessibility"
+                onClick={() => setIsAccessibilityPanelOpen(true)}
+                className="p-2.5 bg-white/10 dark:bg-white/5 hover:bg-white/20 text-white rounded-xl border border-white/20 dark:border-white/10 transition-all active:scale-95"
+                title="Acessibilidade Libras"
+              >
+                <Hand className="h-4 w-4 text-white" />
               </button>
               <button
                 id="btn_print"
@@ -1059,6 +1074,14 @@ export default function Home() {
           onToggleMute={voiceAgent.toggleMute}
         />
 
+        {/* VLIBRAS WIDGET */}
+        <VLibrasWidget />
+
+        {/* ACCESSIBILITY PANEL */}
+        <AccessibilityPanel
+          isOpen={isAccessibilityPanelOpen}
+          onClose={() => setIsAccessibilityPanelOpen(false)}
+        />
 
         {/* FOOTER */}
         <footer className="p-4 text-center border-t border-[#F0EDE5] dark:border-[#2C3328] text-[10px] text-[#8C897E] dark:text-[#9EA399] bg-[#F9F8F6] dark:bg-[#1C201A] rounded-2xl transition-colors">

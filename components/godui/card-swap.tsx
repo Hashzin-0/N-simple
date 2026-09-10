@@ -23,7 +23,14 @@ export type CardSwapProps = Omit<
   stacked?: boolean;
 };
 
-const CardSwap = React.forwardRef<HTMLDivElement, CardSwapProps>(
+export interface CardSwapHandle {
+  element: HTMLDivElement | null;
+  advance: () => void;
+  retreat: () => void;
+  currentIndex: number;
+}
+
+const CardSwap = React.forwardRef<CardSwapHandle, CardSwapProps>(
   (
     {
       children,
@@ -41,10 +48,6 @@ const CardSwap = React.forwardRef<HTMLDivElement, CardSwapProps>(
     forwardedRef
   ) => {
     const ref = React.useRef<HTMLDivElement>(null);
-    React.useImperativeHandle(
-      forwardedRef,
-      () => ref.current as HTMLDivElement
-    );
     const reduce = useReducedMotion();
     const items = React.Children.toArray(children);
     const n = items.length;
@@ -72,6 +75,17 @@ const CardSwap = React.forwardRef<HTMLDivElement, CardSwapProps>(
         o.length ? [o[o.length - 1] as number, ...o.slice(0, -1)] : o
       );
     }, []);
+
+    React.useImperativeHandle(
+      forwardedRef,
+      () => ({
+        element: ref.current,
+        advance,
+        retreat,
+        currentIndex: order[0] ?? 0,
+      }),
+      [advance, retreat, order]
+    );
 
     React.useEffect(() => {
       if (!interval || paused || n < 2) return;
@@ -192,7 +206,7 @@ const CardSwap = React.forwardRef<HTMLDivElement, CardSwapProps>(
           })}
         </motion.div>
 
-        {/* SWAP INDICATOR (SEM AS SETAS < E >, APENAS GESTO DE SWAP / PONTOS DE NAVEGAÇÃO) */}
+        {/* SWAP INDICATOR - PONTOS DE NAVEGAÇÃO E CONTADOR */}
         {n > 1 && (
           <div className="flex flex-col items-center gap-1.5 pt-6 pb-2 text-center">
             <div className="flex items-center gap-1.5">

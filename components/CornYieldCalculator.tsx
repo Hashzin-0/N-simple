@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useCallback, useRef } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import { motion } from 'motion/react';
 import { 
   Calculator, 
@@ -83,14 +84,14 @@ const YIELD_PRESETS: YieldPreset[] = [
 export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: CornYieldCalculatorProps) {
   const { isDark } = useTheme();
 
-  const [plantasPorMetro, setPlantasPorMetro] = useState<number>(0);
-  const [espacamentoLinhas, setEspacamentoLinhas] = useState<number>(0);
-  const [fileiras, setFileiras] = useState<number>(0);
-  const [graosPorFileira, setGraosPorFileira] = useState<number>(0);
-  const [espigas, setEspigas] = useState<number>(0);
-  const [pmg, setPmg] = useState<number>(0);
-  const [quebraDecimal, setQuebraDecimal] = useState<number>(0);
-  const [activePreset, setActivePreset] = useState<string>('personalizado');
+  const [plantasPorMetro, setPlantasPorMetro] = usePersistedState<number>('corn_yield_plantas', 0);
+  const [espacamentoLinhas, setEspacamentoLinhas] = usePersistedState<number>('corn_yield_espacamento', 0);
+  const [fileiras, setFileiras] = usePersistedState<number>('corn_yield_fileiras', 0);
+  const [graosPorFileira, setGraosPorFileira] = usePersistedState<number>('corn_yield_graos', 0);
+  const [espigas, setEspigas] = usePersistedState<number>('corn_yield_espigas', 0);
+  const [pmg, setPmg] = usePersistedState<number>('corn_yield_pmg', 0);
+  const [quebraDecimal, setQuebraDecimal] = usePersistedState<number>('corn_yield_quebra', 0);
+  const [activePreset, setActivePreset] = usePersistedState<string>('corn_yield_preset', 'personalizado');
   const [showFormulaDetails, setShowFormulaDetails] = useState<boolean>(true);
   const { withLock } = useAnimationLock(400);
   const [appliedToast, setAppliedToast] = useState<string | null>(null);

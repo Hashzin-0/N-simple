@@ -1,16 +1,18 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   Globe,
   ExternalLink,
   Search,
   Building2,
   Layers,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { RELIABLE_PORTALS } from './portalsData';
 import { ReliablePortal } from './types';
-import { CardSwap } from '@/components/godui/card-swap';
+import { CardSwap, CardSwapHandle } from '@/components/godui/card-swap';
 
 interface PortaisConfiaveisSectionProps {
   currentTheme: string;
@@ -21,6 +23,8 @@ export default function PortaisConfiaveisSection({
   currentTheme,
   isDark,
 }: PortaisConfiaveisSectionProps) {
+  const cardSwapRef = useRef<CardSwapHandle>(null);
+
   const getSearchUrl = (portal: ReliablePortal) => {
     const query = currentTheme || 'agropecuaria sustentavel';
     return portal.searchUrlTemplate.replace('{query}', encodeURIComponent(query));
@@ -59,10 +63,22 @@ export default function PortaisConfiaveisSection({
         )}
       </div>
 
-      {/* PORTAIS - card swap com navegação por gesto */}
+      {/* PORTAIS - card swap com navegação por gesto e setas */}
       <div className="w-full max-w-xl mx-auto py-4 px-2 sm:px-4">
-        <CardSwap stacked={false} className="h-[340px]">
-          {RELIABLE_PORTALS.map((portal) => {
+        <div className="flex items-center gap-3">
+          {/* LEFT ARROW */}
+          <button
+            type="button"
+            onClick={() => cardSwapRef.current?.retreat()}
+            className="shrink-0 p-2.5 rounded-xl border bg-white dark:bg-[#1C201A] text-[#5A5A40] dark:text-[#E8E6DF] border-[#E5E2D9] dark:border-[#2C3328] hover:border-[#2E6F40] dark:hover:border-[#9CB386] transition-all cursor-pointer shadow-sm"
+            aria-label="Portal anterior"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+
+          {/* CARD SWAP */}
+          <CardSwap ref={cardSwapRef} stacked={false} className="h-[340px] flex-1">
+            {RELIABLE_PORTALS.map((portal) => {
             const directSearchUrl = getSearchUrl(portal);
 
             return (
@@ -124,7 +140,18 @@ export default function PortaisConfiaveisSection({
               </div>
             );
           })}
-        </CardSwap>
+          </CardSwap>
+
+          {/* RIGHT ARROW */}
+          <button
+            type="button"
+            onClick={() => cardSwapRef.current?.advance()}
+            className="shrink-0 p-2.5 rounded-xl border bg-white dark:bg-[#1C201A] text-[#5A5A40] dark:text-[#E8E6DF] border-[#E5E2D9] dark:border-[#2C3328] hover:border-[#2E6F40] dark:hover:border-[#9CB386] transition-all cursor-pointer shadow-sm"
+            aria-label="Próximo portal"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
       </div>
     </section>
   );

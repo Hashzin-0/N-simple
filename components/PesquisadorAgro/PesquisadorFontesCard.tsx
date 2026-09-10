@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
 import {
   Search,
   BookOpen,
@@ -16,6 +17,8 @@ import {
   AlertOctagon,
   Compass,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { ScientificSource, SourceType } from './types';
 import { computeTrigonometricSimilarity } from './trigonometry';
@@ -45,18 +48,21 @@ const SUGGESTIONS = [
   'Manejo Integrado de Pragas',
 ];
 
+const ITEMS_PER_PAGE = 10;
+
 export default function PesquisadorFontesCard({
   currentTheme,
   onThemeChange,
   onSendToAutomaticResearcher,
 }: PesquisadorFontesCardProps) {
-  const [searchTerm, setSearchTerm] = useState(currentTheme);
+  const [searchTerm, setSearchTerm] = usePersistedState<string>('pesq_fontes_search', '');
   const [prevTheme, setPrevTheme] = useState(currentTheme);
-  const [selectedType, setSelectedType] = useState<string>('todos');
-  const [selectedPortal, setSelectedPortal] = useState<string>('todos');
+  const [selectedType, setSelectedType] = usePersistedState<string>('pesq_fontes_type', 'todos');
+  const [selectedPortal, setSelectedPortal] = usePersistedState<string>('pesq_fontes_portal', 'todos');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [searchingLive, setSearchingLive] = useState(false);
   const [dynamicSources, setDynamicSources] = useState<ScientificSource[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Sync state during render when prop changes
   if (currentTheme !== prevTheme) {
@@ -127,6 +133,18 @@ export default function PesquisadorFontesCard({
         (a.trigonometricSimilarity?.cosTheta ?? 0)
     );
   }, [scoredSources, searchTerm, selectedType, selectedPortal]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredSources.length / ITEMS_PER_PAGE);
+  const paginatedSources = filteredSources.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedType, selectedPortal]);
 
   const executeLiveSearch = useCallback(async (query: string) => {
     const cleanQuery = query.trim();
@@ -379,8 +397,9 @@ export default function PesquisadorFontesCard({
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4">
-            {filteredSources.map((source) => {
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4">
+              {paginatedSources.map((source) => {
               const isCopied = copiedId === source.id;
               const isYouTube = source.sourceName === 'YouTube' || source.sourceType === 'video_tecnico';
               const trig = source.trigonometricSimilarity;
@@ -549,6 +568,44 @@ export default function PesquisadorFontesCard({
                 </div>
               );
             })}
+            </div>
+
+            {/* PAGINATION CONTROLS */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-[#1C201A] text-[#5A5A40] dark:text-[#E8E6DF] border-[#E5E2D9] dark:border-[#2C3328] hover:border-[#2E6F40] dark:hover:border-[#9CB386]"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="hidden sm:inline">Anterior</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-[#8C897E] dark:text-[#9EA399]">
+                    Página
+                  </span>
+                  <span className="text-xs font-bold text-[#5A5A40] dark:text-[#E8E6DF] bg-[#FAF8F5] dark:bg-[#121511] px-2.5 py-1 rounded-lg border border-[#E5E2D9] dark:border-[#2C3328]">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <span className="text-xs font-medium text-[#8C897E] dark:text-[#9EA399]">
+                    ({filteredSources.length} resultado{filteredSources.length !== 1 ? 's' : ''})
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-[#1C201A] text-[#5A5A40] dark:text-[#E8E6DF] border-[#E5E2D9] dark:border-[#2C3328] hover:border-[#2E6F40] dark:hover:border-[#9CB386]"
+                >
+                  <span className="hidden sm:inline">Próxima</span>
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

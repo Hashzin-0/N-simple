@@ -2,8 +2,140 @@ import { GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import { ScientificArticleABNT } from '@/components/PesquisadorAgro/types';
 import { searchAllSources } from '@/lib/scrapers';
+import { fetchUserDocuments, UserDocumentSource } from '@/lib/userDocuments';
 
 export const dynamic = 'force-dynamic';
+
+function formatSourcesByTopic(
+  sources: Awaited<ReturnType<typeof searchAllSources>>['sources'],
+  topics: string[]
+): string {
+  if (topics.length === 0) {
+    return sources
+      .slice(0, 30)
+      .map(
+        (src, idx) =>
+          `[Fonte ${idx + 1}] CITAÇÃO ABNT: ${src.abntCitation}
+Autores: ${src.authors}
+Título: ${src.title}
+Publicação: ${src.publication}
+Ano: ${src.year}
+Repositório: ${src.sourceName}
+Tipo: ${src.sourceType}
+URL Direta: ${src.directUrl || 'Não disponível'}
+URL de Busca: ${src.searchUrl}
+Resumo: ${src.abstract}
+Palavras-chave: ${(src.keywords || []).join(', ')}
+Vantagens: ${(src.vantagens || []).join('; ') || 'Consultar artigo completo'}
+Desvantagens: ${(src.desvantagens || []).join('; ') || 'Consultar artigo completo'}
+Características: ${(src.caracteristicas || []).join('; ') || 'Consultar artigo completo'}`
+      )
+      .join('\n\n');
+  }
+
+  const topicGroups: Record<string, typeof sources> = {};
+  for (const topic of topics) {
+    topicGroups[topic] = [];
+  }
+  const ungrouped: typeof sources = [];
+
+  for (const src of sources) {
+    if (src.matchedTopics && src.matchedTopics.length > 0) {
+      let placed = false;
+      for (const t of src.matchedTopics) {
+        if (topicGroups[t]) {
+          topicGroups[t].push(src);
+          placed = true;
+        }
+      }
+      if (!placed) ungrouped.push(src);
+    } else {
+      ungrouped.push(src);
+    }
+  }
+
+  const lines: string[] = [];
+  let fontIdx = 1;
+
+  for (const topic of topics) {
+    const group = topicGroups[topic];
+    if (group.length === 0) continue;
+
+    lines.push(`\n--- TÓPICO: ${topic} ---`);
+    for (const src of group.slice(0, 8)) {
+      lines.push(
+        `[Fonte ${fontIdx}] CITAÇÃO ABNT: ${src.abntCitation}
+Autores: ${src.authors}
+Título: ${src.title}
+Publicação: ${src.publication}
+Ano: ${src.year}
+Repositório: ${src.sourceName}
+Tipo: ${src.sourceType}
+URL Direta: ${src.directUrl || 'Não disponível'}
+Resumo: ${src.abstract}
+Palavras-chave: ${(src.keywords || []).join(', ')}`
+      );
+      fontIdx++;
+    }
+  }
+
+  if (ungrouped.length > 0) {
+    lines.push('\n--- FONTES GERAIS (contexto amplo) ---');
+    for (const src of ungrouped.slice(0, 10)) {
+      lines.push(
+        `[Fonte ${fontIdx}] CITAÇÃO ABNT: ${src.abntCitation}
+Autores: ${src.authors}
+Título: ${src.title}
+Publicação: ${src.publication}
+Ano: ${src.year}
+Repositório: ${src.sourceName}
+Tipo: ${src.sourceType}
+URL Direta: ${src.directUrl || 'Não disponível'}
+Resumo: ${src.abstract}
+Palavras-chave: ${(src.keywords || []).join(', ')}`
+      );
+      fontIdx++;
+    }
+  }
+
+  return lines.join('\n\n');
+}
+
+function formatUserDocsSection(
+  documents: UserDocumentSource[],
+  topics: string[]
+): string {
+  if (documents.length === 0) return '';
+
+  const lines: string[] = [
+    '\nDOCUMENTOS FORNECIDOS PELO USUÁRIO (PRIORIDADE MÁXIMA - use como fonte principal):',
+  ];
+
+  for (let i = 0; i < documents.length; i++) {
+    const doc = documents[i];
+    lines.push(`\n[Documento ${i + 1}]: ${doc.url}`);
+    lines.push(`Título: "${doc.title}"`);
+    lines.push(`Tipo: ${doc.contentType === 'pdf' ? 'PDF' : 'Página Web'}`);
+    lines.push(`Citação ABNT: ${doc.abntCitation}`);
+
+    if (doc.topicSections.length > 0) {
+      lines.push('Trechos relevantes por tópico:');
+      for (const section of doc.topicSections) {
+        const truncated = section.relevantText.length > 800
+          ? section.relevantText.slice(0, 800) + '...'
+          : section.relevantText;
+        lines.push(`  - Tópico "${section.topic}": ${truncated}`);
+      }
+    } else {
+      const preview = doc.fullText.length > 500
+        ? doc.fullText.slice(0, 500) + '...'
+        : doc.fullText;
+      lines.push(`Conteúdo extraído: ${preview}`);
+    }
+  }
+
+  return lines.join('\n');
+}
 
 export async function POST(req: NextRequest) {
   let themeInput = '';
@@ -43,36 +175,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const searchResult = await searchAllSources(themeInput);
+    const [searchResult, userDocuments] = await Promise.all([
+      searchAllSources(themeInput, customTopics.length > 0 ? customTopics : undefined),
+      fetchUserDocuments(userLinks, customTopics),
+    ]);
 
-    const sourcesContext = searchResult.sources
-      .slice(0, 30)
-      .map(
-        (src, idx) =>
-          `[Fonte ${idx + 1}] CITAÇÃO ABNT: ${src.abntCitation}
-Autores: ${src.authors}
-Título: ${src.title}
-Publicação: ${src.publication}
-Ano: ${src.year}
-Repositório: ${src.sourceName}
-Tipo: ${src.sourceType}
-URL Direta: ${src.directUrl || 'Não disponível'}
-URL de Busca: ${src.searchUrl}
-Resumo: ${src.abstract}
-Palavras-chave: ${(src.keywords || []).join(', ')}
-Vantagens: ${(src.vantagens || []).join('; ') || 'Consultar artigo completo'}
-Desvantagens: ${(src.desvantagens || []).join('; ') || 'Consultar artigo completo'}
-Características: ${(src.caracteristicas || []).join('; ') || 'Consultar artigo completo'}`
-      )
-      .join('\n\n');
-
-    const userLinksSection =
-      userLinks.length > 0
-        ? `
-LINKS/DOCUMENTOS DO USUÁRIO (extraia dados exclusivamente destes):
-${userLinks.map((l, idx) => `[Documento ${idx + 1}]: ${l}`).join('\n')}
-`
-        : '';
+    const sourcesContext = formatSourcesByTopic(searchResult.sources, customTopics);
+    const userDocsSection = formatUserDocsSection(userDocuments, customTopics);
 
     const customTopicsSection =
       customTopics.length > 0
@@ -90,21 +199,22 @@ ${customTopics.map((top, idx) => `3.${idx + 1} ${top}`).join('\n')}
 TAREFA: Gerar um artigo científico completo nas normas ABNT (NBR 6022, NBR 6028, NBR 6023) sobre:
 "${themeInput}"
 
+${userDocsSection}
+
 FONTES CIENTÍFICAS REAIS ENCONTRADAS PESQUISANDO EM GOOGLE ACADEMICO, EMBRAPA, SCIELO, CAPES, BDTD:
 ${sourcesContext || 'Nenhuma fonte encontrada nos repositórios. Use conhecimento técnico agronômico consolidado.'}
-
-${userLinksSection}
 
 ${customTopicsSection}
 
 REGRAS OBRIGATÓRIAS:
-1. USE EXCLUSIVAMENTE as fontes listadas acima. CADA fonte já contém a CITAÇÃO ABNT pronta (campo "CITAÇÃO ABNT"). Copie e use EXATAMENTE essa citação nas referências. NÃO INVENTE autores, periódicos ou dados.
-2. CADA tópico deve citar no MÍNIMO 3 e no MÁXIMO 10 fontes reais em "fontesConsultadas". Use o campo "CITAÇÃO ABNT" de cada fonte.
-3. O campo "referenciasABNT" DEVE conter TODAS as citações ABNT das fontes utilizadas no artigo, copiadas do campo "CITAÇÃO ABNT" fornecido. Ordene alfabeticamente por sobrenome do primeiro autor.
-4. Para cada fonte citada, inclua no campo "contribution" uma descrição de como aquela fonte contribuiu para o tópico.
-5. O artigo DEVE conter: título em CAIXA ALTA, 2 autores acadêmicos, resumo (NBR 6028), abstract em inglês, introdução, metodologia, desenvolvimento com tópicos numerados, considerações finais e referências ABNT NBR 6023.
-6. NÃO use a expressão "cruzamento de dados". Use: "revisão sistemática", "síntese de evidências".
-7. Formato de saída: APENAS JSON válido (sem markdown) com esta estrutura exata:
+1. DOCUMENTOS DO USUÁRIO têm PRIORIDADE MÁXIMA. Se um documento do usuário contém conteúdo relevante para um tópico, cite-o OBRIGATORIAMENTE como fonte principal. Use o campo "Citação ABNT" fornecido.
+2. USE EXCLUSIVAMENTE as fontes listadas acima (documentos do usuário + fontes dos repositórios). CADA fonte já contém a CITAÇÃO ABNT pronta. Copie e use EXATAMENTE essa citação nas referências. NÃO INVENTE autores, periódicos ou dados.
+3. CADA tópico deve citar no MÍNIMO 3 e no MÁXIMO 10 fontes reais em "fontesConsultadas". Priorize documentos do usuário quando disponíveis para o tópico.
+4. O campo "referenciasABNT" DEVE conter TODAS as citações ABNT das fontes utilizadas no artigo, copiadas do campo "CITAÇÃO ABNT" fornecido. Ordene alfabeticamente por sobrenome do primeiro autor.
+5. Para cada fonte citada, inclua no campo "contribution" uma descrição de como aquela fonte contribuiu para o tópico.
+6. O artigo DEVE conter: título em CAIXA ALTA, 2 autores acadêmicos, resumo (NBR 6028), abstract em inglês, introdução, metodologia, desenvolvimento com tópicos numerados, considerações finais e referências ABNT NBR 6023.
+7. NÃO use a expressão "cruzamento de dados". Use: "revisão sistemática", "síntese de evidências".
+8. Formato de saída: APENAS JSON válido (sem markdown) com esta estrutura exata:
 
 {
   "theme": "${themeInput}",
