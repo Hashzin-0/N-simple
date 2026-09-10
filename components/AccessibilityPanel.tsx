@@ -14,6 +14,7 @@ interface AccessibilityPanelProps {
 export default function AccessibilityPanel({ isOpen, onClose }: AccessibilityPanelProps) {
   const {
     settings,
+    updateSettings,
     toggleWidget,
     toggleRecognition,
     setWidgetPosition,
@@ -249,7 +250,7 @@ export default function AccessibilityPanel({ isOpen, onClose }: AccessibilityPan
                               step="0.1"
                               value={settings.recognitionSensitivity}
                               onChange={(e) =>
-                                useLibrasSettings().updateSettings({
+                                updateSettings({
                                   recognitionSensitivity: parseFloat(e.target.value),
                                 })
                               }

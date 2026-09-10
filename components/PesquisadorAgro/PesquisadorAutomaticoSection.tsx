@@ -24,7 +24,7 @@ import {
   Trash2,
   RotateCcw,
 } from 'lucide-react';
-import { ScientificArticleABNT } from './types';
+import { ScientificArticleABNT, ScientificSource } from './types';
 
 
 const DEFAULT_RESEARCH_TOPICS: string[] = [
@@ -37,12 +37,16 @@ const DEFAULT_RESEARCH_TOPICS: string[] = [
 interface PesquisadorAutomaticoSectionProps {
   currentTheme: string;
   onThemeChange: (theme: string) => void;
+  existingSources?: ScientificSource[];
+  existingTheme?: string;
   isDark: boolean;
 }
 
 export default function PesquisadorAutomaticoSection({
   currentTheme,
   onThemeChange,
+  existingSources,
+  existingTheme,
 }: PesquisadorAutomaticoSectionProps) {
   const [themeInput, setThemeInput] = usePersistedState<string>('pesq_auto_theme', currentTheme || 'Gessagem e Subsolo: Vantagens e Desvantagens');
   const [prevTheme, setPrevTheme] = useState(currentTheme);
@@ -56,6 +60,8 @@ export default function PesquisadorAutomaticoSection({
   const [copiedRefs, setCopiedRefs] = useState(false);
   const [viewMode, setViewMode] = useState<'abnt_sheet' | 'cards'>('abnt_sheet');
   const [collapsedTopics, setCollapsedTopics] = useState<Record<string, boolean>>({});
+  const [minSourcesPerTopic, setMinSourcesPerTopic] = usePersistedState<number>('pesq_auto_min_sources', 3);
+  const [reuseStats, setReuseStats] = useState<{ reused: number; newSearched: number } | null>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
 
   const toggleTopicSources = (topicNumber: string) => {
@@ -122,8 +128,18 @@ export default function PesquisadorAutomaticoSection({
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
+    // Check if we can reuse existing sources
+    const canReuseSources = existingSources && 
+      existingSources.length > 0 && 
+      parsedLinks.length === 0 &&
+      existingTheme === themeToUse;
+
     setLoading(true);
-    if (parsedLinks.length > 0) {
+    setReuseStats(null);
+
+    if (canReuseSources) {
+      setLoadingStep(`Reutilizando ${existingSources.length} fontes da pesquisa anterior...`);
+    } else if (parsedLinks.length > 0) {
       setLoadingStep(`Lendo e analisando ${parsedLinks.length} link(s)/PDF(s) do usuário e extraindo tópicos...`);
     } else {
       setLoadingStep('Levantando fontes científicas nos portais (mínimo 3 a 10 por tópico)...');
@@ -138,22 +154,38 @@ export default function PesquisadorAutomaticoSection({
     }, 2800);
 
     try {
+      const requestBody: {
+        theme: string;
+        userLinks: string[];
+        customTopics: string[];
+        existingSources?: ScientificSource[];
+        minSourcesPerTopic?: number;
+      } = {
+        theme: themeToUse,
+        userLinks: parsedLinks,
+        customTopics: activeTopics,
+        minSourcesPerTopic,
+      };
+
+      if (canReuseSources) {
+        requestBody.existingSources = existingSources;
+      }
+
       const res = await fetch('/api/gemini/pesquisador-artigo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          theme: themeToUse,
-          userLinks: parsedLinks,
-          customTopics: activeTopics,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!res.ok) {
         throw new Error('Falha ao processar pesquisa automática');
       }
 
-      const data: ScientificArticleABNT = await res.json();
+      const data: ScientificArticleABNT & { reuseStats?: { reused: number; newSearched: number } } = await res.json();
       setArticle(data);
+      if (data.reuseStats) {
+        setReuseStats(data.reuseStats);
+      }
       onThemeChange(themeToUse);
     } catch (error) {
       console.error('Error calling pesquisador automatico:', error);
@@ -163,7 +195,7 @@ export default function PesquisadorAutomaticoSection({
       setLoading(false);
       setLoadingStep('');
     }
-  }, [themeInput, userLinksInput, topics, onThemeChange]);
+  }, [themeInput, userLinksInput, topics, onThemeChange, existingSources, existingTheme, minSourcesPerTopic]);
 
   const handleCopyABNT = () => {
     if (!article) return;
@@ -451,6 +483,73 @@ ${article.referenciasABNT.join('\n\n')}
                 </button>
               </div>
             </div>
+
+            {/* MIN SOURCES PER TOPIC CONFIGURATION */}
+            <div className="p-4 rounded-2xl bg-[#FAF8F5] dark:bg-[#121511] border border-[#E5E2D9] dark:border-[#242A20] space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-[#2E6F40]/10 dark:bg-[#9CB386]/15 text-[#2E6F40] dark:text-[#9CB386]">
+                    <Layers className="h-4 w-4" />
+                  </div>
+                  <span className="text-xs sm:text-sm font-bold text-[#3D3D3D] dark:text-[#E8E6DF]">
+                    Mínimo de Fontes por Tópico
+                  </span>
+                </div>
+                <span className="text-[10px] text-[#8C897E] dark:text-[#9EA399] font-medium">
+                  (padrão: 3)
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  value={minSourcesPerTopic}
+                  onChange={(e) => setMinSourcesPerTopic(parseInt(e.target.value))}
+                  className="flex-1 h-2 accent-[#2E6F40] dark:accent-[#9CB386]"
+                  disabled={loading}
+                />
+                <span className="text-sm font-bold text-[#2E6F40] dark:text-[#9CB386] min-w-[20px] text-center">
+                  {minSourcesPerTopic}
+                </span>
+              </div>
+              <p className="text-[10px] text-[#8C897E] dark:text-[#9EA399] leading-relaxed">
+                Número mínimo de fontes que cada tópico deve ter. Se uma fonte da pesquisa anterior tiver trigonometria menor que 45%, será descartada e uma nova será buscada.
+              </p>
+            </div>
+
+            {/* EXISTING SOURCES INDICATOR */}
+            {existingSources && existingSources.length > 0 && existingTheme === themeInput && userLinksInput.trim().length === 0 && (
+              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-2">
+                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="text-sm font-bold">
+                    {existingSources.length} fontes da pesquisa anterior serão reutilizadas
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 leading-relaxed">
+                  Fontes com trigonometria ≥ 45% serão reaproveitadas. Tópicos com menos de {minSourcesPerTopic} fontes terão novas buscas automáticas.
+                </p>
+              </div>
+            )}
+
+            {/* REUSE STATS (after article is generated) */}
+            {reuseStats && (
+              <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 space-y-2">
+                <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                  <Award className="h-5 w-5" />
+                  <span className="text-sm font-bold">Estatísticas de Reutilização</span>
+                </div>
+                <div className="flex gap-4 text-xs">
+                  <span className="text-blue-600 dark:text-blue-400">
+                    <strong>{reuseStats.reused}</strong> fontes reaproveitadas
+                  </span>
+                  <span className="text-blue-600 dark:text-blue-400">
+                    <strong>{reuseStats.newSearched}</strong> novas buscadas
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

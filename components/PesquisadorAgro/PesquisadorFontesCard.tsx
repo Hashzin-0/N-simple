@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { SCRAPERS_METADATA } from '@/lib/scrapers/metadata';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import {
   Search,
@@ -27,6 +28,7 @@ interface PesquisadorFontesCardProps {
   currentTheme: string;
   onThemeChange: (newTheme: string) => void;
   onSendToAutomaticResearcher: (theme: string) => void;
+  onSourcesLoaded?: (sources: ScientificSource[]) => void;
   isDark: boolean;
 }
 
@@ -54,6 +56,7 @@ export default function PesquisadorFontesCard({
   currentTheme,
   onThemeChange,
   onSendToAutomaticResearcher,
+  onSourcesLoaded,
 }: PesquisadorFontesCardProps) {
   const [searchTerm, setSearchTerm] = usePersistedState<string>('pesq_fontes_search', '');
   const [prevTheme, setPrevTheme] = useState(currentTheme);
@@ -63,6 +66,9 @@ export default function PesquisadorFontesCard({
   const [searchingLive, setSearchingLive] = useState(false);
   const [dynamicSources, setDynamicSources] = useState<ScientificSource[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [scraperProgress, setScraperProgress] = useState<Record<string, { status: 'pending' | 'loading' | 'complete' | 'error'; count?: number }>>({});
+  const [searchOptions, setSearchOptions] = useState<{ maxPerSource?: Record<string, number>; language?: 'pt-br' | 'pt-br-en' }>({ language: 'pt-br' });
+  const [showScraperConfig, setShowScraperConfig] = useState(false);
 
   // Sync state during render when prop changes
   if (currentTheme !== prevTheme) {
@@ -74,6 +80,13 @@ export default function PesquisadorFontesCard({
   const allAvailableSources = useMemo(() => {
     return dynamicSources;
   }, [dynamicSources]);
+
+  // Notify parent when sources change
+  useEffect(() => {
+    if (onSourcesLoaded && dynamicSources.length > 0) {
+      onSourcesLoaded(dynamicSources);
+    }
+  }, [dynamicSources, onSourcesLoaded]);
 
   // Compute trigonometric similarity for all available sources based on current query
   const scoredSources = useMemo(() => {
@@ -141,27 +154,79 @@ export default function PesquisadorFontesCard({
     currentPage * ITEMS_PER_PAGE
   );
 
-  // Reset to page 1 when filters change
-  useEffect(() => {
+  // Track previous filters to reset page
+  const [prevFilters, setPrevFilters] = useState({ searchTerm, selectedType, selectedPortal });
+  
+  if (
+    prevFilters.searchTerm !== searchTerm ||
+    prevFilters.selectedType !== selectedType ||
+    prevFilters.selectedPortal !== selectedPortal
+  ) {
+    setPrevFilters({ searchTerm, selectedType, selectedPortal });
     setCurrentPage(1);
-  }, [searchTerm, selectedType, selectedPortal]);
+  }
 
   const executeLiveSearch = useCallback(async (query: string) => {
     const cleanQuery = query.trim();
     if (!cleanQuery) return;
 
     setSearchingLive(true);
+    setDynamicSources([]);
+    setScraperProgress({});
+
     try {
       const res = await fetch('/api/gemini/pesquisador-fontes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: cleanQuery }),
+        body: JSON.stringify({ query: cleanQuery, options: searchOptions, stream: true }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.sources && Array.isArray(data.sources)) {
-          setDynamicSources(data.sources);
+      if (!res.ok) {
+        throw new Error('Search failed');
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No reader');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const { event, data } = JSON.parse(line.slice(6));
+
+              if (event === 'scraper_start') {
+                setScraperProgress(prev => ({
+                  ...prev,
+                  [data.name]: { status: 'loading' }
+                }));
+              } else if (event === 'scraper_complete') {
+                setScraperProgress(prev => ({
+                  ...prev,
+                  [data.name]: { status: 'complete', count: data.count }
+                }));
+                if (data.results && data.results.length > 0) {
+                  setDynamicSources(prev => [...prev, ...data.results]);
+                }
+              } else if (event === 'scraper_error') {
+                setScraperProgress(prev => ({
+                  ...prev,
+                  [data.name]: { status: 'error' }
+                }));
+              }
+            } catch {
+              // ignore parse errors
+            }
+          }
         }
       }
     } catch (err) {
@@ -169,14 +234,18 @@ export default function PesquisadorFontesCard({
     } finally {
       setSearchingLive(false);
     }
-  }, []);
+  }, [searchOptions]);
 
   // Run live search on mount and when theme changes externally
+  const executeLiveSearchRef = useRef(executeLiveSearch);
+  useEffect(() => {
+    executeLiveSearchRef.current = executeLiveSearch;
+  });
   useEffect(() => {
     if (currentTheme) {
-      executeLiveSearch(currentTheme);
+      executeLiveSearchRef.current(currentTheme);
     }
-  }, [currentTheme, executeLiveSearch]);
+  }, [currentTheme]);
 
   // Run live search when theme changes externally or on submit
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -298,6 +367,9 @@ export default function PesquisadorFontesCard({
                 { id: 'CAPES', label: 'Portal CAPES' },
                 { id: 'BDTD', label: 'BDTD (Teses)' },
                 { id: 'YouTube', label: 'YouTube Técnico' },
+                { id: 'CNPEM', label: 'CNPEM' },
+                { id: 'INPA', label: 'INPA' },
+                { id: 'IPEA', label: 'IPEA' },
               ].map((p) => (
                 <button
                   key={p.id}
@@ -350,6 +422,128 @@ export default function PesquisadorFontesCard({
               })}
             </div>
           </div>
+        </div>
+
+        {/* SEARCH OPTIONS */}
+        <div className="pt-2 border-t border-[#F0EDE5] dark:border-[#2C3328] space-y-3">
+          {/* Language Selector */}
+          <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+            <span className="text-[#8C897E] dark:text-[#9EA399] font-semibold">Idioma:</span>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSearchOptions(prev => ({ ...prev, language: 'pt-br' }))}
+                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                  searchOptions.language === 'pt-br'
+                    ? 'bg-[#2E6F40] text-white font-semibold'
+                    : 'text-[#8C897E] dark:text-[#9EA399] hover:bg-black/5 dark:hover:bg-white/5'
+                }`}
+              >
+                Português (BR)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchOptions(prev => ({ ...prev, language: 'pt-br-en' }))}
+                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                  searchOptions.language === 'pt-br-en'
+                    ? 'bg-[#2E6F40] text-white font-semibold'
+                    : 'text-[#8C897E] dark:text-[#9EA399] hover:bg-black/5 dark:hover:bg-white/5'
+                }`}
+              >
+                Português + Inglês
+              </button>
+            </div>
+          </div>
+
+          {/* Max Results per Source */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-[#8C897E] dark:text-[#9EA399]">
+                Resultados por fonte (máx. permitido):
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowScraperConfig(!showScraperConfig)}
+                className="text-[10px] text-[#2E6F40] dark:text-[#9CB386] hover:underline cursor-pointer"
+              >
+                {showScraperConfig ? 'Ocultar' : 'Configurar'}
+              </button>
+            </div>
+            {showScraperConfig && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SCRAPERS_METADATA.map((scraper) => (
+                  <div
+                    key={scraper.name}
+                    className="text-[10px] bg-[#FAF8F5] dark:bg-[#121511] p-2 rounded-lg border border-[#E5E2D9] dark:border-[#2C3328]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-[#5A5A40] dark:text-[#E8E6DF] min-w-[80px] truncate">
+                        {scraper.name}
+                      </span>
+                      <input
+                        type="range"
+                        min={1}
+                        max={scraper.maxAllowed}
+                        value={searchOptions.maxPerSource?.[scraper.name] ?? scraper.max}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value);
+                          setSearchOptions(prev => ({
+                            ...prev,
+                            maxPerSource: {
+                              ...prev.maxPerSource,
+                              [scraper.name]: value,
+                            },
+                          }));
+                        }}
+                        className="flex-1 h-1 accent-[#2E6F40] dark:accent-[#9CB386]"
+                      />
+                      <span className="text-[#8C897E] dark:text-[#9EA399] min-w-[20px] text-right">
+                        {searchOptions.maxPerSource?.[scraper.name] ?? scraper.max}
+                      </span>
+                      <span className="text-[#8C897E] dark:text-[#9EA399]">
+                        /{scraper.maxAllowed}
+                      </span>
+                    </div>
+                    <p className="text-[9px] text-[#8C897E] dark:text-[#9EA399] mt-1 leading-tight">
+                      {scraper.limitations}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Scraper Progress */}
+          {searchingLive && Object.keys(scraperProgress).length > 0 && (
+            <div className="space-y-2">
+              <span className="text-[11px] font-semibold text-[#8C897E] dark:text-[#9EA399]">
+                Progresso da busca:
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {Object.entries(scraperProgress).map(([name, status]) => (
+                  <div
+                    key={name}
+                    className={`text-[10px] px-2 py-1.5 rounded-lg border ${
+                      status.status === 'complete'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                        : status.status === 'loading'
+                        ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                        : status.status === 'error'
+                        ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
+                        : 'bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400'
+                    }`}
+                  >
+                    <span className="font-medium">{name}</span>
+                    {status.status === 'loading' && <span className="ml-1 animate-pulse">...</span>}
+                    {status.status === 'complete' && status.count !== undefined && (
+                      <span className="ml-1">({status.count})</span>
+                    )}
+                    {status.status === 'error' && <span className="ml-1">Erro</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

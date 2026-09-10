@@ -1,5 +1,7 @@
 import * as cheerio from 'cheerio';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
+import { stealthFetch } from '@/lib/stealthBrowser';
+import { getCached, setCache } from '@/lib/scraperCache';
 
 const CAPES_SEARCH_URL = 'https://www.periodicos.capes.gov.br';
 
@@ -46,83 +48,106 @@ function extractKeywords(title: string, abstract: string): string[] {
     .map(([word]) => word);
 }
 
+function parseCapesHtml(html: string, maxResults: number): ScientificSource[] {
+  const $ = cheerio.load(html);
+  const results: ScientificSource[] = [];
+
+  $('.resultado-item, .item-resultado, .list-group-item, .search-result').each((i, el) => {
+    if (i >= maxResults) return false;
+
+    const titleEl = $(el).find('a').first();
+    const title = cleanText(titleEl.text());
+
+    if (!title || title.length < 5) return;
+
+    const href = titleEl.attr('href') || '';
+    const directUrl = href.startsWith('http') ? href : `${CAPES_SEARCH_URL}${href}`;
+
+    const authors = cleanText(
+      $(el).find('.autores, .authors, .meta-authors').text()
+    ) || 'Autores não identificados';
+
+    const year = extractYear(
+      cleanText($(el).find('.ano, .year, .date, .meta-date').text())
+    );
+
+    const publication = cleanText(
+      $(el).find('.fonte, .source, .journal, .periódico').text()
+    ) || 'Portal de Periódicos CAPES';
+
+    const abstract = cleanText(
+      $(el).find('.resumo, .abstract, .description').text()
+    );
+
+    const sourceType = detectSourceType(title, abstract);
+
+    results.push({
+      id: `capes-${i}-${Date.now()}`,
+      title,
+      authors,
+      year,
+      publication,
+      sourceName: 'CAPES',
+      sourceType,
+      abstract: abstract || 'Resumo disponível via Portal CAPES. Acesse o artigo completo.',
+      keywords: extractKeywords(title, abstract),
+      directUrl,
+      searchUrl: `https://www.periodicos.capes.gov.br/?option=com_psearch&task=search&q=${encodeURIComponent(cleanText(title))}`,
+      abntCitation: `${authors.split(';')[0]?.trim()?.toUpperCase() || 'CAPES'}. ${title}. ${publication}, ${year}.`,
+    });
+  });
+
+  return results;
+}
+
 export async function scrapeCAPES(
   query: string,
   maxResults: number = 10
 ): Promise<ScientificSource[]> {
-  try {
-    const params = new URLSearchParams({
-      option: 'com_pbusca',
-      task: 'buscaAvancada',
-      termo: query,
-    });
+  const cached = getCached('capes', query);
+  if (cached) return cached;
 
-    const response = await fetch(`${CAPES_SEARCH_URL}/index.php?${params.toString()}`, {
+  const params = new URLSearchParams({
+    option: 'com_pbusca',
+    task: 'buscaAvancada',
+    termo: query,
+  });
+  const url = `${CAPES_SEARCH_URL}/index.php?${params.toString()}`;
+
+  // Try direct fetch first
+  try {
+    const response = await fetch(url, {
       headers: {
         'User-Agent':
-          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
       },
     });
 
-    if (!response.ok) {
-      console.warn(`[CAPES] HTTP ${response.status} for query: ${query}`);
-      return [];
+    if (response.ok) {
+      const html = await response.text();
+      const results = parseCapesHtml(html, maxResults);
+      if (results.length > 0) {
+        setCache('capes', query, results);
+        return results;
+      }
     }
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    const results: ScientificSource[] = [];
-
-    $('.resultado-item, .item-resultado, .list-group-item, .search-result').each((i, el) => {
-      if (i >= maxResults) return false;
-
-      const titleEl = $(el).find('a').first();
-      const title = cleanText(titleEl.text());
-
-      if (!title || title.length < 5) return;
-
-      const href = titleEl.attr('href') || '';
-      const directUrl = href.startsWith('http') ? href : `${CAPES_SEARCH_URL}${href}`;
-
-      const authors = cleanText(
-        $(el).find('.autores, .authors, .meta-authors').text()
-      ) || 'Autores não identificados';
-
-      const year = extractYear(
-        cleanText($(el).find('.ano, .year, .date, .meta-date').text())
-      );
-
-      const publication = cleanText(
-        $(el).find('.fonte, .source, .journal, .periódico').text()
-      ) || 'Portal de Periódicos CAPES';
-
-      const abstract = cleanText(
-        $(el).find('.resumo, .abstract, .description').text()
-      );
-
-      const sourceType = detectSourceType(title, abstract);
-
-      results.push({
-        id: `capes-${i}-${Date.now()}`,
-        title,
-        authors,
-        year,
-        publication,
-        sourceName: 'CAPES',
-        sourceType,
-        abstract: abstract || 'Resumo disponível via Portal CAPES. Acesse o artigo completo.',
-        keywords: extractKeywords(title, abstract),
-        directUrl,
-        searchUrl: `https://www.periodicos.capes.gov.br/?option=com_psearch&task=search&q=${encodeURIComponent(query)}`,
-        abntCitation: `${authors.split(';')[0]?.trim()?.toUpperCase() || 'CAPES'}. ${title}. ${publication}, ${year}.`,
-      });
-    });
-
-    return results;
-  } catch (error) {
-    console.error('[CAPES] Error scraping CAPES:', error);
-    return [];
+  } catch {
+    // fall through to stealth
   }
+
+  // Fallback: puppeteer stealth
+  try {
+    const result = await stealthFetch(url, { timeoutMs: 20000 });
+    if (result.ok) {
+      const results = parseCapesHtml(result.html, maxResults);
+      setCache('capes', query, results);
+      return results;
+    }
+  } catch (err) {
+    console.warn('[CAPES] Stealth fetch failed:', err);
+  }
+
+  return [];
 }

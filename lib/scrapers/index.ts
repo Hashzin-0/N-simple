@@ -5,22 +5,48 @@ import { scrapeSciELO } from './scielo';
 import { scrapeCAPES } from './capes';
 import { scrapeBDTD } from './bdtd';
 import { scrapeYouTube } from './youtube';
+import { scrapeCNPEM } from './cnpem';
+import { scrapeINPA } from './inpa';
+import { scrapeIPEA } from './ipea';
 
 export interface ScrapedResult {
   sources: ScientificSource[];
   query: string;
   totalFound: number;
   errors: string[];
+  sourcesUsed: string[];
 }
 
-const SCRAPERS = [
-  { name: 'Google Acadêmico', fn: scrapeGoogleScholar, max: 12 },
-  { name: 'Embrapa', fn: scrapeEmbrapa, max: 8 },
-  { name: 'SciELO', fn: scrapeSciELO, max: 8 },
-  { name: 'CAPES', fn: scrapeCAPES, max: 6 },
-  { name: 'BDTD', fn: scrapeBDTD, max: 6 },
-  { name: 'YouTube', fn: scrapeYouTube, max: 5 },
+export interface ScraperConfig {
+  name: string;
+  fn: (query: string, max: number, language?: 'pt-br' | 'pt-br-en') => Promise<ScientificSource[]>;
+  max: number;
+  maxAllowed: number;
+  description: string;
+}
+
+export interface ScraperMetadata {
+  name: string;
+  max: number;
+  maxAllowed: number;
+  description: string;
+}
+
+export const SCRAPERS_INTERNAL: ScraperConfig[] = [
+  { name: 'Google Acadêmico', fn: scrapeGoogleScholar, max: 25, maxAllowed: 100, description: 'Artigos científicos indexados' },
+  { name: 'Embrapa', fn: scrapeEmbrapa, max: 15, maxAllowed: 50, description: 'Boletins técnicos da Embrapa' },
+  { name: 'SciELO', fn: scrapeSciELO, max: 15, maxAllowed: 50, description: 'Periódicos científicos latino-americanos' },
+  { name: 'CAPES', fn: scrapeCAPES, max: 12, maxAllowed: 50, description: 'Periódicos via Portal CAPES' },
+  { name: 'BDTD', fn: scrapeBDTD, max: 12, maxAllowed: 50, description: 'Teses e dissertações brasileiras' },
+  { name: 'YouTube', fn: scrapeYouTube, max: 20, maxAllowed: 50, description: 'Vídeos técnicos e palestras' },
+  { name: 'CNPEM', fn: scrapeCNPEM, max: 10, maxAllowed: 30, description: 'Centro Nacional de Pesquisa em Energia e Materiais' },
+  { name: 'INPA', fn: scrapeINPA, max: 10, maxAllowed: 30, description: 'Instituto Nacional de Pesquisas da Amazônia' },
+  { name: 'IPEA', fn: scrapeIPEA, max: 10, maxAllowed: 30, description: 'Instituto de Pesquisa Econômica Aplicada' },
 ];
+
+export const SCRAPERS: ScraperMetadata[] = SCRAPERS_INTERNAL.map(({ name, max, maxAllowed, description }) => ({
+  name, max, maxAllowed, description,
+}));
 
 function deduplicateSources(sources: ScientificSource[]): ScientificSource[] {
   const seen = new Map<string, ScientificSource>();
@@ -54,15 +80,23 @@ function deduplicateSources(sources: ScientificSource[]): ScientificSource[] {
   return Array.from(seen.values());
 }
 
+export interface SearchOptions {
+  maxPerSource?: Record<string, number>;
+  language?: 'pt-br' | 'pt-br-en';
+}
+
 async function runScrapersForQuery(
-  query: string
-): Promise<{ sources: ScientificSource[]; errors: string[] }> {
+  query: string,
+  options?: SearchOptions
+): Promise<{ sources: ScientificSource[]; errors: string[]; sourcesUsed: string[] }> {
   const errors: string[] = [];
   const results: ScientificSource[] = [];
+  const sourcesUsed: string[] = [];
 
-  const searchPromises = SCRAPERS.map(async (scraper) => {
+  const searchPromises = SCRAPERS_INTERNAL.map(async (scraper) => {
     try {
-      const scraperResults = await scraper.fn(query, scraper.max);
+      const maxResults = options?.maxPerSource?.[scraper.name] ?? scraper.max;
+      const scraperResults = await scraper.fn(query, maxResults, options?.language);
       return { name: scraper.name, results: scraperResults, error: null };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -77,6 +111,9 @@ async function runScrapersForQuery(
     if (result.status === 'fulfilled') {
       const { name, results: scraperResults, error } = result.value;
       results.push(...scraperResults);
+      if (scraperResults.length > 0) {
+        sourcesUsed.push(name);
+      }
       if (error) {
         errors.push(`${name}: ${error}`);
       }
@@ -85,19 +122,22 @@ async function runScrapersForQuery(
     }
   }
 
-  return { sources: results, errors };
+  return { sources: results, errors, sourcesUsed };
 }
 
 export async function searchAllSources(
   query: string,
-  topics?: string[]
+  topics?: string[],
+  options?: SearchOptions
 ): Promise<ScrapedResult> {
   const allErrors: string[] = [];
   const allResults: ScientificSource[] = [];
+  const allSourcesUsed: string[] = [];
 
   if (!topics || topics.length === 0) {
-    const { sources, errors } = await runScrapersForQuery(query);
+    const { sources, errors, sourcesUsed } = await runScrapersForQuery(query, options);
     allErrors.push(...errors);
+    allSourcesUsed.push(...sourcesUsed);
 
     const deduplicated = deduplicateSources(sources);
 
@@ -106,28 +146,30 @@ export async function searchAllSources(
       query,
       totalFound: deduplicated.length,
       errors: allErrors,
+      sourcesUsed: allSourcesUsed,
     };
   }
 
   const topicSearchPromises = topics.map(async (topic) => {
     const combinedQuery = `${query} ${topic}`;
-    const { sources, errors } = await runScrapersForQuery(combinedQuery);
+    const { sources, errors, sourcesUsed } = await runScrapersForQuery(combinedQuery, options);
 
     const tagged = sources.map((src) => ({
       ...src,
       matchedTopics: [topic],
     }));
 
-    return { topic, sources: tagged, errors };
+    return { topic, sources: tagged, errors, sourcesUsed };
   });
 
   const topicResults = await Promise.allSettled(topicSearchPromises);
 
   for (const result of topicResults) {
     if (result.status === 'fulfilled') {
-      const { sources, errors } = result.value;
+      const { sources, errors, sourcesUsed } = result.value;
       allResults.push(...sources);
       allErrors.push(...errors);
+      allSourcesUsed.push(...sourcesUsed);
     } else {
       allErrors.push(`Topic search rejected: ${result.reason}`);
     }
@@ -140,5 +182,6 @@ export async function searchAllSources(
     query,
     totalFound: deduplicated.length,
     errors: allErrors,
+    sourcesUsed: [...new Set(allSourcesUsed)],
   };
 }

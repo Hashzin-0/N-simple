@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { PDFParse } from 'pdf-parse';
+import PDFParser from 'pdf2json';
 
 export interface TopicSection {
   topic: string;
@@ -204,29 +204,41 @@ async function fetchPdfDocument(
 
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const parser = new PDFParse({ data: buffer });
-    const textResult = await parser.getText();
-    const infoResult = await parser.getInfo();
 
-    const fullText = textResult.text || '';
-    if (fullText.trim().length < 50) {
+    const parser = new PDFParser(undefined, true);
+
+    const { text, meta } = await new Promise<{
+      text: string;
+      meta: Record<string, unknown>;
+    }>((resolve, reject) => {
+      parser.on('pdfParser_dataError', (errData: Error | { parserError: Error }) => {
+        reject(errData instanceof Error ? errData : errData.parserError);
+      });
+      parser.on('pdfParser_dataReady', (pdfData: any) => {
+        const text = (parser as any).getRawTextContent() as string;
+        const meta = (pdfData?.Meta || {}) as Record<string, unknown>;
+        resolve({ text, meta });
+      });
+      parser.parseBuffer(buffer);
+    });
+
+    if (text.trim().length < 50) {
       console.warn(`[UserDocs] PDF too short or empty: ${url}`);
       return null;
     }
 
-    const info = infoResult.info || {};
-    const title = (info.Title as string) || url.split('/').pop()?.replace(/\.pdf$/i, '') || 'Documento PDF';
-    const author = (info.Author as string) || 'Autor não identificado';
-    const year = info.CreationDate
-      ? extractYearFromText(String(info.CreationDate))
-      : extractYearFromText(fullText);
-    const topicSections = extractTopicSections(fullText, topics);
+    const title = (meta.Title as string) || url.split('/').pop()?.replace(/\.pdf$/i, '') || 'Documento PDF';
+    const author = (meta.Author as string) || 'Autor não identificado';
+    const year = meta.CreationDate
+      ? extractYearFromText(String(meta.CreationDate))
+      : extractYearFromText(text);
+    const topicSections = extractTopicSections(text, topics);
 
     return {
       url,
       title: normalizeText(title),
       contentType: 'pdf',
-      fullText: truncateText(fullText, 5000),
+      fullText: truncateText(text, 5000),
       topicSections,
       abntCitation: formatAbntCitation(author, normalizeText(title), year, url),
     };

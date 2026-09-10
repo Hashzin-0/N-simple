@@ -63,9 +63,16 @@ export default function LibrasCamera({ onLandmarks, isActive, onToggle }: Libras
     }
   }, []);
 
+  const startCameraRef = useRef(startCamera);
+  useEffect(() => {
+    startCameraRef.current = startCamera;
+  });
+
   useEffect(() => {
     if (isActive) {
-      startCamera();
+      requestAnimationFrame(() => {
+        startCameraRef.current();
+      });
     } else {
       stopCamera();
     }
@@ -73,7 +80,7 @@ export default function LibrasCamera({ onLandmarks, isActive, onToggle }: Libras
     return () => {
       stopCamera();
     };
-  }, [isActive, startCamera, stopCamera]);
+  }, [isActive, stopCamera]);
 
   return (
     <div className="relative">

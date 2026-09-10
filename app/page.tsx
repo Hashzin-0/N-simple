@@ -176,37 +176,37 @@ export default function Home() {
       setV8v10Percent2(preset.v8v10Percent2);
       setBaseDoseMode(preset.baseDose2 > 0 ? 'range' : 'single');
     });
-  }, []);
+  }, [setActivePreset, setBaseDose, setBaseDose2, setBaseDoseMode, setEfficiency, setEfficiencyAlreadyApplied, setLiquidNeedInput, setMosNContribution, setNRequirementPerBag, setSoyNContribution, setUseDirectInput, setV4v6Percent, setV4v6Percent2, setV8v10Percent, setV8v10Percent2, setYieldGoal]);
 
   // Mark custom if any state changes
   const handleCustomInputChange = useCallback((updater: () => void) => {
     updater();
     setActivePreset('personalizado');
-  }, []);
+  }, [setActivePreset]);
 
   // Memoized input change handlers — stable references for React.memo
-  const setYieldGoalValue = useCallback((v: number) => handleCustomInputChange(() => setYieldGoal(v)), [handleCustomInputChange]);
-  const setNRequirementPerBagValue = useCallback((v: number) => handleCustomInputChange(() => setNRequirementPerBag(Math.max(0, v))), [handleCustomInputChange]);
-  const setMosNContributionValue = useCallback((v: number) => handleCustomInputChange(() => setMosNContribution(Math.max(0, v))), [handleCustomInputChange]);
-  const setSoyNContributionValue = useCallback((v: number) => handleCustomInputChange(() => setSoyNContribution(Math.max(0, v))), [handleCustomInputChange]);
-  const setEfficiencyValue = useCallback((v: number) => handleCustomInputChange(() => setEfficiency(v)), [handleCustomInputChange]);
-  const setEfficiencyBlur = useCallback((v: number) => handleCustomInputChange(() => setEfficiency(Math.min(100, Math.max(10, v)))), [handleCustomInputChange]);
-  const setBaseDoseValue = useCallback((v: number) => handleCustomInputChange(() => setBaseDose(v)), [handleCustomInputChange]);
-  const setBaseDose2Value = useCallback((v: number) => handleCustomInputChange(() => setBaseDose2(v)), [handleCustomInputChange]);
-  const setV4v6PercentValue = useCallback((v: number) => handleCustomInputChange(() => setV4v6Percent(v)), [handleCustomInputChange]);
-  const setV4v6Percent2Value = useCallback((v: number) => handleCustomInputChange(() => setV4v6Percent2(v)), [handleCustomInputChange]);
-  const setV8v10PercentValue = useCallback((v: number) => handleCustomInputChange(() => setV8v10Percent(v)), [handleCustomInputChange]);
-  const setV8v10Percent2Value = useCallback((v: number) => handleCustomInputChange(() => setV8v10Percent2(v)), [handleCustomInputChange]);
-  const setSplitBaseValue = useCallback((v: string) => handleCustomInputChange(() => setSplitBase(v as 'dose_perdas' | 'necessidade_liquida')), [handleCustomInputChange]);
+  const setYieldGoalValue = useCallback((v: number) => handleCustomInputChange(() => setYieldGoal(v)), [handleCustomInputChange, setYieldGoal]);
+  const setNRequirementPerBagValue = useCallback((v: number) => handleCustomInputChange(() => setNRequirementPerBag(Math.max(0, v))), [handleCustomInputChange, setNRequirementPerBag]);
+  const setMosNContributionValue = useCallback((v: number) => handleCustomInputChange(() => setMosNContribution(Math.max(0, v))), [handleCustomInputChange, setMosNContribution]);
+  const setSoyNContributionValue = useCallback((v: number) => handleCustomInputChange(() => setSoyNContribution(Math.max(0, v))), [handleCustomInputChange, setSoyNContribution]);
+  const setEfficiencyValue = useCallback((v: number) => handleCustomInputChange(() => setEfficiency(v)), [handleCustomInputChange, setEfficiency]);
+  const setEfficiencyBlur = useCallback((v: number) => handleCustomInputChange(() => setEfficiency(Math.min(100, Math.max(10, v)))), [handleCustomInputChange, setEfficiency]);
+  const setBaseDoseValue = useCallback((v: number) => handleCustomInputChange(() => setBaseDose(v)), [handleCustomInputChange, setBaseDose]);
+  const setBaseDose2Value = useCallback((v: number) => handleCustomInputChange(() => setBaseDose2(v)), [handleCustomInputChange, setBaseDose2]);
+  const setV4v6PercentValue = useCallback((v: number) => handleCustomInputChange(() => setV4v6Percent(v)), [handleCustomInputChange, setV4v6Percent]);
+  const setV4v6Percent2Value = useCallback((v: number) => handleCustomInputChange(() => setV4v6Percent2(v)), [handleCustomInputChange, setV4v6Percent2]);
+  const setV8v10PercentValue = useCallback((v: number) => handleCustomInputChange(() => setV8v10Percent(v)), [handleCustomInputChange, setV8v10Percent]);
+  const setV8v10Percent2Value = useCallback((v: number) => handleCustomInputChange(() => setV8v10Percent2(v)), [handleCustomInputChange, setV8v10Percent2]);
+  const setSplitBaseValue = useCallback((v: string) => handleCustomInputChange(() => setSplitBase(v as 'dose_perdas' | 'necessidade_liquida')), [handleCustomInputChange, setSplitBase]);
 
   // Direct input mode handlers
   const setUseDirectInputValue = useCallback((v: boolean) => {
     handleCustomInputChange(() => {
       setUseDirectInput(v);
     });
-  }, [handleCustomInputChange]);
-  const setLiquidNeedInputValue = useCallback((v: number) => handleCustomInputChange(() => setLiquidNeedInput(Math.max(0, v))), [handleCustomInputChange]);
-  const setEfficiencyAlreadyAppliedValue = useCallback((v: boolean) => handleCustomInputChange(() => setEfficiencyAlreadyApplied(v)), [handleCustomInputChange]);
+  }, [handleCustomInputChange, setUseDirectInput]);
+  const setLiquidNeedInputValue = useCallback((v: number) => handleCustomInputChange(() => setLiquidNeedInput(Math.max(0, v))), [handleCustomInputChange, setLiquidNeedInput]);
+  const setEfficiencyAlreadyAppliedValue = useCallback((v: boolean) => handleCustomInputChange(() => setEfficiencyAlreadyApplied(v)), [handleCustomInputChange, setEfficiencyAlreadyApplied]);
 
   const handleBaseDoseModeChange = useCallback((v: string) => {
     handleCustomInputChange(() => {
@@ -218,7 +218,7 @@ export default function Home() {
         setV8v10Percent2(0);
       }
     });
-  }, [handleCustomInputChange]);
+  }, [handleCustomInputChange, setBaseDoseMode, setBaseDose2, setV4v6Percent2, setV8v10Percent2]);
 
   // Calculations — memoized to avoid recomputing on unrelated state changes
   const calculations = useMemo(() => computeCalculations({
@@ -264,12 +264,12 @@ export default function Home() {
       setV8v10Percent2(0);
       setActivePreset('personalizado');
     });
-  }, []);
+  }, [setActivePreset, setBaseDose, setBaseDose2, setBaseDoseMode, setEfficiency, setEfficiencyAlreadyApplied, setLiquidNeedInput, setMosNContribution, setNRequirementPerBag, setSoyNContribution, setUseDirectInput, setV4v6Percent, setV4v6Percent2, setV8v10Percent, setV8v10Percent2, setYieldGoal]);
 
   const handleTabChange = useCallback((tab: TabId) => {
     setActiveTab(tab);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  }, [setActiveTab]);
 
   const handleToastDismiss = useCallback(() => setSaveToast(null), []);
 
@@ -277,20 +277,20 @@ export default function Home() {
   const onSetYieldGoal = useCallback((val: number) => {
     setYieldGoal(val);
     setActivePreset('personalizado');
-  }, []);
+  }, [setActivePreset, setYieldGoal]);
 
   const onSetSoilParameters = useCallback(({ mos, soy, efficiency: eff }: { mos?: number; soy?: number; efficiency?: number }) => {
     if (mos !== undefined) setMosNContribution(mos);
     if (soy !== undefined) setSoyNContribution(soy);
     if (eff !== undefined) setEfficiency(eff);
     setActivePreset('personalizado');
-  }, []);
+  }, [setActivePreset, setEfficiency, setMosNContribution, setSoyNContribution]);
 
   const onSetLiquidNeed = useCallback((val: number) => {
     setUseDirectInput(true);
     setLiquidNeedInput(val);
     setActivePreset('personalizado');
-  }, []);
+  }, [setActivePreset, setLiquidNeedInput, setUseDirectInput]);
 
   const onSetParceling = useCallback(({ baseDose: b, v4v6Percent: p1, v8v10Percent: p2 }: { baseDose?: number; v4v6Percent?: number; v8v10Percent?: number }) => {
     if (b !== undefined) setBaseDose(b);
@@ -298,7 +298,7 @@ export default function Home() {
     if (p2 !== undefined) setV8v10Percent(p2);
     setActivePreset('personalizado');
     setActiveTab('nitrogen');
-  }, []);
+  }, [setActivePreset, setActiveTab, setBaseDose, setV4v6Percent, setV8v10Percent]);
 
   const onLoadPreset = useCallback((presetId: string) => {
     const p = PRESETS.find((pr) => pr.id === presetId);
@@ -311,7 +311,7 @@ export default function Home() {
     const el = document.getElementById('itr_section');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
     console.log('ITR parameters received:', params);
-  }, []);
+  }, [setActivePreset, setActiveTab]);
 
   const onSetABNTReference = useCallback((ref: Record<string, unknown>) => {
     setActivePreset('personalizado');
@@ -319,7 +319,7 @@ export default function Home() {
     const el = document.getElementById('abnt_section');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
     console.log('ABNT reference received:', ref);
-  }, []);
+  }, [setActivePreset, setActiveTab]);
 
   const onSetBibliographyReference = useCallback((ref: ABNTReference) => {
     setBibliographyRef(ref);
@@ -328,7 +328,7 @@ export default function Home() {
     const el = document.getElementById('abnt_section');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
     console.log('Bibliography reference received:', ref);
-  }, []);
+  }, [setActivePreset, setActiveTab, setBibliographyRef]);
 
   const voiceAgent = useGeminiLiveAgent({
     yieldGoal,
@@ -357,24 +357,26 @@ export default function Home() {
   });
 
   // Memoized tab contents to avoid unneeded re-renders when nitrogen parameters update
+  const handleApplyYieldGoal = useCallback((scHa: number) => {
+    setYieldGoal(scHa);
+    setActivePreset('personalizado');
+    setActiveTab('nitrogen');
+    setSaveToast(`Meta de ${scHa} sc/ha calculada e aplicada na Adubação Nitrogenada!`);
+    setTimeout(() => setSaveToast(null), 4500);
+  }, [setActivePreset, setActiveTab, setSaveToast, setYieldGoal]);
+
   const productivityContent = useMemo(
     () => (
       <div className="w-full">
         <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
           <CornYieldCalculator
             isConnected
-            onApplyYieldGoal={(scHa) => {
-              setYieldGoal(scHa);
-              setActivePreset('personalizado');
-              setActiveTab('nitrogen');
-              setSaveToast(`Meta de ${scHa} sc/ha calculada e aplicada na Adubação Nitrogenada!`);
-              setTimeout(() => setSaveToast(null), 4500);
-            }}
+            onApplyYieldGoal={handleApplyYieldGoal}
           />
         </ScrollStack>
       </div>
     ),
-    [],
+    [handleApplyYieldGoal],
   );
 
   const itrContent = useMemo(
@@ -390,6 +392,11 @@ export default function Home() {
     [],
   );
 
+  const handleReferenceSelected = useCallback((ref: ABNTReference) => {
+    setBibliographyRef(ref);
+    setActiveTab("abnt");
+  }, [setActiveTab, setBibliographyRef]);
+
   const abntContent = useMemo(
     () => (
       <div className="w-full">
@@ -397,17 +404,14 @@ export default function Home() {
           <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6">
             <AbntReferenceFormatter isConnected />
             <BibliografiaAutoDetectCard
-              onReferenceSelected={(ref) => {
-                setBibliographyRef(ref);
-                setActiveTab("abnt");
-              }}
+              onReferenceSelected={handleReferenceSelected}
               initialUrl=""
             />
           </div>
         </ScrollStack>
       </div>
     ),
-    [],
+    [handleReferenceSelected],
   );
 
   const pesquisadorContent = useMemo(

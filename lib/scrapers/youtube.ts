@@ -40,7 +40,8 @@ function extractKeywords(title: string, description: string): string[] {
 
 export async function scrapeYouTube(
   query: string,
-  maxResults: number = 8
+  maxResults: number = 20,
+  language: 'pt-br' | 'pt-br-en' = 'pt-br'
 ): Promise<ScientificSource[]> {
   const apiKey = process.env.YOUTUBE_API_KEY;
 
@@ -50,19 +51,23 @@ export async function scrapeYouTube(
   }
 
   try {
-    const searchQuery = `${query} agronomia pesquisa`;
-    const params = new URLSearchParams({
+    const searchQuery = query;
+    const params: Record<string, string> = {
       part: 'snippet',
       q: searchQuery,
       type: 'video',
-      videoDuration: 'medium',
-      videoDefinition: 'high',
-      relevanceLanguage: 'pt',
       maxResults: String(maxResults),
       key: apiKey,
-    });
+      order: 'relevance',
+    };
 
-    const response = await fetch(`${YOUTUBE_API_URL}?${params.toString()}`, {
+    if (language === 'pt-br') {
+      params.relevanceLanguage = 'pt';
+      params.regionCode = 'BR';
+    }
+
+    const searchParams = new URLSearchParams(params);
+    const response = await fetch(`${YOUTUBE_API_URL}?${searchParams.toString()}`, {
       headers: {
         Accept: 'application/json',
       },
@@ -107,7 +112,7 @@ export async function scrapeYouTube(
           abstract: cleanText(description).slice(0, 500) || 'Vídeo técnico disponível no YouTube.',
           keywords: extractKeywords(title, description),
           directUrl,
-          searchUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`,
+          searchUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
           abntCitation: `${(channelTitle || 'YOUTUBE').toUpperCase()}. ${title}. YouTube, ${year}. Disponível em: ${directUrl}.`,
         };
       }

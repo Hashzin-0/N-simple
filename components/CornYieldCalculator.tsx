@@ -279,7 +279,7 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
       
       fillingTimersRef.current.push(timer);
     });
-  }, []);
+  }, [setActivePreset, setPlantasPorMetro, setEspacamentoLinhas, setFileiras, setGraosPorFileira, setEspigas, setPmg, setQuebraDecimal]);
 
   const handleApplyToNitrogenCalculator = () => {
     if (onApplyYieldGoal) {

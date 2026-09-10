@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import PesquisadorFontesCard from './PesquisadorFontesCard';
 import PortaisConfiaveisSection from './PortaisConfiaveisSection';
 import PesquisadorAutomaticoSection from './PesquisadorAutomaticoSection';
+import { ScientificSource } from './types';
+import { useSearchedSources } from '@/hooks/useSearchedSources';
 
 interface PesquisadorAgroProps {
   isDark?: boolean;
@@ -11,6 +13,13 @@ interface PesquisadorAgroProps {
 
 export default function PesquisadorAgro({ isDark = false }: PesquisadorAgroProps) {
   const [currentTheme, setCurrentTheme] = useState<string>('');
+  const { cachedSources, saveSources } = useSearchedSources();
+
+  const handleSourcesLoaded = (sources: ScientificSource[]) => {
+    if (currentTheme) {
+      saveSources(currentTheme, sources);
+    }
+  };
 
   const handleSendToAutomatic = (newTheme: string) => {
     setCurrentTheme(newTheme);
@@ -27,6 +36,7 @@ export default function PesquisadorAgro({ isDark = false }: PesquisadorAgroProps
         currentTheme={currentTheme}
         onThemeChange={setCurrentTheme}
         onSendToAutomaticResearcher={handleSendToAutomatic}
+        onSourcesLoaded={handleSourcesLoaded}
         isDark={isDark}
       />
 
@@ -40,6 +50,8 @@ export default function PesquisadorAgro({ isDark = false }: PesquisadorAgroProps
       <PesquisadorAutomaticoSection
         currentTheme={currentTheme}
         onThemeChange={setCurrentTheme}
+        existingSources={cachedSources?.sources}
+        existingTheme={cachedSources?.theme}
         isDark={isDark}
       />
     </div>

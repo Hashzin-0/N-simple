@@ -1,8 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
-import { ScientificArticleABNT } from '@/components/PesquisadorAgro/types';
+import { ScientificArticleABNT, ScientificSource } from '@/components/PesquisadorAgro/types';
 import { searchAllSources } from '@/lib/scrapers';
 import { fetchUserDocuments, UserDocumentSource } from '@/lib/userDocuments';
+import { computeTrigonometricSimilarity } from '@/components/PesquisadorAgro/trigonometry';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,10 +138,90 @@ function formatUserDocsSection(
   return lines.join('\n');
 }
 
+interface ReuseResult {
+  sources: ScientificSource[];
+  stats: { reused: number; newSearched: number };
+}
+
+async function reuseExistingSources(
+  existing: ScientificSource[],
+  query: string,
+  topics: string[],
+  minSourcesPerTopic: number
+): Promise<ReuseResult> {
+  const THRESHOLD = 0.45; // 45% minimum trigonometry
+  
+  // Calculate trigonometry for each existing source
+  const sourcesWithScore = existing.map(src => ({
+    source: src,
+    score: computeTrigonometricSimilarity(query, src)
+  }));
+  
+  // Filter by trigonometry >= 45%
+  const validSources = sourcesWithScore.filter(item => (item.score?.cosTheta ?? 0) >= THRESHOLD);
+  
+  const reusedSources: ScientificSource[] = [];
+  const missingTopics: string[] = [];
+  let reusedCount = 0;
+  
+  if (topics.length > 0) {
+    // For each topic, check if there are enough sources
+    for (const topic of topics) {
+      const topicSources = validSources.filter(item => {
+        const src = item.source;
+        const topicLower = topic.toLowerCase();
+        return (
+          src.title.toLowerCase().includes(topicLower) ||
+          src.abstract.toLowerCase().includes(topicLower) ||
+          src.keywords.some(k => k.toLowerCase().includes(topicLower))
+        );
+      });
+      
+      if (topicSources.length < minSourcesPerTopic) {
+        missingTopics.push(topic);
+      } else {
+        // Add top sources for this topic
+        const topSources = topicSources
+          .sort((a, b) => (b.score?.cosTheta ?? 0) - (a.score?.cosTheta ?? 0))
+          .slice(0, 10)
+          .map(item => ({
+            ...item.source,
+            matchedTopics: [topic]
+          }));
+        reusedSources.push(...topSources);
+        reusedCount += topSources.length;
+      }
+    }
+  } else {
+    // No specific topics, use all valid sources
+    const allValid = validSources
+      .sort((a, b) => (b.score?.cosTheta ?? 0) - (a.score?.cosTheta ?? 0))
+      .slice(0, 30)
+      .map(item => item.source);
+    reusedSources.push(...allValid);
+    reusedCount = allValid.length;
+  }
+  
+  // Search for new sources only for missing topics
+  let newSearchedCount = 0;
+  if (missingTopics.length > 0) {
+    const newResult = await searchAllSources(query, missingTopics);
+    reusedSources.push(...newResult.sources);
+    newSearchedCount = newResult.sources.length;
+  }
+  
+  return {
+    sources: reusedSources,
+    stats: { reused: reusedCount, newSearched: newSearchedCount }
+  };
+}
+
 export async function POST(req: NextRequest) {
   let themeInput = '';
   let userLinks: string[] = [];
   let customTopics: string[] = [];
+  let existingSources: ScientificSource[] = [];
+  let minSourcesPerTopic = 3;
 
   try {
     const body = await req.json();
@@ -154,6 +235,12 @@ export async function POST(req: NextRequest) {
       customTopics = body.customTopics
         .map((t: unknown) => (typeof t === 'string' ? t.trim() : ''))
         .filter((t: string) => t.length > 0);
+    }
+    if (Array.isArray(body?.existingSources)) {
+      existingSources = body.existingSources;
+    }
+    if (typeof body?.minSourcesPerTopic === 'number' && body.minSourcesPerTopic >= 1 && body.minSourcesPerTopic <= 10) {
+      minSourcesPerTopic = body.minSourcesPerTopic;
     }
 
     if (!themeInput) {
@@ -175,13 +262,36 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const [searchResult, userDocuments] = await Promise.all([
-      searchAllSources(themeInput, customTopics.length > 0 ? customTopics : undefined),
-      fetchUserDocuments(userLinks, customTopics),
-    ]);
+    let sourcesContext: string;
+    let userDocsSection: string;
+    let reuseStats: { reused: number; newSearched: number } | undefined;
 
-    const sourcesContext = formatSourcesByTopic(searchResult.sources, customTopics);
-    const userDocsSection = formatUserDocsSection(userDocuments, customTopics);
+    // Check if we can reuse existing sources
+    const canReuseSources = existingSources.length > 0 && userLinks.length === 0;
+
+    if (canReuseSources) {
+      // Reuse existing sources and search for new ones only if needed
+      const reuseResult = await reuseExistingSources(
+        existingSources,
+        themeInput,
+        customTopics,
+        minSourcesPerTopic
+      );
+      reuseStats = reuseResult.stats;
+      
+      // Also fetch user documents (if any)
+      const userDocuments = await fetchUserDocuments(userLinks, customTopics);
+      sourcesContext = formatSourcesByTopic(reuseResult.sources, customTopics);
+      userDocsSection = formatUserDocsSection(userDocuments, customTopics);
+    } else {
+      // Search from scratch (original behavior)
+      const [searchResult, userDocuments] = await Promise.all([
+        searchAllSources(themeInput, customTopics.length > 0 ? customTopics : undefined),
+        fetchUserDocuments(userLinks, customTopics),
+      ]);
+      sourcesContext = formatSourcesByTopic(searchResult.sources, customTopics);
+      userDocsSection = formatUserDocsSection(userDocuments, customTopics);
+    }
 
     const customTopicsSection =
       customTopics.length > 0
@@ -304,7 +414,11 @@ REGRAS OBRIGATÓRIAS:
           Array.isArray(parsedData.topicosDesenvolvimento) &&
           parsedData.topicosDesenvolvimento.length > 0
         ) {
-          return NextResponse.json(parsedData);
+          // Add reuse stats if available
+          const responseWithStats = reuseStats
+            ? { ...parsedData, reuseStats }
+            : parsedData;
+          return NextResponse.json(responseWithStats);
         }
       } catch (parseErr) {
         console.warn('Failed to parse Gemini JSON response:', parseErr);
@@ -315,7 +429,6 @@ REGRAS OBRIGATÓRIAS:
       {
         error: 'Falha ao gerar artigo. O Gemini não retornou uma resposta válida. Tente novamente.',
         theme: themeInput,
-        sourcesFound: searchResult.totalFound,
       },
       { status: 500 }
     );

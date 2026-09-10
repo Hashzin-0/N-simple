@@ -1,5 +1,7 @@
 import * as cheerio from 'cheerio';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
+import { stealthFetch } from '@/lib/stealthBrowser';
+import { getCached, setCache } from '@/lib/scraperCache';
 
 const BDTD_URL = 'https://bdtd.ibict.br/vufind/Search/Results';
 
@@ -46,82 +48,105 @@ function extractKeywords(title: string, abstract: string): string[] {
     .map(([word]) => word);
 }
 
+function parseBdtdHtml(html: string, maxResults: number): ScientificSource[] {
+  const $ = cheerio.load(html);
+  const results: ScientificSource[] = [];
+
+  $('.result-item, .media, .record, .list-group-item').each((i, el) => {
+    if (i >= maxResults) return false;
+
+    const titleEl = $(el).find('a').first();
+    const title = cleanText(titleEl.text());
+
+    if (!title || title.length < 5) return;
+
+    const href = titleEl.attr('href') || '';
+    const directUrl = href.startsWith('http')
+      ? href
+      : `https://bdtd.ibict.br${href}`;
+
+    const authors = cleanText(
+      $(el).find('.authors, .author-list, .media-body .text-muted').first().text()
+    ) || 'Autor não identificado';
+
+    const year = extractYear(
+      cleanText($(el).find('.date, .year, .text-muted').text())
+    );
+
+    const institution = cleanText(
+      $(el).find('.institution, .publisher, .media-body .text-muted').last().text()
+    ) || 'BDTD / IBICT';
+
+    const abstract = cleanText(
+      $(el).find('.description, .abstract, .summary').text()
+    );
+
+    results.push({
+      id: `bdtd-${i}-${Date.now()}`,
+      title,
+      authors,
+      year,
+      publication: institution,
+      sourceName: 'BDTD',
+      sourceType: detectSourceType(title, abstract),
+      abstract: abstract || 'Dissertação/tese disponível no BDTD. Acesse o repositório para o texto completo.',
+      keywords: extractKeywords(title, abstract),
+      directUrl,
+      searchUrl: `https://bdtd.ibict.br/vufind/Search/Results?lookfor=${encodeURIComponent(title)}&type=AllFields`,
+      abntCitation: `${authors.split(';')[0]?.trim()?.toUpperCase() || 'BDTD'}. ${title}. ${year}. Dissertação/Tese - ${institution}.`,
+    });
+  });
+
+  return results;
+}
+
 export async function scrapeBDTD(
   query: string,
   maxResults: number = 10
 ): Promise<ScientificSource[]> {
-  try {
-    const params = new URLSearchParams({
-      lookfor: query,
-      type: 'AllFields',
-    });
+  const cached = getCached('bdtd', query);
+  if (cached) return cached;
 
-    const response = await fetch(`${BDTD_URL}?${params.toString()}`, {
+  const params = new URLSearchParams({
+    lookfor: query,
+    type: 'AllFields',
+  });
+  const url = `${BDTD_URL}?${params.toString()}`;
+
+  // Try direct fetch first
+  try {
+    const response = await fetch(url, {
       headers: {
         'User-Agent':
-          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
       },
     });
 
-    if (!response.ok) {
-      console.warn(`[BDTD] HTTP ${response.status} for query: ${query}`);
-      return [];
+    if (response.ok) {
+      const html = await response.text();
+      const results = parseBdtdHtml(html, maxResults);
+      if (results.length > 0) {
+        setCache('bdtd', query, results);
+        return results;
+      }
     }
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    const results: ScientificSource[] = [];
-
-    $('.result-item, .media, .record, .list-group-item').each((i, el) => {
-      if (i >= maxResults) return false;
-
-      const titleEl = $(el).find('a').first();
-      const title = cleanText(titleEl.text());
-
-      if (!title || title.length < 5) return;
-
-      const href = titleEl.attr('href') || '';
-      const directUrl = href.startsWith('http')
-        ? href
-        : `https://bdtd.ibict.br${href}`;
-
-      const authors = cleanText(
-        $(el).find('.authors, .author-list, .media-body .text-muted').first().text()
-      ) || 'Autor não identificado';
-
-      const year = extractYear(
-        cleanText($(el).find('.date, .year, .text-muted').text())
-      );
-
-      const institution = cleanText(
-        $(el).find('.institution, .publisher, .media-body .text-muted').last().text()
-      ) || 'BDTD / IBICT';
-
-      const abstract = cleanText(
-        $(el).find('.description, .abstract, .summary').text()
-      );
-
-      results.push({
-        id: `bdtd-${i}-${Date.now()}`,
-        title,
-        authors,
-        year,
-        publication: institution,
-        sourceName: 'BDTD',
-        sourceType: detectSourceType(title, abstract),
-        abstract: abstract || 'Dissertação/tese disponível no BDTD. Acesse o repositório para o texto completo.',
-        keywords: extractKeywords(title, abstract),
-        directUrl,
-        searchUrl: `https://bdtd.ibict.br/vufind/Search/Results?lookfor=${encodeURIComponent(query)}&type=AllFields`,
-        abntCitation: `${authors.split(';')[0]?.trim()?.toUpperCase() || 'BDTD'}. ${title}. ${year}. Dissertação/Tese - ${institution}.`,
-      });
-    });
-
-    return results;
-  } catch (error) {
-    console.error('[BDTD] Error scraping BDTD:', error);
-    return [];
+  } catch {
+    // fall through to stealth
   }
+
+  // Fallback: puppeteer stealth
+  try {
+    const result = await stealthFetch(url, { timeoutMs: 20000 });
+    if (result.ok) {
+      const results = parseBdtdHtml(result.html, maxResults);
+      setCache('bdtd', query, results);
+      return results;
+    }
+  } catch (err) {
+    console.warn('[BDTD] Stealth fetch failed:', err);
+  }
+
+  return [];
 }
