@@ -18,7 +18,6 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { ScientificSource, SourceType } from './types';
-import { CURATED_SCIENTIFIC_SOURCES } from './portalsData';
 import { computeTrigonometricSimilarity } from './trigonometry';
 
 interface PesquisadorFontesCardProps {
@@ -65,18 +64,9 @@ export default function PesquisadorFontesCard({
     setSearchTerm(currentTheme);
   }
 
-  // Combined sources: curated + dynamic from API
+  // Sources from real web scraping (via API)
   const allAvailableSources = useMemo(() => {
-    const map = new Map<string, ScientificSource>();
-    // Add curated sources first
-    for (const src of CURATED_SCIENTIFIC_SOURCES) {
-      map.set(src.id, src);
-    }
-    // Add dynamic sources (overriding if duplicate ID)
-    for (const src of dynamicSources) {
-      map.set(src.id, src);
-    }
-    return Array.from(map.values());
+    return dynamicSources;
   }, [dynamicSources]);
 
   // Compute trigonometric similarity for all available sources based on current query
@@ -111,7 +101,7 @@ export default function PesquisadorFontesCard({
       }
 
       // If user typed a term, check whether it matches text OR has decent trigonometric similarity
-      if (!term) return true;
+      if (!term) return false;
       const inTitle = src.title.toLowerCase().includes(term);
       const inAbstract = src.abstract.toLowerCase().includes(term);
       const inKeywords = src.keywords.some((k) => k.toLowerCase().includes(term));

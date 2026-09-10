@@ -5,9 +5,6 @@ import {
   Globe,
   ExternalLink,
   Search,
-  BookOpen,
-  CheckCircle2,
-  BookmarkCheck,
   Building2,
   Layers,
 } from 'lucide-react';
@@ -62,16 +59,16 @@ export default function PortaisConfiaveisSection({
         )}
       </div>
 
-{/* PORTALS SIMPLES - grid de cards clicáveis, sem animação 3D */}
-      <div className="w-full max-w-2xl mx-auto py-4 px-2 sm:px-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* PORTAIS - card swap com navegação por gesto */}
+      <div className="w-full max-w-xl mx-auto py-4 px-2 sm:px-4">
+        <CardSwap stacked={false} className="h-[340px]">
           {RELIABLE_PORTALS.map((portal) => {
             const directSearchUrl = getSearchUrl(portal);
 
             return (
               <div
                 key={portal.id}
-                className="bg-white dark:bg-[#1A1E17] p-6 sm:p-7 rounded-3xl border border-[#E5E2D9] dark:border-[#2C3328] shadow flex flex-col justify-between hover:border-[#2E6F40]/50 dark:hover:border-[#9CB386]/50 transition-all cursor-pointer"
+                className="bg-white dark:bg-[#1A1E17] p-6 sm:p-7 rounded-3xl border border-[#E5E2D9] dark:border-[#2C3328] shadow flex flex-col justify-between h-full hover:border-[#2E6F40]/50 dark:hover:border-[#9CB386]/50 transition-all"
                 style={{ backgroundColor: isDark ? '#1A1E17' : '#FFFFFF' }}
               >
                 <div className="space-y-3">
@@ -88,6 +85,7 @@ export default function PortaisConfiaveisSection({
                         {portal.organization}
                       </p>
                     </div>
+                    <Layers className="h-4 w-4 text-[#D4A373] dark:text-[#D4A373] shrink-0 mt-1" />
                   </div>
 
                   <p className="text-xs sm:text-sm text-[#5A5A40] dark:text-[#C5D9B0] leading-relaxed line-clamp-3">
@@ -104,7 +102,7 @@ export default function PortaisConfiaveisSection({
                     href={directSearchUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="w-full sm:flex-1 py-2.5 px-3.5 bg-[#2E6F40] hover:bg-[#255833] text-white rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer text-center"
+                    className="w-full sm:flex-1 py-2.5 px-3.5 bg-[#2E6F40] hover:bg-[#255833] text-white rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95 flex items-center justify-center gap-1.5 text-center"
                   >
                     <Search className="h-3.5 w-3.5" />
                     <span className="truncate">
@@ -117,7 +115,7 @@ export default function PortaisConfiaveisSection({
                     href={portal.baseUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="w-full sm:w-auto py-2.5 px-4 bg-[#FAF8F5] dark:bg-[#242A20] hover:bg-[#F0EDE5] dark:hover:bg-[#2C3328] text-[#5A5A40] dark:text-[#E8E6DF] rounded-xl text-xs font-medium border border-[#E5E2D9] dark:border-[#2C3328] transition-colors flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                    className="w-full sm:w-auto py-2.5 px-4 bg-[#FAF8F5] dark:bg-[#242A20] hover:bg-[#F0EDE5] dark:hover:bg-[#2C3328] text-[#5A5A40] dark:text-[#E8E6DF] rounded-xl text-xs font-medium border border-[#E5E2D9] dark:border-[#2C3328] transition-colors flex items-center justify-center gap-1.5 shrink-0"
                   >
                     <span>Abrir Portal</span>
                     <ExternalLink className="h-3 w-3" />
@@ -126,7 +124,7 @@ export default function PortaisConfiaveisSection({
               </div>
             );
           })}
-        </div>
+        </CardSwap>
       </div>
     </section>
   );

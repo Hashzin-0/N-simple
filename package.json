@@ -14,6 +14,7 @@
     "@hookform/resolvers": "^5.2.1",
     "@types/three": "^0.185.4",
     "autoprefixer": "^10.4.21",
+    "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^13.2.0",

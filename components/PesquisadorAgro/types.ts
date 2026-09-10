@@ -56,6 +56,7 @@ export interface TopicSourceReference {
   title: string;
   repository: string;
   contribution: string;
+  directUrl?: string;
 }
 
 export interface ArticleTopicSection {

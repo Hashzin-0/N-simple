@@ -24,7 +24,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { ScientificArticleABNT } from './types';
-import { DEFAULT_INITIAL_ARTICLE } from './portalsData';
+
 
 const DEFAULT_RESEARCH_TOPICS: string[] = [
   'Definição e Características Fundamentais',
@@ -50,7 +50,7 @@ export default function PesquisadorAutomaticoSection({
   const [newTopicInput, setNewTopicInput] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState<string>('');
-  const [article, setArticle] = useState<ScientificArticleABNT | null>(() => DEFAULT_INITIAL_ARTICLE);
+  const [article, setArticle] = useState<ScientificArticleABNT | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedRefs, setCopiedRefs] = useState(false);
   const [viewMode, setViewMode] = useState<'abnt_sheet' | 'cards'>('abnt_sheet');
@@ -60,7 +60,7 @@ export default function PesquisadorAutomaticoSection({
   const toggleTopicSources = (topicNumber: string) => {
     setCollapsedTopics((prev) => ({
       ...prev,
-      [topicNumber]: !prev[topicNumber],
+      [topicNumber]: !(prev[topicNumber] ?? true),
     }));
   };
 
@@ -646,7 +646,7 @@ ${article.referenciasABNT.join('\n\n')}
 
                     {/* FONTES ESPECÍFICAS DESTE TÓPICO (MÍNIMO 3, MÁXIMO 10) - COLAPSÁVEL */}
                     {topic.fontesConsultadas && topic.fontesConsultadas.length > 0 && (() => {
-                      const isCollapsed = !!collapsedTopics[topic.number];
+                      const isCollapsed = collapsedTopics[topic.number] ?? true;
                       return (
                         <div className="mt-3 bg-[#FAF8F5] dark:bg-[#121511] rounded-2xl border border-[#F0EDE5] dark:border-[#242A20] font-sans overflow-hidden transition-all">
                           <button

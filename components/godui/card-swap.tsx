@@ -19,6 +19,8 @@ export type CardSwapProps = Omit<
   offsetX?: number;
   /** Scale step removed per card going back. */
   scaleStep?: number;
+  /** When false, disables the stacked visual (no offset/scale/rotation behind cards). */
+  stacked?: boolean;
 };
 
 const CardSwap = React.forwardRef<HTMLDivElement, CardSwapProps>(
@@ -30,6 +32,7 @@ const CardSwap = React.forwardRef<HTMLDivElement, CardSwapProps>(
       offsetY = 16,
       offsetX = 14,
       scaleStep = 0.04,
+      stacked = true,
       className,
       onPointerMove,
       onPointerLeave,
@@ -167,11 +170,11 @@ const CardSwap = React.forwardRef<HTMLDivElement, CardSwapProps>(
                   WebkitBackfaceVisibility: 'hidden',
                 }}
                 animate={{
-                  x: r * offsetX,
-                  y: -r * offsetY,
-                  scale: 1 - r * scaleStep,
-                  rotateZ: r * -1.8,
-                  opacity: r > 3 ? 0 : 1 - r * 0.12,
+                  x: stacked ? r * offsetX : 0,
+                  y: stacked ? -r * offsetY : 0,
+                  scale: stacked ? 1 - r * scaleStep : 1,
+                  rotateZ: stacked ? r * -1.8 : 0,
+                  opacity: r > 3 ? 0 : stacked ? 1 - r * 0.12 : (r === 0 ? 1 : 0),
                 }}
                 drag={isFront ? 'x' : false}
                 dragConstraints={{ left: 0, right: 0 }}
