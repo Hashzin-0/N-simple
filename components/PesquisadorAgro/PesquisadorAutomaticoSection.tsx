@@ -380,7 +380,7 @@ ${article.referenciasABNT.join('\n\n')}
                   </div>
                 </div>
 
-                {existingSources && existingSources.length > 0 && existingTheme === themeInput && (
+                {existingSources && existingSources.length > 0 && (
                   <label className="flex items-center gap-2 text-[11px] font-semibold text-[#8C897E] dark:text-[#9EA399] cursor-pointer hover:text-[#2E6F40] dark:hover:text-[#9CB386] transition-colors shrink-0">
                     <input
                       type="checkbox"

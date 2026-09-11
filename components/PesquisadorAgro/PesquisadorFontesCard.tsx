@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import Image from 'next/image';
 import { SCRAPERS_METADATA } from '@/lib/scrapers/metadata';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { resolveImageUrl } from '@/lib/imageResolver';
 import {
   Search,
   BookOpen,
@@ -70,7 +72,9 @@ export default function PesquisadorFontesCard({
   const [scraperProgress, setScraperProgress] = useState<Record<string, { status: 'pending' | 'loading' | 'complete' | 'error'; count?: number }>>({});
   const [searchOptions, setSearchOptions] = useState<{ maxPerSource?: Record<string, number>; language?: 'pt-br' | 'pt-br-en' }>({ language: 'pt-br' });
   const [showScraperConfig, setShowScraperConfig] = useState(false);
+  const [resolvedImages, setResolvedImages] = useState<Record<string, string>>({});
   const sourceCardsRef = useRef<HTMLDivElement>(null);
+  const resultsHeaderRef = useRef<HTMLDivElement>(null);
 
   // Sync state during render when prop changes
   if (currentTheme !== prevTheme) {
@@ -82,6 +86,35 @@ export default function PesquisadorFontesCard({
   const allAvailableSources = useMemo(() => {
     return dynamicSources;
   }, [dynamicSources]);
+
+  // Resolve images for sources that don't have imageUrl or need OG/favicon fallback
+  useEffect(() => {
+    const toResolve = allAvailableSources.filter(
+      (src) => !resolvedImages[src.id] && !src.imageUrl
+    );
+    if (toResolve.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.allSettled(
+        toResolve.map(async (src) => {
+          const url = await resolveImageUrl(src.directUrl, src.doi);
+          return { id: src.id, url };
+        })
+      );
+      if (cancelled) return;
+      const updates: Record<string, string> = {};
+      for (const r of results) {
+        if (r.status === 'fulfilled' && r.value.url) {
+          updates[r.value.id] = r.value.url;
+        }
+      }
+      if (Object.keys(updates).length > 0) {
+        setResolvedImages((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [allAvailableSources, resolvedImages]);
 
   // Notify parent when sources change
   useEffect(() => {
@@ -296,20 +329,37 @@ export default function PesquisadorFontesCard({
         </div>
 
         {/* SEARCH INPUT BAR */}
-        <form onSubmit={handleSearchSubmit} className="relative">
-          <div className="relative flex items-center">
-            <Search className="absolute left-4 h-5 w-5 text-[#8C897E] dark:text-[#9EA399] pointer-events-none" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Ex: Gessagem e Subsolo, vantagens e desvantagens | Agroecologia | Cooperativa x Associativa..."
-              className="w-full pl-12 pr-32 sm:pr-40 py-3.5 bg-[#FAF8F5] dark:bg-[#121511] text-[#3D3D3D] dark:text-[#E8E6DF] placeholder-[#8C897E] dark:placeholder-[#7A8072] rounded-2xl border border-[#E5E2D9] dark:border-[#2C3328] focus:outline-none focus:ring-2 focus:ring-[#2E6F40] dark:focus:ring-[#9CB386] text-sm sm:text-base font-medium transition-all"
-            />
+        <form onSubmit={handleSearchSubmit} className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 flex items-center">
+              <Search className="absolute left-3.5 h-4.5 w-4.5 text-[#8C897E] dark:text-[#9EA399] pointer-events-none" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Ex: Gessagem e Subsolo, vantagens e desvantagens | Agroecologia | Cooperativa x Associativa..."
+                className="w-full pl-10 pr-3 py-3 bg-[#FAF8F5] dark:bg-[#121511] text-[#3D3D3D] dark:text-[#E8E6DF] placeholder-[#8C897E] dark:placeholder-[#7A8072] rounded-2xl border border-[#E5E2D9] dark:border-[#2C3328] focus:outline-none focus:ring-2 focus:ring-[#2E6F40] dark:focus:ring-[#9CB386] text-sm sm:text-base font-medium transition-all"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setSearchOptions(prev => ({
+                ...prev,
+                language: prev.language === 'pt-br' ? 'pt-br-en' : 'pt-br',
+              }))}
+              className={`shrink-0 px-3 py-3 rounded-2xl border text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                searchOptions.language === 'pt-br-en'
+                  ? 'bg-[#2E6F40]/10 dark:bg-[#9CB386]/15 text-[#2E6F40] dark:text-[#9CB386] border-[#2E6F40]/30 dark:border-[#9CB386]/30'
+                  : 'bg-[#FAF8F5] dark:bg-[#121511] text-[#5A5A40] dark:text-[#E8E6DF] border-[#E5E2D9] dark:border-[#2C3328]'
+              }`}
+              title={searchOptions.language === 'pt-br-en' ? 'Buscando em PT-BR + EN-US' : 'Buscando apenas em PT-BR'}
+            >
+              {searchOptions.language === 'pt-br-en' ? 'PT + EN' : 'PT-BR'}
+            </button>
             <button
               type="submit"
               disabled={searchingLive}
-              className="absolute right-2 px-4 sm:px-6 py-2 bg-[#2E6F40] hover:bg-[#255833] disabled:bg-[#2E6F40]/50 text-white rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
+              className="shrink-0 px-4 sm:px-5 py-3 bg-[#2E6F40] hover:bg-[#255833] disabled:bg-[#2E6F40]/50 text-white rounded-2xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
             >
               {searchingLive ? (
                 <>
@@ -318,7 +368,7 @@ export default function PesquisadorFontesCard({
                 </>
               ) : (
                 <>
-                  <span>Pesquisar Fontes</span>
+                  <span className="hidden sm:inline">Pesquisar</span>
                   <ArrowUpRight className="h-4 w-4" />
                 </>
               )}
@@ -428,35 +478,6 @@ export default function PesquisadorFontesCard({
 
         {/* SEARCH OPTIONS */}
         <div className="pt-2 border-t border-[#F0EDE5] dark:border-[#2C3328] space-y-3">
-          {/* Language Selector */}
-          <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
-            <span className="text-[#8C897E] dark:text-[#9EA399] font-semibold">Idioma:</span>
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                onClick={() => setSearchOptions(prev => ({ ...prev, language: 'pt-br' }))}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                  searchOptions.language === 'pt-br'
-                    ? 'bg-[#2E6F40] text-white font-semibold'
-                    : 'text-[#8C897E] dark:text-[#9EA399] hover:bg-black/5 dark:hover:bg-white/5'
-                }`}
-              >
-                Português (BR)
-              </button>
-              <button
-                type="button"
-                onClick={() => setSearchOptions(prev => ({ ...prev, language: 'pt-br-en' }))}
-                className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                  searchOptions.language === 'pt-br-en'
-                    ? 'bg-[#2E6F40] text-white font-semibold'
-                    : 'text-[#8C897E] dark:text-[#9EA399] hover:bg-black/5 dark:hover:bg-white/5'
-                }`}
-              >
-                Português + Inglês
-              </button>
-            </div>
-          </div>
-
           {/* Max Results per Source */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -473,44 +494,58 @@ export default function PesquisadorFontesCard({
             </div>
             {showScraperConfig && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {SCRAPERS_METADATA.map((scraper) => (
-                  <div
-                    key={scraper.name}
-                    className="text-[10px] bg-[#FAF8F5] dark:bg-[#121511] p-2 rounded-lg border border-[#E5E2D9] dark:border-[#2C3328]"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-[#5A5A40] dark:text-[#E8E6DF] min-w-[80px] truncate">
-                        {scraper.name}
-                      </span>
-                      <input
-                        type="range"
-                        min={1}
-                        max={scraper.maxAllowed}
-                        value={searchOptions.maxPerSource?.[scraper.name] ?? scraper.max}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value);
-                          setSearchOptions(prev => ({
-                            ...prev,
-                            maxPerSource: {
-                              ...prev.maxPerSource,
-                              [scraper.name]: value,
-                            },
-                          }));
-                        }}
-                        className="flex-1 h-1 accent-[#2E6F40] dark:accent-[#9CB386]"
-                      />
-                      <span className="text-[#8C897E] dark:text-[#9EA399] min-w-[20px] text-right">
-                        {searchOptions.maxPerSource?.[scraper.name] ?? scraper.max}
-                      </span>
-                      <span className="text-[#8C897E] dark:text-[#9EA399]">
-                        /{scraper.maxAllowed}
-                      </span>
+                {SCRAPERS_METADATA.map((scraper) => {
+                  const currentValue = searchOptions.maxPerSource?.[scraper.name] ?? scraper.max;
+                  const presets = [
+                    1,
+                    Math.round(scraper.maxAllowed * 0.25),
+                    Math.round(scraper.maxAllowed * 0.5),
+                    Math.round(scraper.maxAllowed * 0.75),
+                    scraper.maxAllowed,
+                  ];
+                  return (
+                    <div
+                      key={scraper.name}
+                      className="text-[10px] bg-[#FAF8F5] dark:bg-[#121511] p-2.5 rounded-xl border border-[#E5E2D9] dark:border-[#2C3328] space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-[#5A5A40] dark:text-[#E8E6DF] truncate">
+                          {scraper.name}
+                        </span>
+                        <span className="text-[#2E6F40] dark:text-[#9CB386] font-bold tabular-nums">
+                          {currentValue}<span className="font-normal text-[#8C897E] dark:text-[#9EA399]">/{scraper.maxAllowed}</span>
+                        </span>
+                      </div>
+                      <div className="flex gap-1">
+                        {presets.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => {
+                              setSearchOptions(prev => ({
+                                ...prev,
+                                maxPerSource: {
+                                  ...prev.maxPerSource,
+                                  [scraper.name]: preset,
+                                },
+                              }));
+                            }}
+                            className={`flex-1 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                              currentValue === preset
+                                ? 'bg-[#2E6F40] text-white shadow-sm dark:bg-[#9CB386] dark:text-[#121511]'
+                                : 'bg-white dark:bg-[#1C201A] text-[#5A5A40] dark:text-[#E8E6DF] border border-[#E5E2D9] dark:border-[#2C3328] hover:border-[#2E6F40]/50 dark:hover:border-[#9CB386]/50'
+                            }`}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[9px] text-[#8C897E] dark:text-[#9EA399] leading-tight">
+                        {scraper.limitations}
+                      </p>
                     </div>
-                    <p className="text-[9px] text-[#8C897E] dark:text-[#9EA399] mt-1 leading-tight">
-                      {scraper.limitations}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -551,7 +586,7 @@ export default function PesquisadorFontesCard({
 
       {/* RESULTS LIST */}
       <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+        <div ref={resultsHeaderRef} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
           <p className="text-xs sm:text-sm font-semibold text-[#5A5A40] dark:text-[#E8E6DF] flex items-center gap-2">
             <BookOpen className="h-4 w-4 text-[#2E6F40] dark:text-[#9CB386]" />
             <span>Fontes localizadas para &ldquo;{searchTerm || 'Agropecuária'}&rdquo;:</span>
@@ -681,6 +716,23 @@ export default function PesquisadorFontesCard({
                     </div>
                   </div>
 
+                  {/* SOURCE IMAGE / THUMBNAIL */}
+                  {(source.imageUrl || resolvedImages[source.id]) && (
+                    <div className="relative overflow-hidden rounded-2xl border border-[#F0EDE5] dark:border-[#242A20] bg-[#FAF8F5] dark:bg-[#121511]">
+                      <Image
+                        src={source.imageUrl || resolvedImages[source.id]}
+                        alt={source.title}
+                        width={600}
+                        height={160}
+                        unoptimized
+                        className="w-full h-32 sm:h-40 object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
+
                   {/* ABSTRACT / SUMMARY */}
                   <p className="text-xs sm:text-sm text-[#5A5A40] dark:text-[#C5D9B0]/90 leading-relaxed bg-[#FDFBF7] dark:bg-[#121511] p-3.5 rounded-2xl border border-[#F0EDE5] dark:border-[#242A20]">
                     {source.abstract}
@@ -781,7 +833,7 @@ export default function PesquisadorFontesCard({
                   type="button"
                   onClick={() => {
                     setCurrentPage((p) => Math.max(1, p - 1));
-                    sourceCardsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    resultsHeaderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }}
                   disabled={currentPage === 1}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-[#1C201A] text-[#5A5A40] dark:text-[#E8E6DF] border-[#E5E2D9] dark:border-[#2C3328] hover:border-[#2E6F40] dark:hover:border-[#9CB386]"
@@ -806,7 +858,7 @@ export default function PesquisadorFontesCard({
                   type="button"
                   onClick={() => {
                     setCurrentPage((p) => Math.min(totalPages, p + 1));
-                    sourceCardsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    resultsHeaderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }}
                   disabled={currentPage === totalPages}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-[#1C201A] text-[#5A5A40] dark:text-[#E8E6DF] border-[#E5E2D9] dark:border-[#2C3328] hover:border-[#2E6F40] dark:hover:border-[#9CB386]"

@@ -14,10 +14,22 @@ function tokenizeAndNormalize(text: string): string[] {
     .filter((t) => t.length > 2 && !STOP_WORDS.has(t));
 }
 
+/**
+ * Extrai bigramas (pares de palavras consecutivas) de tokens significativos
+ */
+function extractBigrams(tokens: string[]): string[] {
+  const bigrams: string[] = [];
+  for (let i = 0; i < tokens.length - 1; i++) {
+    bigrams.push(`${tokens[i]} ${tokens[i + 1]}`);
+  }
+  return bigrams;
+}
+
 const STOP_WORDS = new Set([
   'que', 'com', 'para', 'por', 'uma', 'dos', 'das', 'nas', 'nos', 'sobre',
   'como', 'pelo', 'pela', 'entre', 'mais', 'este', 'esta', 'esse', 'essa',
   'qual', 'quais', 'onde', 'quando', 'muito', 'cada', 'seus', 'suas', 'isso',
+  'usando', 'utilizando', 'fazendo', 'tendo', 'sendo', 'podendo',
 ]);
 
 /**
@@ -90,10 +102,16 @@ export function computeTrigonometricSimilarity(
   }
 
   // Verifica termos parciais ou sufixos (ex: gesso/gessagem, subsolo/subsuperficie)
+  // Prefixo mínimo de 6 caracteres para evitar falsos positivos
   for (const [qToken, qVal] of Object.entries(queryFreq)) {
+    if (docFreq[qToken]) continue; // já match exato
     for (const [dToken, dVal] of Object.entries(docFreq)) {
-      if (qToken !== dToken && (qToken.startsWith(dToken.slice(0, 4)) || dToken.startsWith(qToken.slice(0, 4)))) {
-        dotProduct += qVal * dVal * 0.45;
+      if (qToken !== dToken && qToken.length >= 6 && dToken.length >= 6) {
+        const minLen = Math.min(qToken.length, dToken.length);
+        const prefixLen = Math.min(6, minLen);
+        if (qToken.slice(0, prefixLen) === dToken.slice(0, prefixLen)) {
+          dotProduct += qVal * dVal * 0.2;
+        }
       }
     }
   }
@@ -114,7 +132,7 @@ export function computeTrigonometricSimilarity(
   const queryMagnitude = Math.sqrt(queryMagnitudeSq);
   const docMagnitude = Math.sqrt(docMagnitudeSq);
 
-  // Normalização do cosseno no intervalo realista de documentos relevantes [0.5, 0.99]
+  // Normalização do cosseno no intervalo realista de documentos relevantes [0.35, 0.99]
   let rawCos = dotProduct / (queryMagnitude * (docMagnitude * 0.35 + 1));
   
   // Detecção explícita de termos solicitados (ex: "vantagens", "desvantagens", "subsolo", "gessagem")
@@ -133,7 +151,65 @@ export function computeTrigonometricSimilarity(
     boost += 0.15;
   }
 
-  const effectiveCos = Math.min(0.99, Math.max(0.35, rawCos + boost));
+  let effectiveCos = Math.min(0.99, Math.max(0.35, rawCos + boost));
+
+  // === PENALIDADE DE COBERTURA ===
+  // Se o documento não contém a maioria dos tokens da query, reduz o score
+  const docText = `${doc.title} ${doc.abstract || ''} ${(doc.keywords || []).join(' ')}`.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ');
+  
+  let exactMatches = 0;
+  let partialMatches = 0;
+  const matchedQueryTokens: string[] = [];
+  
+  for (const qToken of queryTokens) {
+    if (docText.includes(qToken)) {
+      exactMatches++;
+      matchedQueryTokens.push(qToken);
+    } else {
+      // Verifica prefixo parcial (6+ chars)
+      const hasPartial = Object.keys(docFreq).some(
+        (dToken) => dToken.length >= 6 && qToken.length >= 6 &&
+        qToken.slice(0, 6) === dToken.slice(0, 6)
+      );
+      if (hasPartial) {
+        partialMatches++;
+        matchedQueryTokens.push(qToken);
+      }
+    }
+  }
+
+  const coverageRatio = matchedQueryTokens.length / queryTokens.length;
+  
+  // Boost por bigramas: se a query tem bigramas que aparecem no documento
+  const queryBigrams = extractBigrams(queryTokens.filter(t => t.length > 3));
+  const docTextBigrams = extractBigrams(
+    docText.split(/\s+/).filter(t => t.length > 3)
+  );
+  const docBigramSet = new Set(docTextBigrams);
+  let bigramHits = 0;
+  for (const bg of queryBigrams) {
+    if (docBigramSet.has(bg)) bigramHits++;
+  }
+  if (queryBigrams.length > 0) {
+    const bigramRatio = bigramHits / queryBigrams.length;
+    boost += bigramRatio * 0.08;
+    effectiveCos = Math.min(0.99, effectiveCos + bigramRatio * 0.08);
+  }
+
+  // Aplicar penalidade de cobertura
+  if (coverageRatio < 0.5) {
+    // Documento não contém nem metade dos termos → penalidade forte
+    const penalty = 0.3 + (0.5 - coverageRatio) * 0.8; // até 0.7 de penalidade
+    effectiveCos *= (1 - penalty);
+  } else if (coverageRatio < 0.75) {
+    // Documento contém parte dos termos → penalidade moderada
+    const penalty = (0.75 - coverageRatio) * 0.4;
+    effectiveCos *= (1 - penalty);
+  }
+
+  effectiveCos = Math.max(0.15, Math.min(0.99, effectiveCos));
+
   const angleRad = Math.acos(effectiveCos);
   const angleDegrees = Math.round((angleRad * (180 / Math.PI)) * 10) / 10;
   const percentage = Math.round(effectiveCos * 100);
