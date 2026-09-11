@@ -498,41 +498,41 @@ ${article.referenciasABNT.join('\n\n')}
               </div>
             </div>
 
-            {/* MIN SOURCES PER TOPIC CONFIGURATION */}
-            <div className="p-4 rounded-2xl bg-[#FAF8F5] dark:bg-[#121511] border border-[#E5E2D9] dark:border-[#242A20] space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-[#2E6F40]/10 dark:bg-[#9CB386]/15 text-[#2E6F40] dark:text-[#9CB386]">
-                    <Layers className="h-4 w-4" />
+{/* MIN SOURCES PER TOPIC CONFIGURATION */}
+            {existingSources && existingSources.length > 0 && existingTheme === themeInput && (
+              <div className="p-4 rounded-2xl bg-[#FAF8F5] dark:bg-[#121511] border border-[#E5E2D9] dark:border-[#242A20] space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-[#2E6F40]/10 dark:bg-[#9CB386]/15 text-[#2E6F40] dark:text-[#9CB386]">
+                      <Layers className="h-4 w-4" />
+                    </div>
+                    <span className="text-xs sm:text-sm font-bold text-[#3D3D3D] dark:text-[#E8E6DF]">
+                      Mínimo de Fontes por Tópico
+                    </span>
                   </div>
-                  <span className="text-xs sm:text-sm font-bold text-[#3D3D3D] dark:text-[#E8E6DF]">
-                    Mínimo de Fontes por Tópico
+                  <span className="text-[10px] text-[#8C897E] dark:text-[#9EA399] font-medium">
+                    (padrão: 3)
                   </span>
                 </div>
-                <span className="text-[10px] text-[#8C897E] dark:text-[#9EA399] font-medium">
-                  (padrão: 3)
-                </span>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={3}
+                    max={10}
+                    value={minSourcesPerTopic}
+                    onChange={(e) => setMinSourcesPerTopic(parseInt(e.target.value))}
+                    className="flex-1 h-2 accent-[#2E6F40] dark:accent-[#9CB386]"
+                    disabled={loading}
+                  />
+                  <span className="text-sm font-bold text-[#2E6F40] dark:text-[#9CB386] min-w-[20px] text-center">
+                    {minSourcesPerTopic}
+                  </span>
+                </div>
+                <p className="text-[10px] text-[#8C897E] dark:text-[#9EA399] leading-relaxed">
+                  Número mínimo de fontes que cada tópico deve ter. Se uma fonte da pesquisa anterior tiver trigonometria menor que 45%, será descartada e uma nova será buscada.
+                </p>
               </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={1}
-                  max={10}
-                  value={minSourcesPerTopic}
-                  onChange={(e) => setMinSourcesPerTopic(parseInt(e.target.value))}
-                  className="flex-1 h-2 accent-[#2E6F40] dark:accent-[#9CB386]"
-                  disabled={loading}
-                />
-                <span className="text-sm font-bold text-[#2E6F40] dark:text-[#9CB386] min-w-[20px] text-center">
-                  {minSourcesPerTopic}
-                </span>
-              </div>
-              <p className="text-[10px] text-[#8C897E] dark:text-[#9EA399] leading-relaxed">
-                Número mínimo de fontes que cada tópico deve ter. Se uma fonte da pesquisa anterior tiver trigonometria menor que 45%, será descartada e uma nova será buscada.
-              </p>
-            </div>
-
-            {/* EXISTING SOURCES INDICATOR */}
+            )}
             {usePreviouslySearched && existingSources && existingSources.length > 0 && existingTheme === themeInput && userLinksInput.trim().length === 0 && (
               <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-2">
                 <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">

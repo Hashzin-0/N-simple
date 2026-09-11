@@ -493,16 +493,9 @@ export default function PesquisadorFontesCard({
               </button>
             </div>
             {showScraperConfig && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="space-y-2">
                 {SCRAPERS_METADATA.map((scraper) => {
                   const currentValue = searchOptions.maxPerSource?.[scraper.name] ?? scraper.max;
-                  const presets = [
-                    1,
-                    Math.round(scraper.maxAllowed * 0.25),
-                    Math.round(scraper.maxAllowed * 0.5),
-                    Math.round(scraper.maxAllowed * 0.75),
-                    scraper.maxAllowed,
-                  ];
                   return (
                     <div
                       key={scraper.name}
@@ -516,30 +509,27 @@ export default function PesquisadorFontesCard({
                           {currentValue}<span className="font-normal text-[#8C897E] dark:text-[#9EA399]">/{scraper.maxAllowed}</span>
                         </span>
                       </div>
-                      <div className="flex gap-1">
-                        {presets.map((preset) => (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => {
-                              setSearchOptions(prev => ({
-                                ...prev,
-                                maxPerSource: {
-                                  ...prev.maxPerSource,
-                                  [scraper.name]: preset,
-                                },
-                              }));
-                            }}
-                            className={`flex-1 py-1 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
-                              currentValue === preset
-                                ? 'bg-[#2E6F40] text-white shadow-sm dark:bg-[#9CB386] dark:text-[#121511]'
-                                : 'bg-white dark:bg-[#1C201A] text-[#5A5A40] dark:text-[#E8E6DF] border border-[#E5E2D9] dark:border-[#2C3328] hover:border-[#2E6F40]/50 dark:hover:border-[#9CB386]/50'
-                            }`}
-                          >
-                            {preset}
-                          </button>
-                        ))}
-                      </div>
+                      <label className="flex flex-col">
+                        <span className="text-[9px] text-[#8C897E] dark:text-[#9EA399] uppercase">Mínimo: 3</span>
+                        <input
+                          type="range"
+                          min={3}
+                          max={scraper.maxAllowed}
+                          value={currentValue}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value);
+                            setSearchOptions(prev => ({
+                              ...prev,
+                              maxPerSource: {
+                                ...prev.maxPerSource,
+                                [scraper.name]: value,
+                              },
+                            }));
+                          }}
+                          className="flex-1 h-1 accent-[#2E6F40] dark:accent-[#9CB386]"
+                        />
+                        <span className="text-[9px] text-[#8C897E] dark:text-[#9EA399]">Máx: {scraper.maxAllowed}</span>
+                      </label>
                       <p className="text-[9px] text-[#8C897E] dark:text-[#9EA399] leading-tight">
                         {scraper.limitations}
                       </p>
