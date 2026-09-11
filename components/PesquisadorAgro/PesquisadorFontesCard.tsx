@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { ScientificSource, SourceType } from './types';
 import { computeTrigonometricSimilarity } from './trigonometry';
+import { deduplicateSources } from '@/lib/scrapers/dedup';
 
 interface PesquisadorFontesCardProps {
   currentTheme: string;
@@ -33,6 +34,62 @@ interface PesquisadorFontesCardProps {
   onSendToAutomaticResearcher: (theme: string) => void;
   onSourcesLoaded?: (sources: ScientificSource[]) => void;
   isDark: boolean;
+}
+
+interface ScoredSource extends ScientificSource {
+  trigonometricSimilarity: ReturnType<typeof computeTrigonometricSimilarity>;
+  bm25Score: number;
+  combinedScore: number;
+}
+
+const STOP_WORDS_BM25 = new Set([
+  'que', 'com', 'para', 'por', 'uma', 'dos', 'das', 'nas', 'nos', 'sobre',
+  'como', 'pelo', 'pela', 'entre', 'mais', 'este', 'esta', 'esse', 'essa',
+  'qual', 'quais', 'onde', 'quando', 'muito', 'cada', 'seus', 'suas', 'isso',
+  'vantagens', 'desvantagens',
+]);
+
+function tokenizeBM25(text: string): string[] {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 2 && !STOP_WORDS_BM25.has(t));
+}
+
+function computeBM25(documents: string[], queryTokens: string[], k1 = 1.3, b = 0.75): number[] {
+  if (documents.length === 0 || queryTokens.length === 0) return documents.map(() => 0);
+
+  const docTokenCounts = documents.map((doc) => {
+    const counts: Record<string, number> = {};
+    const words = doc.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/);
+    for (const w of words) {
+      if (w.length > 2) counts[w] = (counts[w] || 0) + 1;
+    }
+    return counts;
+  });
+
+  const docLengths = docTokenCounts.map((counts) => Object.values(counts).reduce((a, b) => a + b, 0));
+  const avgDl = docLengths.reduce((a, b) => a + b, 0) / docLengths.length || 1;
+
+  // IDF for each query token
+  const idf = queryTokens.map((term) => {
+    const n = docTokenCounts.filter((counts) => (counts[term] || 0) > 0).length;
+    return Math.log((documents.length - n + 0.5) / (n + 0.5) + 1);
+  });
+
+  return documents.map((_, docIdx) => {
+    const counts = docTokenCounts[docIdx];
+    const dl = docLengths[docIdx];
+    let score = 0;
+    for (let i = 0; i < queryTokens.length; i++) {
+      const tf = counts[queryTokens[i]] || 0;
+      score += (idf[i] * (tf * (k1 + 1))) / (tf + k1 * (1 - b + (b * dl) / avgDl));
+    }
+    return score;
+  });
 }
 
 const TYPE_LABELS: Record<SourceType, string> = {
@@ -123,16 +180,48 @@ export default function PesquisadorFontesCard({
     }
   }, [dynamicSources, onSourcesLoaded]);
 
-  // Compute trigonometric similarity for all available sources based on current query
-  const scoredSources = useMemo(() => {
+  // Compute trigonometric similarity + BM25 for all available sources
+  const scoredSources: ScoredSource[] = useMemo(() => {
     const query = searchTerm.trim();
-    return allAvailableSources.map((src) => {
+    if (!query || allAvailableSources.length === 0) {
+      return allAvailableSources.map((src) => ({
+        ...src,
+        trigonometricSimilarity: computeTrigonometricSimilarity(query || '', src),
+        bm25Score: 0,
+        combinedScore: 0,
+      })) as ScoredSource[];
+    }
+
+    // Build text corpus for BM25
+    const sourceTexts = allAvailableSources.map((src) =>
+      [src.title, src.abstract || '', (src.keywords || []).join(' ')].join(' ')
+    );
+
+    // Tokenize query for BM25
+    const queryTokens = tokenizeBM25(query);
+
+    // BM25 scores
+    let bm25Raw: number[] = [];
+    if (queryTokens.length > 0 && sourceTexts.length > 0) {
+      bm25Raw = computeBM25(sourceTexts, queryTokens);
+    }
+
+    // Normalize BM25 to 0-1
+    const maxBM25 = Math.max(...bm25Raw, 0.001);
+    const bm25Norm = bm25Raw.map((s) => Math.min(1, s / maxBM25));
+
+    return allAvailableSources.map((src, idx) => {
       const trig = computeTrigonometricSimilarity(query, src);
+      const trigVal = trig?.cosTheta ?? 0;
+      const bm25Val = bm25Norm[idx] || 0;
+
       return {
         ...src,
         trigonometricSimilarity: trig,
+        bm25Score: bm25Val,
+        combinedScore: Math.max(trigVal, bm25Val),
       };
-    });
+    }) as ScoredSource[];
   }, [allAvailableSources, searchTerm]);
 
   // Filter and sort by trigonometric similarity descending
@@ -169,16 +258,17 @@ export default function PesquisadorFontesCard({
         src.title.toLowerCase().includes(w) ||
         src.keywords.some((k) => k.toLowerCase().includes(w))
       );
-      const hasDecentCosine = (src.trigonometricSimilarity?.cosTheta ?? 0) >= 0.20;
+      const hasDecentScore = (src.combinedScore ?? 0) >= 0.20 ||
+        (src.trigonometricSimilarity?.cosTheta ?? 0) >= 0.20;
 
-      return inTitle || inAbstract || inKeywords || inAuthors || inPub || wordMatch || hasDecentCosine;
+      return inTitle || inAbstract || inKeywords || inAuthors || inPub || wordMatch || hasDecentScore;
     });
 
-    // Ordenação decrescente pelo cosseno trigonométrico (cos θ)
+    // Ordenação decrescente pelo score combinado (max trig, bm25)
     return filtered.sort(
       (a, b) =>
-        (b.trigonometricSimilarity?.cosTheta ?? 0) -
-        (a.trigonometricSimilarity?.cosTheta ?? 0)
+        (b.combinedScore ?? 0) -
+        (a.combinedScore ?? 0)
     );
   }, [scoredSources, searchTerm, selectedType, selectedPortal]);
 
@@ -250,7 +340,7 @@ export default function PesquisadorFontesCard({
                   [data.name]: { status: 'complete', count: data.count }
                 }));
                 if (data.results && data.results.length > 0) {
-                  setDynamicSources(prev => [...prev, ...data.results]);
+                  setDynamicSources(prev => deduplicateSources([...prev, ...data.results]));
                 }
               } else if (event === 'scraper_error') {
                 setScraperProgress(prev => ({
@@ -322,7 +412,7 @@ export default function PesquisadorFontesCard({
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-[#8C897E] dark:text-[#A6A395] mt-0.5">
-                Pesquisa unificada em todos os repositórios oficiais e canais técnicos do YouTube com classificação por <strong>Similaridade Trigonométrica (cos θ)</strong>.
+                Pesquisa unificada em todos os repositórios oficiais e canais técnicos do YouTube com classificação por <strong>Similaridade Trigonométrica (cos θ)</strong> + <strong>BM25</strong>.
               </p>
             </div>
           </div>
@@ -581,7 +671,7 @@ export default function PesquisadorFontesCard({
             <BookOpen className="h-4 w-4 text-[#2E6F40] dark:text-[#9CB386]" />
             <span>Fontes localizadas para &ldquo;{searchTerm || 'Agropecuária'}&rdquo;:</span>
             <span className="text-xs font-normal text-[#8C897E] dark:text-[#9EA399]">
-              ({filteredSources.length} fontes ordenadas por cosseno trigonométrico)
+              ({filteredSources.length} fontes ordenadas por relevância combinada)
             </span>
           </p>
 
@@ -664,15 +754,19 @@ export default function PesquisadorFontesCard({
                           </span>
                         )}
 
-                        {/* TRIGONOMETRIC SIMILARITY BADGE */}
+                        {/* TRIGONOMETRIC + BM25 SCORE BADGE */}
                         {trig && (
                           <span
                             className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 flex items-center gap-1"
-                            title={`Similaridade Trigonométrica vetorial: cos(θ) = ${trig.cosTheta}, Ângulo θ = ${trig.angleDegrees}°, Alinhamento: ${trig.alignmentQuality}`}
+                            title={`Trigonométrica: cos(θ) = ${trig.cosTheta} | BM25: ${(source.bm25Score ?? 0).toFixed(2)} | Combinado: ${(source.combinedScore ?? 0).toFixed(2)}`}
                           >
                             <Compass className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
                             <span>
-                              cos θ = <strong>{trig.cosTheta.toFixed(2)}</strong> (θ ≈ {trig.angleDegrees}°)
+                              cos θ = <strong>{trig.cosTheta.toFixed(2)}</strong>
+                            </span>
+                            <span className="text-emerald-500 dark:text-emerald-400">|</span>
+                            <span>
+                              BM25 = <strong>{(source.bm25Score ?? 0).toFixed(2)}</strong>
                             </span>
                             <span className="font-sans text-[10px] font-semibold bg-emerald-600 text-white dark:bg-emerald-400 dark:text-emerald-950 px-1.5 py-0.2 rounded-full">
                               {trig.percentage}%
@@ -713,9 +807,9 @@ export default function PesquisadorFontesCard({
                         src={source.imageUrl || resolvedImages[source.id]}
                         alt={source.title}
                         width={600}
-                        height={160}
+                        height={338}
                         unoptimized
-                        className="w-full h-32 sm:h-40 object-cover"
+                        className="w-full aspect-video object-cover"
                         onError={(e) => {
                           (e.target as HTMLImageElement).style.display = 'none';
                         }}

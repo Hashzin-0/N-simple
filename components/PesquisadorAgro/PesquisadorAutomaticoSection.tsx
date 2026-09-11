@@ -63,6 +63,7 @@ export default function PesquisadorAutomaticoSection({
   const [minSourcesPerTopic, setMinSourcesPerTopic] = usePersistedState<number>('pesq_auto_min_sources', 3);
   const [usePreviouslySearched, setUsePreviouslySearched] = usePersistedState<boolean>('pesq_auto_reuse_searched', true);
   const [reuseStats, setReuseStats] = useState<{ reused: number; newSearched: number } | null>(null);
+  const [articleMode, setArticleMode] = useState<'padrao' | 'aprofundado'>('padrao');
   const printableAreaRef = useRef<HTMLDivElement>(null);
 
   const toggleTopicSources = (topicNumber: string) => {
@@ -116,9 +117,10 @@ export default function PesquisadorAutomaticoSection({
     setThemeInput(currentTheme);
   }
 
-  const handleRunResearch = React.useCallback(async (targetTheme?: string) => {
+  const handleRunResearch = React.useCallback(async (targetTheme?: string, mode?: 'padrao' | 'aprofundado') => {
     const themeToUse = (targetTheme || themeInput).trim();
     if (!themeToUse) return;
+    const effectiveMode = mode || articleMode;
 
     const parsedLinks = userLinksInput
       .split('\n')
@@ -129,30 +131,37 @@ export default function PesquisadorAutomaticoSection({
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
 
-    // Check if we can reuse existing sources
     const canReuseSources = usePreviouslySearched &&
-      existingSources && 
-      existingSources.length > 0 && 
+      existingSources &&
+      existingSources.length > 0 &&
       parsedLinks.length === 0 &&
       existingTheme === themeToUse;
 
     setLoading(true);
     setReuseStats(null);
 
+    const isAprofundado = effectiveMode === 'aprofundado';
+
     if (canReuseSources) {
       setLoadingStep(`Reutilizando ${existingSources.length} fontes da pesquisa anterior...`);
     } else if (parsedLinks.length > 0) {
-      setLoadingStep(`Lendo e analisando ${parsedLinks.length} link(s)/PDF(s) do usuário e extraindo tópicos...`);
+      setLoadingStep(`Lendo e analisando ${parsedLinks.length} link(s)/PDF(s) do usuário...`);
     } else {
-      setLoadingStep('Levantando fontes científicas nos portais (mínimo 3 a 10 por tópico)...');
+      setLoadingStep(isAprofundado
+        ? 'Levantando fontes aprofundadas nos portais (8-15 por tópico)...'
+        : 'Levantando fontes científicas nos portais (3-10 por tópico)...');
     }
 
     const stepTimer1 = setTimeout(() => {
-      setLoadingStep('Estruturando características, vantagens, desvantagens e tópicos personalizados...');
+      setLoadingStep(isAprofundado
+        ? 'Analisando estudos contraditórios e contrapontos temporais...'
+        : 'Estruturando tópicos personalizados...');
     }, 1400);
 
     const stepTimer2 = setTimeout(() => {
-      setLoadingStep('Formatando o artigo nas normas da ABNT NBR 6022, NBR 6028 e NBR 6023...');
+      setLoadingStep(isAprofundado
+        ? 'Elaborando artigo aprofundado com múltiplas citações...'
+        : 'Formatando artigo nas normas ABNT...');
     }, 2800);
 
     try {
@@ -162,11 +171,13 @@ export default function PesquisadorAutomaticoSection({
         customTopics: string[];
         existingSources?: ScientificSource[];
         minSourcesPerTopic?: number;
+        articleMode?: 'padrao' | 'aprofundado';
       } = {
         theme: themeToUse,
         userLinks: parsedLinks,
         customTopics: activeTopics,
         minSourcesPerTopic,
+        articleMode: effectiveMode,
       };
 
       if (canReuseSources) {
@@ -180,14 +191,75 @@ export default function PesquisadorAutomaticoSection({
       });
 
       if (!res.ok) {
-        throw new Error('Falha ao processar pesquisa automática');
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.error || 'Falha ao processar pesquisa automática');
       }
 
-      const data: ScientificArticleABNT & { reuseStats?: { reused: number; newSearched: number } } = await res.json();
-      setArticle(data);
-      if (data.reuseStats) {
-        setReuseStats(data.reuseStats);
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('Stream não disponível');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullText = '';
+      let reuseStatsFromStream: { reused: number; newSearched: number } | null = null;
+
+      setLoadingStep('Gerando artigo com IA (streaming)...');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const { event, data } = JSON.parse(line.slice(6));
+
+            if (event === 'provider_info') {
+              setLoadingStep(`Gerando via ${data.provider} — ${data.model}...`);
+            } else if (event === 'chunk' && data.text) {
+              fullText += data.text;
+
+              try {
+                const partial = JSON.parse(fullText);
+                if (partial && typeof partial === 'object' && partial.title) {
+                  setArticle(partial as ScientificArticleABNT);
+                }
+              } catch {
+                // JSON still incomplete — wait for more chunks
+              }
+            } else if (event === 'done') {
+              if (data.reuseStats) {
+                reuseStatsFromStream = data.reuseStats;
+              }
+            } else if (event === 'error') {
+              throw new Error(data.message || 'Erro no streaming');
+            }
+          } catch (parseErr) {
+            if (parseErr instanceof SyntaxError) continue;
+            throw parseErr;
+          }
+        }
       }
+
+      if (reuseStatsFromStream) {
+        setReuseStats(reuseStatsFromStream);
+      }
+
+      if (fullText) {
+        try {
+          const finalArticle = JSON.parse(fullText) as ScientificArticleABNT;
+          if (finalArticle.topicosDesenvolvimento?.length > 0) {
+            setArticle(finalArticle);
+          }
+        } catch {
+          console.warn('Parse final falhou, mantendo artigo parcial do streaming');
+        }
+      }
+
       onThemeChange(themeToUse);
     } catch (error) {
       console.error('Error calling pesquisador automatico:', error);
@@ -197,7 +269,7 @@ export default function PesquisadorAutomaticoSection({
       setLoading(false);
       setLoadingStep('');
     }
-  }, [themeInput, userLinksInput, topics, onThemeChange, existingSources, existingTheme, minSourcesPerTopic, usePreviouslySearched]);
+  }, [themeInput, userLinksInput, topics, onThemeChange, existingSources, existingTheme, minSourcesPerTopic, usePreviouslySearched, articleMode]);
 
   const handleCopyABNT = () => {
     if (!article) return;
@@ -314,23 +386,46 @@ ${article.referenciasABNT.join('\n\n')}
 
             <button
               type="button"
-              onClick={() => handleRunResearch(themeInput)}
+              onClick={() => handleRunResearch(themeInput, 'padrao')}
               disabled={loading}
-              className={`px-6 py-3 rounded-2xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer shrink-0 ${
-                loading
+              className={`px-5 py-3 rounded-2xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer shrink-0 ${
+                loading && articleMode === 'padrao'
                   ? 'bg-[#2E6F40]/50 text-white cursor-not-allowed'
                   : 'bg-[#2E6F40] hover:bg-[#255833] text-white'
               }`}
             >
-              {loading ? (
+              {loading && articleMode === 'padrao' ? (
                 <>
                   <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span>Elaborando Artigo ABNT...</span>
+                  <span>Elaborando ABNT...</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="h-4 w-4 text-[#D4A373]" />
-                  <span>Elaborar Artigo Científico ABNT</span>
+                  <span>Artigo Científico ABNT</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleRunResearch(themeInput, 'aprofundado')}
+              disabled={loading}
+              className={`px-5 py-3 rounded-2xl font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer shrink-0 ${
+                loading && articleMode === 'aprofundado'
+                  ? 'bg-[#8B5E3C]/50 text-white cursor-not-allowed'
+                  : 'bg-[#8B5E3C] hover:bg-[#6B4226] text-white'
+              }`}
+            >
+              {loading && articleMode === 'aprofundado' ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span>Elaborando Aprofundado...</span>
+                </>
+              ) : (
+                <>
+                  <BookOpen className="h-4 w-4 text-[#D4A373]" />
+                  <span>Artigo Científico Aprofundado</span>
                 </>
               )}
             </button>

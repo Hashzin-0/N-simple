@@ -11,7 +11,8 @@ import {
   RotateCcw,
   Layers,
   ChevronDown,
-  Info
+  Info,
+  ArrowRightLeft
 } from 'lucide-react';
 import CornEar3DVisualizer from './CornEar3DVisualizer';
 import Elastic3DSlider from './Elastic3DSlider';
@@ -92,6 +93,9 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
   const [pmg, setPmg] = usePersistedState<number>('corn_yield_pmg', 0);
   const [quebraDecimal, setQuebraDecimal] = usePersistedState<number>('corn_yield_quebra', 0);
   const [activePreset, setActivePreset] = usePersistedState<string>('corn_yield_preset', 'personalizado');
+  const [directMode, setDirectMode] = usePersistedState<boolean>('corn_yield_direct_mode', false);
+  const [estandeDirect, setEstandeDirect] = usePersistedState<number>('corn_yield_estande_direct', 0);
+  const [graosPorEspigaDirect, setGraosPorEspigaDirect] = usePersistedState<number>('corn_yield_graos_espiga_direct', 0);
   const [showFormulaDetails, setShowFormulaDetails] = useState<boolean>(true);
   const { withLock } = useAnimationLock(400);
   const [appliedToast, setAppliedToast] = useState<string | null>(null);
@@ -102,12 +106,14 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
 
   // Calculations
   const estande = useMemo(() => {
+    if (directMode) return Number(estandeDirect.toFixed(0));
     return Number((plantasPorMetro / espacamentoLinhas * 10000).toFixed(0));
-  }, [plantasPorMetro, espacamentoLinhas]);
+  }, [directMode, estandeDirect, plantasPorMetro, espacamentoLinhas]);
 
   const quantidadeGraos = useMemo(() => {
+    if (directMode) return Number(graosPorEspigaDirect.toFixed(0));
     return Number((fileiras * graosPorFileira).toFixed(0));
-  }, [fileiras, graosPorFileira]);
+  }, [directMode, graosPorEspigaDirect, fileiras, graosPorFileira]);
 
   const pmgUnitario = useMemo(() => pmg / 1000, [pmg]);
 
@@ -247,7 +253,8 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
       { name: 'quebraDecimal', value: p.quebraDecimal, delay: 480 },
     ];
 
-    // Set the active preset immediately
+    // Presets use detailed mode - switch back
+    setDirectMode(false);
     setActivePreset(p.id);
 
     // Animate each field with staggered delay
@@ -279,7 +286,7 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
       
       fillingTimersRef.current.push(timer);
     });
-  }, [setActivePreset, setPlantasPorMetro, setEspacamentoLinhas, setFileiras, setGraosPorFileira, setEspigas, setPmg, setQuebraDecimal]);
+  }, [setDirectMode, setActivePreset, setPlantasPorMetro, setEspacamentoLinhas, setFileiras, setGraosPorFileira, setEspigas, setPmg, setQuebraDecimal]);
 
   const handleApplyToNitrogenCalculator = () => {
     if (onApplyYieldGoal) {
@@ -330,12 +337,30 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
           </div>
 
           {/* PRESET CHIPS */}
-          <PresetMultiButton
-            presets={YIELD_PRESETS}
-            activePreset={activePreset}
-            onPresetClick={(p) => withLock(() => loadPreset(p))()}
-            isDark={isDark}
-          />
+          <div className="flex items-center gap-3">
+            <PresetMultiButton
+              presets={YIELD_PRESETS}
+              activePreset={activePreset}
+              onPresetClick={(p) => withLock(() => loadPreset(p))()}
+              isDark={isDark}
+            />
+            
+            {/* DIRECT MODE TOGGLE */}
+            <motion.button
+              onClick={() => withLock(() => setDirectMode(!directMode))()}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                directMode
+                  ? 'bg-[#D4A373]/20 border-[#D4A373]/40 text-[#D4A373]'
+                  : isDark
+                    ? 'bg-[#2E3326] border-[#393E32] text-[#A6A395] hover:bg-[#393E32]'
+                    : 'bg-[#F5F3EE] border-[#E5E2D9] text-[#8C897E] hover:bg-[#EDEAE2]'
+              }`}
+              whileTap={{ scale: 0.95 }}
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
+              <span>{directMode ? 'Direto' : 'Detalhado'}</span>
+            </motion.button>
+          </div>
         </div>
 
         {/* NOTIFICATION TOAST */}
@@ -393,6 +418,8 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
                 setEspigas(0);
                 setPmg(0);
                 setQuebraDecimal(0);
+                setEstandeDirect(0);
+                setGraosPorEspigaDirect(0);
                 setActivePreset('personalizado');
               })}
               icon={<RotateCcw className="h-3 w-3" />}
@@ -403,103 +430,131 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
 
           <div className="space-y-5">
             
-            {/* 1. PLANTAS POR METRO & ESPAÇAMENTO */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input3D
-                id="input_plantas_por_metro"
-                label="Plantas por Metro"
-                unit="pl/m"
-                value={plantasPorMetro}
-                onChange={(v) => { setPlantasPorMetro(v); setActivePreset('personalizado'); }}
-                step={0.1}
-                min={1}
-                max={10}
-                placeholder="Ex: 4.0"
-                isDark={isDark}
-                accentColor="#5A5A40"
-                critical={getFieldSeverity('plantasPorMetro') === 'critical'}
-                warning={getFieldSeverity('plantasPorMetro') === 'warning'}
-                hint="Contagem linear na linha de semeadura."
-                filling={fillingFields.has('plantasPorMetro')}
-              />
-              <Input3D
-                id="input_espacamento_linhas"
-                label="Espaçamento entre Linhas"
-                unit={`m (${Math.round(espacamentoLinhas * 100)} cm)`}
-                value={espacamentoLinhas}
-                onChange={(v) => { setEspacamentoLinhas(v); setActivePreset('personalizado'); }}
-                step={0.05}
-                min={0.30}
-                max={1.20}
-                placeholder="Ex: 0.50"
-                isDark={isDark}
-                accentColor="#5A5A40"
-                critical={getFieldSeverity('espacamentoLinhas') === 'critical'}
-                warning={getFieldSeverity('espacamentoLinhas') === 'warning'}
-                hint="Distância entre linhas (metros)."
-                filling={fillingFields.has('espacamentoLinhas')}
-              />
-            </div>
+            {directMode ? (
+              <>
+                {/* DIRECT MODE: ESTANDE */}
+                <div>
+                  <Input3D
+                    id="input_estande_direct"
+                    label="Estande (População)"
+                    unit="plantas/ha"
+                    value={estandeDirect}
+                    onChange={(v) => { setEstandeDirect(v); setActivePreset('personalizado'); }}
+                    step={1000}
+                    min={20000}
+                    max={200000}
+                    placeholder="Ex: 75000"
+                    isDark={isDark}
+                    accentColor="#5A5A40"
+                    critical={estandeDirect < 40000 || estandeDirect > 150000}
+                    warning={(estandeDirect >= 40000 && estandeDirect < 55000) || (estandeDirect > 120000 && estandeDirect <= 150000)}
+                    hint="População final em plantas por hectare."
+                    filling={fillingFields.has('estandeDirect')}
+                  />
+                </div>
 
-            {/* ESTANDE RESULT CALLOUT */}
-            <motion.div
-              className={`p-3.5 rounded-2xl border flex items-center justify-between text-xs transition-colors ${
-                isDark ? 'bg-[#242720] border-[#393E32]' : 'bg-[#FAF9F5] border-[#E5E2D9]'
-              }`}
-              animate={{ scale: [1, 1.005, 1] }}
-              transition={{ duration: 0.3 }}
-              key={estande}
-            >
-              <div className="flex items-center gap-2">
-                <Sprout className="h-4 w-4 text-[#D4A373]" />
-                <span className="font-semibold text-[#5A5A40] dark:text-[#E8E7DF]">
-                  Estande (População Calculada):
-                </span>
-              </div>
-              <div className="font-mono font-bold text-sm text-[#2E6F40] dark:text-[#86efac]">
-                {estande.toLocaleString('pt-BR')} <span className="text-xs font-normal">plantas/ha</span>
-              </div>
-            </motion.div>
+                {/* DIRECT MODE: GRÃOS POR ESPIGA */}
+                <div>
+                  <Input3D
+                    id="input_graos_por_espiga_direct"
+                    label="Grãos por Espiga"
+                    unit="grãos"
+                    value={graosPorEspigaDirect}
+                    onChange={(v) => { setGraosPorEspigaDirect(v); setActivePreset('personalizado'); }}
+                    step={10}
+                    min={100}
+                    max={1200}
+                    placeholder="Ex: 560"
+                    isDark={isDark}
+                    accentColor="#5A5A40"
+                    critical={graosPorEspigaDirect < 200 || graosPorEspigaDirect > 1000}
+                    warning={(graosPorEspigaDirect >= 200 && graosPorEspigaDirect < 350) || (graosPorEspigaDirect > 800 && graosPorEspigaDirect <= 1000)}
+                    hint="Total de grãos por espiga (ex: 16 fileiras × 35 = 560)."
+                    filling={fillingFields.has('graosPorEspigaDirect')}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                {/* DETAILED MODE: PLANTAS POR METRO & ESPAÇAMENTO */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Input3D
+                    id="input_plantas_por_metro"
+                    label="Plantas por Metro"
+                    unit="pl/m"
+                    value={plantasPorMetro}
+                    onChange={(v) => { setPlantasPorMetro(v); setActivePreset('personalizado'); }}
+                    step={0.1}
+                    min={1}
+                    max={10}
+                    placeholder="Ex: 4.0"
+                    isDark={isDark}
+                    accentColor="#5A5A40"
+                    critical={getFieldSeverity('plantasPorMetro') === 'critical'}
+                    warning={getFieldSeverity('plantasPorMetro') === 'warning'}
+                    hint="Contagem linear na linha de semeadura."
+                    filling={fillingFields.has('plantasPorMetro')}
+                  />
+                  <Input3D
+                    id="input_espacamento_linhas"
+                    label="Espaçamento entre Linhas"
+                    unit={`m (${Math.round(espacamentoLinhas * 100)} cm)`}
+                    value={espacamentoLinhas}
+                    onChange={(v) => { setEspacamentoLinhas(v); setActivePreset('personalizado'); }}
+                    step={0.05}
+                    min={0.30}
+                    max={1.20}
+                    placeholder="Ex: 0.50"
+                    isDark={isDark}
+                    accentColor="#5A5A40"
+                    critical={getFieldSeverity('espacamentoLinhas') === 'critical'}
+                    warning={getFieldSeverity('espacamentoLinhas') === 'warning'}
+                    hint="Distância entre linhas (metros)."
+                    filling={fillingFields.has('espacamentoLinhas')}
+                  />
+                </div>
 
-            {/* 2. FILEIRAS & GRÃOS POR FILEIRA */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input3D
-                id="input_fileiras"
-                label="Fileiras na Espiga"
-                unit="fileiras"
-                value={fileiras}
-                onChange={(v) => { setFileiras(Math.round(v)); setActivePreset('personalizado'); }}
-                step={2}
-                min={10}
-                max={24}
-                placeholder="Ex: 16"
-                isDark={isDark}
-                accentColor="#5A5A40"
-                critical={getFieldSeverity('fileiras') === 'critical'}
-                warning={getFieldSeverity('fileiras') === 'warning'}
-                hint="Sempre em números pares (12, 14, 16, 18, 20)."
-                filling={fillingFields.has('fileiras')}
-              />
-              <Input3D
-                id="input_graos_por_fileira"
-                label="Grãos por Fileira"
-                unit="grãos"
-                value={graosPorFileira}
-                onChange={(v) => { setGraosPorFileira(Math.round(v)); setActivePreset('personalizado'); }}
-                step={1}
-                min={10}
-                max={60}
-                placeholder="Ex: 35"
-                isDark={isDark}
-                accentColor="#5A5A40"
-                critical={getFieldSeverity('graosPorFileira') === 'critical'}
-                warning={getFieldSeverity('graosPorFileira') === 'warning'}
-                hint="Contagem média longitudinal de grãos."
-                filling={fillingFields.has('graosPorFileira')}
-              />
-            </div>
+                {/* DETAILED MODE: FILEIRAS & GRÃOS POR FILEIRA */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Input3D
+                    id="input_fileiras"
+                    label="Fileiras na Espiga"
+                    unit="fileiras"
+                    value={fileiras}
+                    onChange={(v) => { setFileiras(Math.round(v)); setActivePreset('personalizado'); }}
+                    step={2}
+                    min={10}
+                    max={24}
+                    placeholder="Ex: 16"
+                    isDark={isDark}
+                    accentColor="#5A5A40"
+                    critical={getFieldSeverity('fileiras') === 'critical'}
+                    warning={getFieldSeverity('fileiras') === 'warning'}
+                    hint="Sempre em números pares (12, 14, 16, 18, 20)."
+                    filling={fillingFields.has('fileiras')}
+                  />
+                  <Input3D
+                    id="input_graos_por_fileira"
+                    label="Grãos por Fileira"
+                    unit="grãos"
+                    value={graosPorFileira}
+                    onChange={(v) => { setGraosPorFileira(Math.round(v)); setActivePreset('personalizado'); }}
+                    step={1}
+                    min={10}
+                    max={60}
+                    placeholder="Ex: 35"
+                    isDark={isDark}
+                    accentColor="#5A5A40"
+                    critical={getFieldSeverity('graosPorFileira') === 'critical'}
+                    warning={getFieldSeverity('graosPorFileira') === 'warning'}
+                    hint="Contagem média longitudinal de grãos."
+                    filling={fillingFields.has('graosPorFileira')}
+                  />
+                </div>
+              </>
+            )}
 
-            {/* 3. ESPIGAS, PMG & QUEBRA */}
+            {/* 3. ESPIGAS, PMG & QUEBRA - always visible */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               
               <Input3D
@@ -588,29 +643,49 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
                 exit={{ opacity: 0, height: 0 }}
                 className="mt-3.5 space-y-2.5 text-xs text-[#3D3D3D] dark:text-[#D5D4CB] font-mono border-t pt-3 border-[#E5E2D9] dark:border-[#2F3329]"
               >
-                <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5">
-                  <span className="text-[#8C897E] dark:text-[#9CA38C]">1. Estande (População):</span>
-                  <div className="text-[#5A5A40] dark:text-[#A3B18A] font-bold">
-                    {plantasPorMetro} pl/m ÷ {espacamentoLinhas} m × 10.000 = <strong>{estande.toLocaleString('pt-BR')} plantas/ha</strong>
-                  </div>
-                </div>
+                {directMode ? (
+                  <>
+                    <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5">
+                      <span className="text-[#8C897E] dark:text-[#9CA38C]">1. Estande (População):</span>
+                      <div className="text-[#5A5A40] dark:text-[#A3B18A] font-bold">
+                        Valor informado: <strong>{estande.toLocaleString('pt-BR')} plantas/ha</strong>
+                      </div>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5">
+                      <span className="text-[#8C897E] dark:text-[#9CA38C]">2. Quantidade de grãos por espiga:</span>
+                      <div className="text-[#5A5A40] dark:text-[#A3B18A] font-bold">
+                        Valor informado: <strong>{quantidadeGraos} grãos/espiga</strong>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5">
+                      <span className="text-[#8C897E] dark:text-[#9CA38C]">1. Estande (População):</span>
+                      <div className="text-[#5A5A40] dark:text-[#A3B18A] font-bold">
+                        {plantasPorMetro} pl/m ÷ {espacamentoLinhas} m × 10.000 = <strong>{estande.toLocaleString('pt-BR')} plantas/ha</strong>
+                      </div>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5">
+                      <span className="text-[#8C897E] dark:text-[#9CA38C]">2. Quantidade de grãos por espiga:</span>
+                      <div className="text-[#5A5A40] dark:text-[#A3B18A] font-bold">
+                        {fileiras} fileiras × {graosPorFileira} grãos/fileira = <strong>{quantidadeGraos} grãos/espiga</strong>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5">
-                  <span className="text-[#8C897E] dark:text-[#9CA38C]">2. Quantidade de grãos por espiga:</span>
-                  <div className="text-[#5A5A40] dark:text-[#A3B18A] font-bold">
-                    {fileiras} fileiras × {graosPorFileira} grãos/fileira = <strong>{quantidadeGraos} grãos/espiga</strong>
-                  </div>
-                </div>
-
-                <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5">
-                  <span className="text-[#8C897E] dark:text-[#9CA38C]">3. PMG Unitário (÷ 1000):</span>
+                  <span className="text-[#8C897E] dark:text-[#9CA38C]">{directMode ? '3' : '3'}. PMG Unitário (÷ 1000):</span>
                   <div className="text-[#5A5A40] dark:text-[#A3B18A] font-bold">
                     {pmg} g ÷ 1000 = <strong>{pmgUnitario.toFixed(3)} g por grão</strong>
                   </div>
                 </div>
 
                 <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5">
-                  <span className="text-[#8C897E] dark:text-[#9CA38C]">4. Produtividade Bruta:</span>
+                  <span className="text-[#8C897E] dark:text-[#9CA38C]">{directMode ? '4' : '4'}. Produtividade Bruta:</span>
                   <div className="text-[#5A5A40] dark:text-[#A3B18A] font-bold">
                     ({estande.toLocaleString('pt-BR')} × {espigas} × {quantidadeGraos} × {pmgUnitario.toFixed(3)}) ÷ 1000 = <strong>{kgHaBruto.toLocaleString('pt-BR')} kg/ha</strong>
                   </div>
@@ -620,7 +695,7 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
                 </div>
 
                 <div className="p-2 rounded-lg bg-black/5 dark:bg-white/5">
-                  <span className="text-[#8C897E] dark:text-[#9CA38C]">5. Produtividade Líquida:</span>
+                  <span className="text-[#8C897E] dark:text-[#9CA38C]">{directMode ? '5' : '5'}. Produtividade Líquida:</span>
                   <div className="text-[#D4A373] font-bold flex items-baseline gap-2">
                     {scHaBruto} sc/ha × {(1 - quebraDecimal).toFixed(2)} ({(quebraDecimal * 100).toFixed(0)}% perda) = <SplitFlapValue value={produtividadeLiquida} size="sm" unit="sc/ha" />
                   </div>
@@ -639,14 +714,16 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
           className="lg:col-span-5 space-y-6"
         >
           
-          {/* 3D CORN EAR VISUALIZER */}
-          <div id="corn_yield_visual">
-            <CornEar3DVisualizer
-              rows={fileiras}
-              kernelsPerRow={graosPorFileira}
-              totalKernels={quantidadeGraos}
-            />
-          </div>
+          {/* 3D CORN EAR VISUALIZER - only in detailed mode */}
+          {!directMode && (
+            <div id="corn_yield_visual">
+              <CornEar3DVisualizer
+                rows={fileiras}
+                kernelsPerRow={graosPorFileira}
+                totalKernels={quantidadeGraos}
+              />
+            </div>
+          )}
 
           {/* RESULTS CARD */}
           <CornYieldResultCard

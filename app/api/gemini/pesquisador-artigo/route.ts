@@ -1,9 +1,11 @@
-import { GoogleGenAI } from '@google/genai';
-import { NextRequest, NextResponse } from 'next/server';
-import { ScientificArticleABNT, ScientificSource } from '@/components/PesquisadorAgro/types';
+import { NextRequest } from 'next/server';
+import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { searchAllSources } from '@/lib/scrapers';
 import { fetchUserDocuments, UserDocumentSource } from '@/lib/userDocuments';
 import { computeTrigonometricSimilarity } from '@/components/PesquisadorAgro/trigonometry';
+import { buildPrompt, ArticleMode } from '@/lib/prompts';
+import { generateWithFallback } from '@/lib/llm-providers';
+import BM25 from 'okapibm25';
 
 export const dynamic = 'force-dynamic';
 
@@ -143,57 +145,130 @@ interface ReuseResult {
   stats: { reused: number; newSearched: number };
 }
 
+const STOP_WORDS_SEARCH = new Set([
+  'que', 'com', 'para', 'por', 'uma', 'dos', 'das', 'nas', 'nos', 'sobre',
+  'como', 'pelo', 'pela', 'entre', 'mais', 'este', 'esta', 'esse', 'essa',
+  'qual', 'quais', 'onde', 'quando', 'muito', 'cada', 'seus', 'suas', 'isso',
+  'usando', 'utilizando', 'fazendo', 'tendo', 'sendo', 'podendo',
+]);
+
+function tokenizeForSearch(text: string): string[] {
+  if (!text) return [];
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length > 2 && !STOP_WORDS_SEARCH.has(t));
+}
+
+function buildSourceFullText(src: ScientificSource): string {
+  return [
+    src.title,
+    src.abstract || '',
+    (src.keywords || []).join(' '),
+    (src.vantagens || []).join(' '),
+    (src.desvantagens || []).join(' '),
+    (src.caracteristicas || []).join(' '),
+  ].join(' ');
+}
+
+function tokenFallbackMatch(topic: string, sourceText: string): boolean {
+  const topicTokens = tokenizeForSearch(topic);
+  if (topicTokens.length === 0) return false;
+
+  const normalized = sourceText
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ');
+
+  let matches = 0;
+  for (const token of topicTokens) {
+    if (normalized.includes(token)) matches++;
+  }
+
+  return (matches / topicTokens.length) >= 0.6;
+}
+
 async function reuseExistingSources(
   existing: ScientificSource[],
   query: string,
   topics: string[],
   minSourcesPerTopic: number
 ): Promise<ReuseResult> {
-  const THRESHOLD = 0.45; // 45% minimum trigonometry
-  
-  // Calculate trigonometry for each existing source
+  const THRESHOLD = 0.45;
+
+  // Step 1: Query-level trigonometry to filter broadly relevant sources
   const sourcesWithScore = existing.map(src => ({
     source: src,
     score: computeTrigonometricSimilarity(query, src)
   }));
-  
-  // Filter by trigonometry >= 45%
-  const validSources = sourcesWithScore.filter(item => (item.score?.cosTheta ?? 0) >= THRESHOLD);
-  
+
+  const validSources = sourcesWithScore.filter(item => (item.score?.cosTheta ?? 0) > THRESHOLD);
+
+  // Step 2: Build text corpus for BM25 from valid sources
+  const sourceTexts = validSources.map(item => buildSourceFullText(item.source));
+
   const reusedSources: ScientificSource[] = [];
   const missingTopics: string[] = [];
   let reusedCount = 0;
-  
+
   if (topics.length > 0) {
-    // For each topic, check if there are enough sources
     for (const topic of topics) {
-      const topicSources = validSources.filter(item => {
-        const src = item.source;
-        const topicLower = topic.toLowerCase();
-        return (
-          src.title.toLowerCase().includes(topicLower) ||
-          src.abstract.toLowerCase().includes(topicLower) ||
-          src.keywords.some(k => k.toLowerCase().includes(topicLower))
-        );
-      });
-      
+      const topicTokens = tokenizeForSearch(topic);
+
+      // BM25 scoring: rank all valid sources against this topic
+      let bm25RawScores: number[] = [];
+      if (topicTokens.length > 0 && sourceTexts.length > 0) {
+        bm25RawScores = BM25(sourceTexts, topicTokens, { k1: 1.3, b: 0.75 }) as number[];
+      }
+
+      // Normalize BM25 to 0-1 range
+      const maxBM25 = Math.max(...bm25RawScores, 0.001);
+      const bm25Normalized = bm25RawScores.map(s => Math.min(1, s / maxBM25));
+
+      // For each source, compute combined score: max(trig, bm25)
+      const topicSources = validSources
+        .map((item, idx) => {
+          const trigScore = computeTrigonometricSimilarity(topic, item.source);
+          const trigVal = trigScore?.cosTheta ?? 0;
+          const bm25Val = bm25Normalized[idx] || 0;
+
+          // Combined: use the better signal
+          const combinedScore = Math.max(trigVal, bm25Val);
+
+          // Token fallback: check if enough topic tokens appear in source
+          const fullText = sourceTexts[idx];
+          const fallback = tokenFallbackMatch(topic, fullText);
+
+          return {
+            item,
+            combinedScore,
+            trigVal,
+            bm25Val,
+            fallback,
+          };
+        })
+        .filter(r => r.combinedScore > THRESHOLD || r.fallback);
+
       if (topicSources.length < minSourcesPerTopic) {
         missingTopics.push(topic);
       } else {
-        // Add top sources for this topic
         const topSources = topicSources
-          .sort((a, b) => (b.score?.cosTheta ?? 0) - (a.score?.cosTheta ?? 0))
+          .sort((a, b) => b.combinedScore - a.combinedScore)
           .slice(0, 10)
-          .map(item => ({
-            ...item.source,
-            matchedTopics: [topic]
+          .map(r => ({
+            ...r.item.source,
+            matchedTopics: [topic],
           }));
         reusedSources.push(...topSources);
         reusedCount += topSources.length;
       }
     }
   } else {
-    // No specific topics, use all valid sources
+    // No specific topics, use all valid sources sorted by query trigonometry
     const allValid = validSources
       .sort((a, b) => (b.score?.cosTheta ?? 0) - (a.score?.cosTheta ?? 0))
       .slice(0, 30)
@@ -201,7 +276,7 @@ async function reuseExistingSources(
     reusedSources.push(...allValid);
     reusedCount = allValid.length;
   }
-  
+
   // Search for new sources only for missing topics
   let newSearchedCount = 0;
   if (missingTopics.length > 0) {
@@ -209,7 +284,7 @@ async function reuseExistingSources(
     reusedSources.push(...newResult.sources);
     newSearchedCount = newResult.sources.length;
   }
-  
+
   return {
     sources: reusedSources,
     stats: { reused: reusedCount, newSearched: newSearchedCount }
@@ -222,6 +297,7 @@ export async function POST(req: NextRequest) {
   let customTopics: string[] = [];
   let existingSources: ScientificSource[] = [];
   let minSourcesPerTopic = 3;
+  let articleMode: ArticleMode = 'padrao';
 
   try {
     const body = await req.json();
@@ -242,20 +318,24 @@ export async function POST(req: NextRequest) {
     if (typeof body?.minSourcesPerTopic === 'number' && body.minSourcesPerTopic >= 1 && body.minSourcesPerTopic <= 10) {
       minSourcesPerTopic = body.minSourcesPerTopic;
     }
+    if (body?.articleMode === 'aprofundado') {
+      articleMode = 'aprofundado';
+    }
 
     if (!themeInput) {
-      return NextResponse.json(
+      return Response.json(
         { error: 'O parâmetro tema/título da pesquisa é obrigatório.' },
         { status: 400 }
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const hasAnyKey =
+      process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY;
 
-    if (!apiKey) {
-      return NextResponse.json(
+    if (!hasAnyKey) {
+      return Response.json(
         {
-          error: 'GEMINI_API_KEY não configurada. Não é possível gerar artigos sem a chave de API do Gemini.',
+          error: 'Nenhuma chave de API configurada. Configure GEMINI_API_KEYS ou OPENROUTER_API_KEY.',
           theme: themeInput,
         },
         { status: 503 }
@@ -266,11 +346,9 @@ export async function POST(req: NextRequest) {
     let userDocsSection: string;
     let reuseStats: { reused: number; newSearched: number } | undefined;
 
-    // Check if we can reuse existing sources
     const canReuseSources = existingSources.length > 0 && userLinks.length === 0;
 
     if (canReuseSources) {
-      // Reuse existing sources and search for new ones only if needed
       const reuseResult = await reuseExistingSources(
         existingSources,
         themeInput,
@@ -278,13 +356,10 @@ export async function POST(req: NextRequest) {
         minSourcesPerTopic
       );
       reuseStats = reuseResult.stats;
-      
-      // Also fetch user documents (if any)
       const userDocuments = await fetchUserDocuments(userLinks, customTopics);
       sourcesContext = formatSourcesByTopic(reuseResult.sources, customTopics);
       userDocsSection = formatUserDocsSection(userDocuments, customTopics);
     } else {
-      // Search from scratch (original behavior)
       const [searchResult, userDocuments] = await Promise.all([
         searchAllSources(themeInput, customTopics.length > 0 ? customTopics : undefined),
         fetchUserDocuments(userLinks, customTopics),
@@ -304,141 +379,78 @@ ${customTopics.map((top, idx) => `3.${idx + 1} ${top}`).join('\n')}
 3.3 Desvantagens, Riscos Operacionais e Limitações Práticas
 3.4 Análise Comparativa Direta (Práticas Tradicionais vs. Contemporâneas)`;
 
-    const prompt = `Você é um pesquisador agronômico sênior, doutor em Ciência do Solo e Fitotecnia.
+    const generatedAt = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
 
-TAREFA: Gerar um artigo científico completo nas normas ABNT (NBR 6022, NBR 6028, NBR 6023) sobre:
-"${themeInput}"
+    const prompt = buildPrompt(articleMode, {
+      theme: themeInput,
+      sourcesContext: sourcesContext || 'Nenhuma fonte encontrada nos repositórios. Use conhecimento técnico agronômico consolidado.',
+      userDocsSection,
+      customTopicsSection,
+      generatedAt,
+    });
 
-${userDocsSection}
+    const abortController = new AbortController();
+    const signal = abortController.signal;
 
-FONTES CIENTÍFICAS REAIS ENCONTRADAS PESQUISANDO EM GOOGLE ACADEMICO, EMBRAPA, SCIELO, CAPES, BDTD:
-${sourcesContext || 'Nenhuma fonte encontrada nos repositórios. Use conhecimento técnico agronômico consolidado.'}
+    req.signal.addEventListener('abort', () => abortController.abort());
 
-${customTopicsSection}
+    const llmResult = await generateWithFallback({ prompt, signal });
 
-REGRAS OBRIGATÓRIAS:
-1. DOCUMENTOS DO USUÁRIO têm PRIORIDADE MÁXIMA. Se um documento do usuário contém conteúdo relevante para um tópico, cite-o OBRIGATORIAMENTE como fonte principal. Use o campo "Citação ABNT" fornecido.
-2. USE EXCLUSIVAMENTE as fontes listadas acima (documentos do usuário + fontes dos repositórios). CADA fonte já contém a CITAÇÃO ABNT pronta. Copie e use EXATAMENTE essa citação nas referências. NÃO INVENTE autores, periódicos ou dados.
-3. CADA tópico deve citar no MÍNIMO 3 e no MÁXIMO 10 fontes reais em "fontesConsultadas". Priorize documentos do usuário quando disponíveis para o tópico.
-4. O campo "referenciasABNT" DEVE conter TODAS as citações ABNT das fontes utilizadas no artigo, copiadas do campo "CITAÇÃO ABNT" fornecido. Ordene alfabeticamente por sobrenome do primeiro autor.
-5. Para cada fonte citada, inclua no campo "contribution" uma descrição de como aquela fonte contribuiu para o tópico.
-6. O artigo DEVE conter: título em CAIXA ALTA, 2 autores acadêmicos, resumo (NBR 6028), abstract em inglês, introdução, metodologia, desenvolvimento com tópicos numerados, considerações finais e referências ABNT NBR 6023.
-7. NÃO use a expressão "cruzamento de dados". Use: "revisão sistemática", "síntese de evidências".
-8. Formato de saída: APENAS JSON válido (sem markdown) com esta estrutura exata:
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const sendEvent = (event: string, data: unknown) => {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`)
+          );
+        };
 
-{
-  "theme": "${themeInput}",
-  "title": "TÍTULO EM CAIXA ALTA",
-  "subtitle": "Subtítulo se houver",
-  "titleEn": "English Title",
-  "authors": [
-    { "name": "SOBRENOME, Nome", "titulation": "Dr. em ...", "affiliation": "Universidade/Instituição", "email": "email@instituicao.br" }
-  ],
-  "resumo": "Resumo em parágrafo único com objetivo, metodologia e conclusões...",
-  "palavrasChave": ["termo1", "termo2", "termo3"],
-  "abstractEn": "Abstract...",
-  "keywordsEn": ["term1", "term2", "term3"],
-  "introducao": "Texto da introdução...",
-  "metodologia": "Texto da metodologia...",
-  "topicosDesenvolvimento": [
-    {
-      "number": "3.1",
-      "title": "Título do Tópico",
-      "content": "Conteúdo com citações...",
-      "fontesConsultadas": [
-        {
-          "citationABNT": "Citação ABNT copiada EXATAMENTE do campo 'CITAÇÃO ABNT' da fonte",
-          "authors": "Autores",
-          "year": 2023,
-          "title": "Título",
-          "repository": "Nome do Repositório",
-          "contribution": "Como esta fonte contribuiu para o tópico",
-          "directUrl": "URL direta para acessar o documento"
+        sendEvent('provider_info', {
+          provider: llmResult.provider,
+          model: llmResult.model,
+        });
+
+        let fullText = '';
+
+        try {
+          const streamReader = llmResult.stream.getReader();
+          while (true) {
+            const { done, value } = await streamReader.read();
+            if (done) break;
+            if (signal.aborted) break;
+            fullText += value.text;
+            sendEvent('chunk', { text: value.text, length: fullText.length });
+          }
+
+          sendEvent('done', {
+            fullLength: fullText.length,
+            reuseStats: reuseStats || null,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          sendEvent('error', { message: msg });
+        } finally {
+          controller.close();
         }
-      ]
-    }
-  ],
-  "analiseComparativaDireta": [
-    {
-      "praticaSuperadaOuTradicional": "Prática antiga",
-      "praticaContemporaneaRecomendada": "Prática moderna",
-      "parametroComparado": "Parâmetro",
-      "impactoAgroeconomico": "Impacto",
-      "evidenciaCientifica": "Autores (ano)"
-    }
-  ],
-  "consideracoesFinais": "Texto das considerações finais...",
-  "referenciasABNT": ["Referência 1 ABNT", "Referência 2 ABNT"],
-  "generatedAt": "${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}"
-}`;
-
-    const ai = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
+      },
+      cancel() {
+        abortController.abort();
       },
     });
 
-    const candidateModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
-    let responseText = '';
-
-    for (const modelName of candidateModels) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-          },
-        });
-
-        const text = response.text?.trim() || '';
-        if (text) {
-          responseText = text;
-          break;
-        }
-      } catch (geminiError: unknown) {
-        const msg = geminiError instanceof Error ? geminiError.message : String(geminiError);
-        console.warn(`[Gemini Artigo] Model ${modelName} failed:`, msg);
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      }
-    }
-
-    if (responseText) {
-      try {
-        const parsedData: ScientificArticleABNT = JSON.parse(responseText);
-        if (
-          parsedData.topicosDesenvolvimento &&
-          Array.isArray(parsedData.topicosDesenvolvimento) &&
-          parsedData.topicosDesenvolvimento.length > 0
-        ) {
-          // Add reuse stats if available
-          const responseWithStats = reuseStats
-            ? { ...parsedData, reuseStats }
-            : parsedData;
-          return NextResponse.json(responseWithStats);
-        }
-      } catch (parseErr) {
-        console.warn('Failed to parse Gemini JSON response:', parseErr);
-      }
-    }
-
-    return NextResponse.json(
-      {
-        error: 'Falha ao gerar artigo. O Gemini não retornou uma resposta válida. Tente novamente.',
-        theme: themeInput,
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
       },
-      { status: 500 }
-    );
+    });
   } catch (err: unknown) {
     console.error('Error in pesquisador-artigo route:', err);
-    return NextResponse.json(
-      {
-        error: 'Falha ao processar a geração do artigo científico.',
-        theme: themeInput || '',
-      },
+    const errorMessage =
+      err instanceof Error ? err.message : 'Falha ao processar a geração do artigo científico.';
+    return Response.json(
+      { error: errorMessage, theme: themeInput || '' },
       { status: 500 }
     );
   }
