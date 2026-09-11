@@ -48,7 +48,7 @@ const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr:
 const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
 const PesquisadorAgro = dynamic(() => import('@/components/PesquisadorAgro'), { ssr: false });
 const AccessibilityPanel = dynamic(() => import('@/components/AccessibilityPanel'), { ssr: false });
-const VLibrasWidget = dynamic(() => import('@/components/LibrasWidget'), { ssr: false });
+import VLibrasWidget from '@/components/LibrasWidget';
 
 const PRESETS: Preset[] = [
   {

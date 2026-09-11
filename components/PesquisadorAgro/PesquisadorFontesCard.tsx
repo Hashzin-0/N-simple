@@ -20,6 +20,7 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  Clock,
 } from 'lucide-react';
 import { ScientificSource, SourceType } from './types';
 import { computeTrigonometricSimilarity } from './trigonometry';
@@ -69,6 +70,7 @@ export default function PesquisadorFontesCard({
   const [scraperProgress, setScraperProgress] = useState<Record<string, { status: 'pending' | 'loading' | 'complete' | 'error'; count?: number }>>({});
   const [searchOptions, setSearchOptions] = useState<{ maxPerSource?: Record<string, number>; language?: 'pt-br' | 'pt-br-en' }>({ language: 'pt-br' });
   const [showScraperConfig, setShowScraperConfig] = useState(false);
+  const sourceCardsRef = useRef<HTMLDivElement>(null);
 
   // Sync state during render when prop changes
   if (currentTheme !== prevTheme) {
@@ -592,7 +594,7 @@ export default function PesquisadorFontesCard({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4">
+            <div ref={sourceCardsRef} className="grid grid-cols-1 gap-4">
               {paginatedSources.map((source) => {
               const isCopied = copiedId === source.id;
               const isYouTube = source.sourceName === 'YouTube' || source.sourceType === 'video_tecnico';
@@ -628,6 +630,14 @@ export default function PesquisadorFontesCard({
                         <span className="text-[11px] font-bold text-[#8C897E] dark:text-[#9EA399]">
                           {source.year}
                         </span>
+
+                        {/* Video Duration (YouTube only) */}
+                        {isYouTube && source.videoDuration && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400 flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {source.videoDuration}
+                          </span>
+                        )}
 
                         {/* TRIGONOMETRIC SIMILARITY BADGE */}
                         {trig && (
@@ -769,7 +779,10 @@ export default function PesquisadorFontesCard({
               <div className="flex items-center justify-between px-2">
                 <button
                   type="button"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  onClick={() => {
+                    setCurrentPage((p) => Math.max(1, p - 1));
+                    sourceCardsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
                   disabled={currentPage === 1}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-[#1C201A] text-[#5A5A40] dark:text-[#E8E6DF] border-[#E5E2D9] dark:border-[#2C3328] hover:border-[#2E6F40] dark:hover:border-[#9CB386]"
                 >
@@ -791,7 +804,10 @@ export default function PesquisadorFontesCard({
 
                 <button
                   type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() => {
+                    setCurrentPage((p) => Math.min(totalPages, p + 1));
+                    sourceCardsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
                   disabled={currentPage === totalPages}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-white dark:bg-[#1C201A] text-[#5A5A40] dark:text-[#E8E6DF] border-[#E5E2D9] dark:border-[#2C3328] hover:border-[#2E6F40] dark:hover:border-[#9CB386]"
                 >

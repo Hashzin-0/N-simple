@@ -34,6 +34,44 @@ async function getBrowser() {
   return launchPromise;
 }
 
+// Separate browser instance with extra anti-bot patches for Google Scholar
+let scholarBrowserInstance: Awaited<ReturnType<typeof puppeteerExtra.launch>> | null = null;
+let scholarLaunchPromise: Promise<typeof scholarBrowserInstance> | null = null;
+
+export async function getScholarBrowser() {
+  if (scholarBrowserInstance) {
+    const alive = scholarBrowserInstance.connected;
+    if (alive) return scholarBrowserInstance;
+    scholarBrowserInstance = null;
+  }
+
+  if (scholarLaunchPromise) return scholarLaunchPromise;
+
+  scholarLaunchPromise = (async () => {
+    try {
+      const chromium = await import('@sparticuz/chromium');
+      const browser = await puppeteerExtra.launch({
+        args: [
+          ...chromium.default.args,
+          '--disable-blink-features=AutomationControlled',
+          '--disable-features=IsolateOrigins,site-per-process',
+          '--disable-dev-shm-usage',
+          '--no-sandbox',
+        ],
+        executablePath: await chromium.default.executablePath(),
+        headless: true,
+        defaultViewport: { width: 1280, height: 900 },
+      });
+      scholarBrowserInstance = browser;
+      return browser;
+    } finally {
+      scholarLaunchPromise = null;
+    }
+  })();
+
+  return scholarLaunchPromise;
+}
+
 export interface StealthFetchResult {
   html: string;
   ok: boolean;
@@ -56,10 +94,26 @@ export async function stealthFetch(
       'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
     });
 
+    const timeout = opts?.timeoutMs ?? 30000;
     const response = await page.goto(url, {
-      waitUntil: 'domcontentloaded',
-      timeout: opts?.timeoutMs ?? 30000,
+      waitUntil: 'networkidle2',
+      timeout,
     });
+
+    // Wait for anti-bot challenge pages to resolve (e.g. Bunny Shield, Cloudflare).
+    // These pages load a JS challenge, set a cookie, then reload.
+    const pageUrl = page.url();
+    const isChallengePage =
+      pageUrl.includes('challenge') ||
+      (await page.content()).includes('shield-challenge') ||
+      (await page.content()).includes('Verificando');
+    if (isChallengePage) {
+      try {
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
+      } catch {
+        // challenge may not redirect — continue with current content
+      }
+    }
 
     if (opts?.waitSelector) {
       try {
@@ -72,7 +126,11 @@ export async function stealthFetch(
     const status = response?.status() ?? 0;
     const html = await page.content();
 
-    return { html, ok: status >= 200 && status < 400, status };
+    // After anti-bot challenges resolve, the initial status may be stale.
+    // Re-check: if we have substantial HTML, treat as success.
+    const finalOk = (status >= 200 && status < 400) || html.length > 10000;
+
+    return { html, ok: finalOk, status: finalOk ? 200 : status };
   } finally {
     await page.close();
   }

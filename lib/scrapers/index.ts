@@ -8,6 +8,9 @@ import { scrapeYouTube } from './youtube';
 import { scrapeCNPEM } from './cnpem';
 import { scrapeINPA } from './inpa';
 import { scrapeIPEA } from './ipea';
+import { scrapeCrossref } from './crossref';
+import { scrapeOpenAlex } from './openalex';
+import { scrapeSemanticScholar } from './semantic-scholar';
 
 export interface ScrapedResult {
   sources: ScientificSource[];
@@ -34,14 +37,17 @@ export interface ScraperMetadata {
 
 export const SCRAPERS_INTERNAL: ScraperConfig[] = [
   { name: 'Google Acadêmico', fn: scrapeGoogleScholar, max: 25, maxAllowed: 100, description: 'Artigos científicos indexados' },
-  { name: 'Embrapa', fn: scrapeEmbrapa, max: 15, maxAllowed: 50, description: 'Boletins técnicos da Embrapa' },
-  { name: 'SciELO', fn: scrapeSciELO, max: 15, maxAllowed: 50, description: 'Periódicos científicos latino-americanos' },
-  { name: 'CAPES', fn: scrapeCAPES, max: 12, maxAllowed: 50, description: 'Periódicos via Portal CAPES' },
-  { name: 'BDTD', fn: scrapeBDTD, max: 12, maxAllowed: 50, description: 'Teses e dissertações brasileiras' },
-  { name: 'YouTube', fn: scrapeYouTube, max: 20, maxAllowed: 50, description: 'Vídeos técnicos e palestras' },
-  { name: 'CNPEM', fn: scrapeCNPEM, max: 10, maxAllowed: 30, description: 'Centro Nacional de Pesquisa em Energia e Materiais' },
-  { name: 'INPA', fn: scrapeINPA, max: 10, maxAllowed: 30, description: 'Instituto Nacional de Pesquisas da Amazônia' },
-  { name: 'IPEA', fn: scrapeIPEA, max: 10, maxAllowed: 30, description: 'Instituto de Pesquisa Econômica Aplicada' },
+  { name: 'Crossref', fn: scrapeCrossref, max: 50, maxAllowed: 100, description: 'Base acadêmica global com DOI' },
+  { name: 'OpenAlex', fn: scrapeOpenAlex, max: 50, maxAllowed: 200, description: '250M+ obras acadêmicas abertas' },
+  { name: 'Semantic Scholar', fn: scrapeSemanticScholar, max: 50, maxAllowed: 100, description: 'Citacional rico via API S2' },
+  { name: 'Embrapa', fn: scrapeEmbrapa, max: 20, maxAllowed: 50, description: 'Boletins técnicos da Embrapa' },
+  { name: 'SciELO', fn: scrapeSciELO, max: 20, maxAllowed: 50, description: 'Periódicos científicos latino-americanos' },
+  { name: 'CAPES', fn: scrapeCAPES, max: 25, maxAllowed: 50, description: 'Periódicos via Portal CAPES' },
+  { name: 'BDTD', fn: scrapeBDTD, max: 20, maxAllowed: 50, description: 'Teses e dissertações brasileiras' },
+  { name: 'YouTube', fn: scrapeYouTube, max: 50, maxAllowed: 50, description: 'Vídeos técnicos e palestras' },
+  { name: 'CNPEM', fn: scrapeCNPEM, max: 15, maxAllowed: 30, description: 'Centro Nacional de Pesquisa em Energia e Materiais' },
+  { name: 'INPA', fn: scrapeINPA, max: 15, maxAllowed: 30, description: 'Instituto Nacional de Pesquisas da Amazônia' },
+  { name: 'IPEA', fn: scrapeIPEA, max: 25, maxAllowed: 50, description: 'Instituto de Pesquisa Econômica Aplicada' },
 ];
 
 export const SCRAPERS: ScraperMetadata[] = SCRAPERS_INTERNAL.map(({ name, max, maxAllowed, description }) => ({

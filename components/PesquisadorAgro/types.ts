@@ -19,7 +19,7 @@ export interface ScientificSource {
   authors: string;
   year: number;
   publication: string;
-  sourceName: 'Google Acadêmico' | 'SciELO' | 'Embrapa' | 'CAPES' | 'FAO AGRIS' | 'BDTD' | 'Universidade' | 'YouTube' | 'CNPEM' | 'INPA' | 'IPEA';
+  sourceName: 'Google Acadêmico' | 'SciELO' | 'Embrapa' | 'CAPES' | 'FAO AGRIS' | 'BDTD' | 'Universidade' | 'YouTube' | 'CNPEM' | 'INPA' | 'IPEA' | 'Crossref' | 'OpenAlex' | 'Semantic Scholar';
   sourceType: SourceType;
   abstract: string;
   keywords: string[];
@@ -32,6 +32,8 @@ export interface ScientificSource {
   caracteristicas?: string[];
   trigonometricSimilarity?: TrigonometricSimilarity;
   matchedTopics?: string[];
+  videoDuration?: string;
+  imageUrl?: string;
 }
 
 export interface ReliablePortal {

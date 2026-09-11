@@ -12,6 +12,53 @@ function extractYear(dateStr: string): number {
   return match ? parseInt(match[1], 10) : new Date().getFullYear();
 }
 
+function parseISO8601Duration(iso: string): string {
+  const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return '';
+  const hours = parseInt(match[1] || '0', 10);
+  const minutes = parseInt(match[2] || '0', 10);
+  const seconds = parseInt(match[3] || '0', 10);
+  if (hours > 0) {
+    return seconds > 0 ? `${hours}h ${minutes}min ${seconds}s` : `${hours}h ${minutes}min`;
+  }
+  if (minutes > 0) {
+    return seconds > 0 ? `${minutes}min ${seconds}s` : `${minutes}min`;
+  }
+  return `${seconds}s`;
+}
+
+async function fetchVideoDurations(
+  videoIds: string[],
+  apiKey: string
+): Promise<Record<string, string>> {
+  const durations: Record<string, string> = {};
+  const VIDEOS_API_URL = 'https://www.googleapis.com/youtube/v3/videos';
+
+  for (let i = 0; i < videoIds.length; i += 50) {
+    const batch = videoIds.slice(i, i + 50);
+    try {
+      const params = new URLSearchParams({
+        part: 'contentDetails',
+        id: batch.join(','),
+        key: apiKey,
+      });
+      const res = await fetch(`${VIDEOS_API_URL}?${params.toString()}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (!data.items || !Array.isArray(data.items)) continue;
+      for (const item of data.items) {
+        const duration = item.contentDetails?.duration;
+        if (duration) {
+          durations[item.id] = parseISO8601Duration(duration);
+        }
+      }
+    } catch {
+      // ignore batch errors
+    }
+  }
+  return durations;
+}
+
 function extractKeywords(title: string, description: string): string[] {
   const text = `${title} ${description}`.toLowerCase();
   const stopwords = new Set([
@@ -85,6 +132,9 @@ export async function scrapeYouTube(
       return [];
     }
 
+    const videoIds = data.items.map((item: { id: { videoId: string } }) => item.id.videoId);
+    const durations = await fetchVideoDurations(videoIds, apiKey);
+
     const results: ScientificSource[] = data.items.map(
       (item: {
         id: { videoId: string };
@@ -101,6 +151,9 @@ export async function scrapeYouTube(
         const directUrl = `https://www.youtube.com/watch?v=${videoId}`;
         const year = extractYear(publishedAt);
 
+        // YouTube thumbnail URLs (standard pattern)
+        const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+
         return {
           id: `youtube-${videoId}-${Date.now()}`,
           title: cleanText(title),
@@ -113,7 +166,9 @@ export async function scrapeYouTube(
           keywords: extractKeywords(title, description),
           directUrl,
           searchUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
+          imageUrl: thumbnailUrl,
           abntCitation: `${(channelTitle || 'YOUTUBE').toUpperCase()}. ${title}. YouTube, ${year}. Disponível em: ${directUrl}.`,
+          videoDuration: durations[videoId] || undefined,
         };
       }
     );

@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
+import { stealthFetch } from '@/lib/stealthBrowser';
 import { getCached, setCache } from '@/lib/scraperCache';
 
 const INPA_SEARCH_URL = 'https://www.inpa.gov.br/pesquisas-e-projetos';
@@ -42,25 +43,22 @@ function parseInpaHtml(html: string, maxResults: number): ScientificSource[] {
   const $ = cheerio.load(html);
   const results: ScientificSource[] = [];
 
-  $('.item, .result, .project, article, .card').each((i, el) => {
-    if (i >= maxResults) return false;
+  $('h2, h3').each((i, el) => {
+    if (results.length >= maxResults) return false;
 
-    const titleEl = $(el).find('h2, h3, h4, .title, .item-title, .card-title').first();
-    const title = cleanText(titleEl.text());
+    const title = cleanText($(el).text());
+    if (!title || title.length < 10) return;
 
-    if (!title || title.length < 5) return;
+    const link = $(el).find('a').attr('href') || $(el).closest('a').attr('href') || '';
+    const directUrl = link.startsWith('http') ? link : `https://www.inpa.gov.br${link}`;
 
-    const href = titleEl.find('a').attr('href') || $(el).find('a').first().attr('href') || '';
-    const directUrl = href.startsWith('http') ? href : `https://www.inpa.gov.br${href}`;
-
-    const authors = cleanText($(el).find('.authors, .author, .researcher').text()) || 'INPA';
-
-    const year = extractYear(cleanText($(el).find('.date, .year, .period').text()));
-
-    const abstract = cleanText($(el).find('.abstract, .description, .summary, .resumo').text());
+    const container = $(el).closest('.item, .result, .project, article, .card, section, div');
+    const authors = cleanText(container.find('.authors, .author, .researcher').text()) || 'INPA';
+    const year = extractYear(cleanText(container.find('.date, .year, .period').text()));
+    const abstract = cleanText(container.find('.abstract, .description, .summary, .resumo').text());
 
     results.push({
-      id: `inpa-${i}-${Date.now()}`,
+      id: `inpa-${results.length}-${Date.now()}`,
       title,
       authors,
       year,
@@ -70,7 +68,7 @@ function parseInpaHtml(html: string, maxResults: number): ScientificSource[] {
       abstract: abstract || 'Pesquisa disponível no INPA. Acesse o portal para mais detalhes.',
       keywords: extractKeywords(title, abstract),
       directUrl,
-      searchUrl: `https://www.inpa.gov.br/pesquisas-e-projetos?q=${encodeURIComponent(title)}`,
+      searchUrl: `${INPA_SEARCH_URL}?q=${encodeURIComponent(title)}`,
       abntCitation: `${authors.split(';')[0]?.trim()?.toUpperCase() || 'INPA'}. ${title}. INPA, ${year}. Disponível em: ${directUrl}.`,
     });
   });
@@ -91,6 +89,7 @@ export async function scrapeINPA(
   });
   const url = `${INPA_SEARCH_URL}?${params.toString()}`;
 
+  // Try direct fetch first
   try {
     const response = await fetch(url, {
       headers: {
@@ -109,8 +108,23 @@ export async function scrapeINPA(
         return results;
       }
     }
+  } catch {
+    // fall through to stealth
+  }
+
+  // Fallback: puppeteer stealth (INPA is a SPA, content loaded via JS)
+  try {
+    const result = await stealthFetch(url, {
+      waitSelector: 'h2, h3',
+      timeoutMs: 30000,
+    });
+    if (result.ok) {
+      const results = parseInpaHtml(result.html, maxResults);
+      setCache('inpa', query, results);
+      return results;
+    }
   } catch (err) {
-    console.warn('[INPA] Fetch failed:', err);
+    console.warn('[INPA] Stealth fetch failed:', err);
   }
 
   return [];

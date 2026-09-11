@@ -3,15 +3,8 @@ import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { stealthFetch } from '@/lib/stealthBrowser';
 import { getCached, setCache } from '@/lib/scraperCache';
 
-const SCIELO_SEARCH_URL = 'https://search.scielo.org/';
-
 function cleanText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
-}
-
-function extractYear(text: string): number {
-  const match = text.match(/\b(19|20)\d{2}\b/);
-  return match ? parseInt(match[0], 10) : new Date().getFullYear();
 }
 
 function detectSourceType(title: string, abstract: string): ScientificSource['sourceType'] {
@@ -31,6 +24,7 @@ function extractKeywords(title: string, abstract: string): string[] {
     'para', 'como', 'mais', 'sobre', 'entre', 'este', 'esta', 'pela', 'pelo',
     'desde', 'foram', 'sendo', 'também', 'pode', 'podem', 'tem', 'sem', 'com',
     'uma', 'dos', 'das', 'nos', 'nas', 'que', 'por', 'sao', 'estudo', 'estudos',
+    'the', 'and', 'with', 'for', 'from', 'that', 'this', 'are', 'was', 'were',
   ]);
   const words = text
     .normalize('NFD')
@@ -54,49 +48,62 @@ function parseScieloHtml(html: string, maxResults: number): ScientificSource[] {
   const $ = cheerio.load(html);
   const results: ScientificSource[] = [];
 
-  $('.item, .record, .results .item').each((i, el) => {
-    if (i >= maxResults) return false;
+  // Try multiple selectors for SciELO search results
+  const selectors = [
+    '.item',
+    '.record',
+    '.results .item',
+    '.results-list .item',
+    'div[class*="item"]',
+    'div[class*="result"]',
+  ];
 
-    const titleEl = $(el).find('.title, .item-title, h4 a, h3 a').first();
-    const title = cleanText(titleEl.text());
+  for (const selector of selectors) {
+    if (results.length > 0) break;
 
-    if (!title || title.length < 5) return;
+    $(selector).each((i, el) => {
+      if (results.length >= maxResults) return false;
 
-    const href = titleEl.attr('href') || '';
-    const directUrl = href.startsWith('http') ? href : `https://www.scielo.br${href}`;
+      const titleEl = $(el).find('.title, .item-title, h4 a, h3 a, a.title').first();
+      const title = cleanText(titleEl.text());
 
-    const authorsEl = $(el).find('.authors, .item-authors, .meta-authors');
-    const authors = cleanText(authorsEl.text()) || 'Autores não identificados';
+      if (!title || title.length < 5) return;
 
-    const year = extractYear(
-      cleanText($(el).find('.date, .item-date, .meta-date, .year').text())
-    );
+      const href = titleEl.attr('href') || '';
+      const directUrl = href.startsWith('http') ? href : `https://www.scielo.br${href}`;
 
-    const journal = cleanText(
-      $(el).find('.journal, .item-source, .source, .meta-source').text()
-    ) || 'SciELO Brasil';
+      const authorsEl = $(el).find('.authors, .item-authors, .meta-authors, .author-list');
+      const authors = cleanText(authorsEl.text()) || 'Autores não identificados';
 
-    const abstract = cleanText(
-      $(el).find('.abstract, .item-abstract, .description').text()
-    );
+      const yearMatch = cleanText($(el).find('.date, .item-date, .meta-date, .year').text()).match(/\b(19|20)\d{2}\b/);
+      const year = yearMatch ? parseInt(yearMatch[0], 10) : new Date().getFullYear();
 
-    const sourceType = detectSourceType(title, abstract);
+      const journal = cleanText(
+        $(el).find('.journal, .item-source, .source, .meta-source').text()
+      ) || 'SciELO Brasil';
 
-    results.push({
-      id: `scielo-${i}-${Date.now()}`,
-      title,
-      authors,
-      year,
-      publication: journal,
-      sourceName: 'SciELO',
-      sourceType,
-      abstract: abstract || 'Resumo disponível no SciELO. Acesse o artigo completo para mais detalhes.',
-      keywords: extractKeywords(title, abstract),
-      directUrl,
-      searchUrl: `https://search.scielo.org/?q=${encodeURIComponent(title)}&lang=pt`,
-      abntCitation: `${authors.split(';')[0]?.trim()?.toUpperCase() || 'SCIELO'}. ${title}. ${journal}, ${year}.`,
+      const abstract = cleanText(
+        $(el).find('.abstract, .item-abstract, .description').text()
+      );
+
+      const sourceType = detectSourceType(title, abstract);
+
+      results.push({
+        id: `scielo-${i}-${Date.now()}`,
+        title,
+        authors,
+        year,
+        publication: journal,
+        sourceName: 'SciELO',
+        sourceType,
+        abstract: abstract || 'Resumo disponível no SciELO. Acesse o artigo completo para mais detalhes.',
+        keywords: extractKeywords(title, abstract),
+        directUrl,
+        searchUrl: `https://search.scielo.org/?q=${encodeURIComponent(title)}&lang=pt`,
+        abntCitation: `${authors.split(';')[0]?.trim()?.toUpperCase() || 'SCIELO'}. ${title}. ${journal}, ${year}.`,
+      });
     });
-  });
+  }
 
   return results;
 }
@@ -108,48 +115,20 @@ export async function scrapeSciELO(
   const cached = getCached('scielo', query);
   if (cached) return cached;
 
-  const params = new URLSearchParams({
-    q: query,
-    lang: 'pt',
-    count: String(maxResults * 2),
-    from: '0',
-    output: 'site',
-    sort: '',
-    format: 'summary',
-    page: '1',
-  });
-  const url = `${SCIELO_SEARCH_URL}?${params.toString()}`;
+  // SciELO requires stealth browser - direct fetch returns empty
+  const searchUrl = `https://search.scielo.org/?q=${encodeURIComponent(query)}&lang=pt&count=${maxResults * 2}`;
 
-  // Try direct fetch first
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-      },
+    const result = await stealthFetch(searchUrl, {
+      waitSelector: '.item, .record, .results .item, .results-list .item',
+      timeoutMs: 25000,
     });
-
-    if (response.ok) {
-      const html = await response.text();
-      const results = parseScieloHtml(html, maxResults);
+    if (result.ok && result.html.length > 1000) {
+      const results = parseScieloHtml(result.html, maxResults);
       if (results.length > 0) {
         setCache('scielo', query, results);
         return results;
       }
-    }
-  } catch {
-    // fall through to stealth
-  }
-
-  // Fallback: puppeteer stealth
-  try {
-    const result = await stealthFetch(url, { timeoutMs: 20000 });
-    if (result.ok) {
-      const results = parseScieloHtml(result.html, maxResults);
-      setCache('scielo', query, results);
-      return results;
     }
   } catch (err) {
     console.warn('[SciELO] Stealth fetch failed:', err);

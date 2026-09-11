@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { stealthFetch } from '@/lib/stealthBrowser';
 import { getCached, setCache } from '@/lib/scraperCache';
+import { scrapeCrossref } from './crossref';
 
 const CAPES_SEARCH_URL = 'https://www.periodicos.capes.gov.br';
 
@@ -145,8 +146,19 @@ export async function scrapeCAPES(
       setCache('capes', query, results);
       return results;
     }
-  } catch (err) {
-    console.warn('[CAPES] Stealth fetch failed:', err);
+  } catch {
+    // fall through to Crossref
+  }
+
+  // Final fallback: Crossref API (broad academic coverage)
+  try {
+    const results = await scrapeCrossref(query, maxResults);
+    if (results.length > 0) {
+      setCache('capes', query, results);
+      return results;
+    }
+  } catch {
+    // ignore
   }
 
   return [];

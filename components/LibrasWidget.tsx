@@ -16,9 +16,10 @@ declare global {
   }
 }
 
-const VLIBRAS_SCRIPT_URL = 'https://vlibras.gov.br/app/vlibras-plugin.js';
 const VLIBRAS_ROOT = 'https://vlibras.gov.br/app';
 const VLIBRAS_PERSONALIZATION = 'https://vlibras.gov.br/config/default_logo.json';
+const VLIBRAS_POLL_INTERVAL = 50;
+const VLIBRAS_TIMEOUT = 5000;
 
 function getAvatarValue(avatar: LibrasAvatar): string {
   if (avatar === 'random') {
@@ -35,7 +36,6 @@ export default function VLibrasWidget() {
 
   useEffect(() => {
     if (!settings.widgetEnabled) {
-      // Remove widget if disabled
       const existingWidget = document.querySelector('[vp-plugin]');
       if (existingWidget) {
         existingWidget.remove();
@@ -46,12 +46,7 @@ export default function VLibrasWidget() {
 
     if (widgetRef.current) return;
 
-    // Load VLibras script
-    const script = document.createElement('script');
-    script.src = VLIBRAS_SCRIPT_URL;
-    script.async = true;
-    script.onload = () => {
-      // Initialize widget after script loads
+    function initWidget() {
       if (window.VLibras?.Widget && !widgetRef.current) {
         try {
           const avatar = getAvatarValue(settings.widgetAvatar);
@@ -68,15 +63,24 @@ export default function VLibrasWidget() {
           console.error('Failed to initialize VLibras Widget:', e);
         }
       }
-    };
-    document.body.appendChild(script);
+    }
 
-    return () => {
-      // Cleanup script on unmount
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
-    };
+    // Initialize immediately if script already loaded
+    initWidget();
+
+    // Poll until script loads (loaded by layout.tsx <script> tag)
+    if (!widgetRef.current) {
+      let elapsed = 0;
+      const timer = setInterval(() => {
+        elapsed += VLIBRAS_POLL_INTERVAL;
+        initWidget();
+        if (widgetRef.current || elapsed >= VLIBRAS_TIMEOUT) {
+          clearInterval(timer);
+        }
+      }, VLIBRAS_POLL_INTERVAL);
+
+      return () => clearInterval(timer);
+    }
   }, [settings.widgetEnabled, settings.widgetAvatar, settings.widgetPosition]);
 
   // Reinitialize widget when settings change

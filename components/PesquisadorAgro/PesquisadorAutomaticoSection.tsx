@@ -61,6 +61,7 @@ export default function PesquisadorAutomaticoSection({
   const [viewMode, setViewMode] = useState<'abnt_sheet' | 'cards'>('abnt_sheet');
   const [collapsedTopics, setCollapsedTopics] = useState<Record<string, boolean>>({});
   const [minSourcesPerTopic, setMinSourcesPerTopic] = usePersistedState<number>('pesq_auto_min_sources', 3);
+  const [usePreviouslySearched, setUsePreviouslySearched] = usePersistedState<boolean>('pesq_auto_reuse_searched', true);
   const [reuseStats, setReuseStats] = useState<{ reused: number; newSearched: number } | null>(null);
   const printableAreaRef = useRef<HTMLDivElement>(null);
 
@@ -129,7 +130,8 @@ export default function PesquisadorAutomaticoSection({
       .filter((t) => t.length > 0);
 
     // Check if we can reuse existing sources
-    const canReuseSources = existingSources && 
+    const canReuseSources = usePreviouslySearched &&
+      existingSources && 
       existingSources.length > 0 && 
       parsedLinks.length === 0 &&
       existingTheme === themeToUse;
@@ -195,7 +197,7 @@ export default function PesquisadorAutomaticoSection({
       setLoading(false);
       setLoadingStep('');
     }
-  }, [themeInput, userLinksInput, topics, onThemeChange, existingSources, existingTheme, minSourcesPerTopic]);
+  }, [themeInput, userLinksInput, topics, onThemeChange, existingSources, existingTheme, minSourcesPerTopic, usePreviouslySearched]);
 
   const handleCopyABNT = () => {
     if (!article) return;
@@ -378,6 +380,18 @@ ${article.referenciasABNT.join('\n\n')}
                   </div>
                 </div>
 
+                {existingSources && existingSources.length > 0 && existingTheme === themeInput && (
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-[#8C897E] dark:text-[#9EA399] cursor-pointer hover:text-[#2E6F40] dark:hover:text-[#9CB386] transition-colors shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={usePreviouslySearched}
+                      onChange={(e) => setUsePreviouslySearched(e.target.checked)}
+                      className="w-3.5 h-3.5 accent-[#2E6F40] dark:accent-[#9CB386] rounded cursor-pointer"
+                    />
+                    <span>Usar {existingSources.length} fontes já pesquisadas</span>
+                  </label>
+                )}
+
                 {userLinksInput.trim().length > 0 && (
                   <span className="text-[11px] font-medium text-[#2E6F40] dark:text-[#9CB386] flex items-center gap-1">
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
@@ -519,7 +533,7 @@ ${article.referenciasABNT.join('\n\n')}
             </div>
 
             {/* EXISTING SOURCES INDICATOR */}
-            {existingSources && existingSources.length > 0 && existingTheme === themeInput && userLinksInput.trim().length === 0 && (
+            {usePreviouslySearched && existingSources && existingSources.length > 0 && existingTheme === themeInput && userLinksInput.trim().length === 0 && (
               <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-2">
                 <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
                   <CheckCircle2 className="h-5 w-5" />

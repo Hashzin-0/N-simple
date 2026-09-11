@@ -1,6 +1,5 @@
 import * as cheerio from 'cheerio';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
-import { stealthFetch } from '@/lib/stealthBrowser';
 import { getCached, setCache } from '@/lib/scraperCache';
 
 const BASE_URL = 'https://scholar.google.com.br';
@@ -26,6 +25,11 @@ function extractAuthors(text: string): string {
 function parseScholarHtml(html: string, maxResults: number): ScientificSource[] {
   const $ = cheerio.load(html);
   const results: ScientificSource[] = [];
+
+  // Check for CAPTCHA
+  if ($('#gs_captcha_ccl').length > 0 || html.includes('gs_captcha')) {
+    return [];
+  }
 
   $('.gs_ri').each((i, el) => {
     if (i >= maxResults) return false;
@@ -81,9 +85,65 @@ function parseScholarHtml(html: string, maxResults: number): ScientificSource[] 
   return results;
 }
 
+async function fetchScholarWithStealth(
+  url: string,
+  maxResults: number
+): Promise<ScientificSource[]> {
+  // Dynamically import to avoid circular deps
+  const { getScholarBrowser } = await import('@/lib/stealthBrowser');
+
+  const browser = await getScholarBrowser();
+  const page = await browser.newPage();
+
+  try {
+    // Set realistic viewport and locale
+    await page.setViewport({ width: 1280, height: 900 });
+
+    // Mask navigator.webdriver — the most commonly-checked automation signal
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
+    });
+
+    await page.setUserAgent(
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    );
+
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+      Accept:
+        'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    });
+
+    await page.goto(url, {
+      waitUntil: 'networkidle2',
+      timeout: 30000,
+    });
+
+    // Wait for results or CAPTCHA
+    try {
+      await page.waitForSelector('.gs_ri, #gs_captcha_ccl', { timeout: 20000 });
+    } catch {
+      // timeout — continue with whatever we have
+    }
+
+    const html = await page.content();
+
+    // Check for CAPTCHA
+    if (html.includes('gs_captcha') || html.includes('show you are not a robot')) {
+      return [];
+    }
+
+    return parseScholarHtml(html, maxResults);
+  } finally {
+    await page.close();
+  }
+}
+
 export async function scrapeGoogleScholar(
   query: string,
-  maxResults: number = 15
+  maxResults: number = 25
 ): Promise<ScientificSource[]> {
   const cached = getCached('scholar', query);
   if (cached) return cached;
@@ -95,7 +155,7 @@ export async function scrapeGoogleScholar(
   });
   const url = `${SEARCH_URL}?${params.toString()}`;
 
-  // Try direct fetch first
+  // Strategy 1: Direct fetch with realistic headers
   try {
     const response = await fetch(url, {
       headers: {
@@ -119,7 +179,7 @@ export async function scrapeGoogleScholar(
 
     if (response.ok) {
       const html = await response.text();
-      if (html.includes('gs_ri')) {
+      if (html.includes('gs_ri') && !html.includes('gs_captcha')) {
         const results = parseScholarHtml(html, maxResults);
         if (results.length > 0) {
           setCache('scholar', query, results);
@@ -131,15 +191,10 @@ export async function scrapeGoogleScholar(
     // fall through to stealth
   }
 
-  // Fallback: puppeteer stealth
+  // Strategy 2: Stealth browser with anti-bot patches
   try {
-    const result = await stealthFetch(url, {
-      waitSelector: '.gs_ri',
-      timeoutMs: 20000,
-    });
-
-    if (result.ok && result.html.includes('gs_ri')) {
-      const results = parseScholarHtml(result.html, maxResults);
+    const results = await fetchScholarWithStealth(url, maxResults);
+    if (results.length > 0) {
       setCache('scholar', query, results);
       return results;
     }
