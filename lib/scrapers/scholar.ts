@@ -192,6 +192,8 @@ export async function scrapeGoogleScholar(
   }
 
   // Strategy 2: Stealth browser with anti-bot patches
+  // Note: Google Scholar blocks most cloud server IPs even with stealth.
+  // Residential proxy or ScraperAPI key required for reliable access.
   try {
     const results = await fetchScholarWithStealth(url, maxResults);
     if (results.length > 0) {
@@ -199,7 +201,7 @@ export async function scrapeGoogleScholar(
       return results;
     }
   } catch (err) {
-    console.warn('[Scholar] Stealth fetch failed:', err);
+    // Expected: Google Scholar blocks automated queries from cloud IPs
   }
 
   return [];

@@ -1,9 +1,7 @@
-import * as cheerio from 'cheerio';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
-import { stealthFetch } from '@/lib/stealthBrowser';
 import { getCached, setCache } from '@/lib/scraperCache';
 
-const INPA_SEARCH_URL = 'https://www.inpa.gov.br/pesquisas-e-projetos';
+const INPA_API = 'https://ri.inpa.gov.br/server/api';
 
 function cleanText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -12,6 +10,17 @@ function cleanText(text: string): string {
 function extractYear(text: string): number {
   const match = text.match(/\b(19|20)\d{2}\b/);
   return match ? parseInt(match[0], 10) : new Date().getFullYear();
+}
+
+function detectSourceType(title: string, abstract: string): ScientificSource['sourceType'] {
+  const text = `${title} ${abstract}`.toLowerCase();
+  if (text.includes('tese') || text.includes('dissertação') || text.includes('phd'))
+    return 'tese_dissertacao';
+  if (text.includes('livro') || text.includes('manual'))
+    return 'livro_manual';
+  if (text.includes('boletim') || text.includes('circular'))
+    return 'boletim_tecnico';
+  return 'artigo_periodico';
 }
 
 function extractKeywords(title: string, abstract: string): string[] {
@@ -39,92 +48,154 @@ function extractKeywords(title: string, abstract: string): string[] {
     .map(([word]) => word);
 }
 
-function parseInpaHtml(html: string, maxResults: number): ScientificSource[] {
-  const $ = cheerio.load(html);
-  const results: ScientificSource[] = [];
+function getMetaValue(metadata: Record<string, any[]>, key: string): string {
+  const entries = metadata[key];
+  if (!entries || !Array.isArray(entries) || entries.length === 0) return '';
+  return String(entries[0]?.value || '');
+}
 
-  $('h2, h3').each((i, el) => {
-    if (results.length >= maxResults) return false;
+function getMetaValues(metadata: Record<string, any[]>, key: string): string[] {
+  const entries = metadata[key];
+  if (!entries || !Array.isArray(entries)) return [];
+  return entries.map((e) => String(e?.value || '')).filter(Boolean);
+}
 
-    const title = cleanText($(el).text());
-    if (!title || title.length < 10) return;
+function parseDspaceObject(obj: any): ScientificSource | null {
+  const idx = obj._embedded?.indexableObject;
+  if (!idx) return null;
 
-    const link = $(el).find('a').attr('href') || $(el).closest('a').attr('href') || '';
-    const directUrl = link.startsWith('http') ? link : `https://www.inpa.gov.br${link}`;
+  const metadata: Record<string, any[]> = idx.metadata || {};
 
-    const container = $(el).closest('.item, .result, .project, article, .card, section, div');
-    const authors = cleanText(container.find('.authors, .author, .researcher').text()) || 'INPA';
-    const year = extractYear(cleanText(container.find('.date, .year, .period').text()));
-    const abstract = cleanText(container.find('.abstract, .description, .summary, .resumo').text());
+  const title = cleanText(getMetaValue(metadata, 'dc.title'));
+  if (!title || title.length < 5) return null;
 
-    results.push({
-      id: `inpa-${results.length}-${Date.now()}`,
-      title,
-      authors,
-      year,
-      publication: 'INPA - Instituto Nacional de Pesquisas da Amazônia',
-      sourceName: 'INPA' as const,
-      sourceType: 'boletim_tecnico' as const,
-      abstract: abstract || 'Pesquisa disponível no INPA. Acesse o portal para mais detalhes.',
-      keywords: extractKeywords(title, abstract),
-      directUrl,
-      searchUrl: `${INPA_SEARCH_URL}?q=${encodeURIComponent(title)}`,
-      abntCitation: `${authors.split(';')[0]?.trim()?.toUpperCase() || 'INPA'}. ${title}. INPA, ${year}. Disponível em: ${directUrl}.`,
+  const creators = getMetaValues(metadata, 'dc.creator');
+  const authors = creators.length > 0 ? creators.join('; ') : 'INPA';
+
+  const date = getMetaValue(metadata, 'dc.date.accessioned') || getMetaValue(metadata, 'dc.date');
+  const year = extractYear(date || title);
+
+  const abstract = cleanText(getMetaValue(metadata, 'dc.description.abstract'));
+  const uri = getMetaValue(metadata, 'dc.identifier.uri');
+  const doi = getMetaValue(metadata, 'dc.identifier.doi');
+
+  const handle = idx.handle || '';
+  const directUrl = uri || (handle ? `https://ri.inpa.gov.br/handle/${handle}` : '');
+  const searchUrl = `https://ri.inpa.gov.br/discover?query=${encodeURIComponent(title)}`;
+
+  const subjects = getMetaValues(metadata, 'dc.subject');
+
+  return {
+    id: `inpa-${idx.uuid || Date.now()}`,
+    title,
+    authors,
+    year,
+    publication: 'INPA - Instituto Nacional de Pesquisas da Amazônia',
+    sourceName: 'INPA',
+    sourceType: detectSourceType(title, abstract),
+    abstract: abstract || 'Pesquisa disponível no repositório do INPA.',
+    keywords: subjects.length > 0 ? subjects.slice(0, 6) : extractKeywords(title, abstract),
+    directUrl,
+    searchUrl,
+    doi: doi || undefined,
+    abntCitation: `${authors.split(';')[0]?.trim()?.toUpperCase() || 'INPA'}. ${title}. INPA, ${year}. Disponível em: ${directUrl}.`,
+  };
+}
+
+async function searchDspaceApi(query: string, maxResults: number): Promise<ScientificSource[]> {
+  try {
+    const params = new URLSearchParams({
+      query,
+      dsoType: 'ITEM',
+      page: '0',
+      size: String(Math.min(maxResults, 50)),
     });
-  });
 
-  return results;
+    const response = await fetch(`${INPA_API}/discover/search/objects?${params.toString()}`, {
+      headers: { Accept: 'application/json', 'User-Agent': 'N-Pro/1.0' },
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const objects = data._embedded?.searchResult?._embedded?.objects || [];
+    const results: ScientificSource[] = [];
+
+    for (const obj of objects) {
+      if (results.length >= maxResults) break;
+      const parsed = parseDspaceObject(obj);
+      if (parsed) results.push(parsed);
+    }
+
+    return results;
+  } catch {
+    return [];
+  }
 }
 
 export async function scrapeINPA(
   query: string,
-  maxResults: number = 10
+  maxResults: number = 15
 ): Promise<ScientificSource[]> {
   const cached = getCached('inpa', query);
   if (cached) return cached;
 
-  const params = new URLSearchParams({
-    q: query,
-    limit: String(maxResults),
-  });
-  const url = `${INPA_SEARCH_URL}?${params.toString()}`;
-
-  // Try direct fetch first
+  // Strategy 1: DSpace REST API
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-      },
-    });
+    const results = await searchDspaceApi(query, maxResults);
+    if (results.length > 0) {
+      setCache('inpa', query, results);
+      return results;
+    }
+  } catch {
+    // fall through
+  }
 
-    if (response.ok) {
-      const html = await response.text();
-      const results = parseInpaHtml(html, maxResults);
+  // Strategy 2: Stealth browser fallback
+  const searchUrl = `https://ri.inpa.gov.br/discover?query=${encodeURIComponent(query)}`;
+  try {
+    const { stealthFetch } = await import('@/lib/stealthBrowser');
+    const result = await stealthFetch(searchUrl, {
+      waitSelector: '.item-list, .artifact-title, h3.title',
+      timeoutMs: 25000,
+    });
+    if (result.ok && result.html.length > 5000) {
+      const cheerio = await import('cheerio');
+      const $ = cheerio.load(result.html);
+      const results: ScientificSource[] = [];
+
+      $('h3.title a, .artifact-title a, .item-list .title a').each((_i: number, el: any) => {
+        if (results.length >= maxResults) return false;
+        const title = cleanText($(el).text());
+        if (!title || title.length < 5) return;
+
+        const href = $(el).attr('href') || '';
+        const directUrl = href.startsWith('http') ? href : `https://ri.inpa.gov.br${href}`;
+
+        results.push({
+          id: `inpa-stealth-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          title,
+          authors: 'INPA',
+          year: new Date().getFullYear(),
+          publication: 'INPA - Instituto Nacional de Pesquisas da Amazônia',
+          sourceName: 'INPA',
+          sourceType: 'artigo_periodico',
+          abstract: 'Pesquisa disponível no repositório do INPA.',
+          keywords: extractKeywords(title, ''),
+          directUrl,
+          searchUrl,
+          abntCitation: `INPA. ${title}. INPA, ${new Date().getFullYear()}.`,
+        });
+      });
+
       if (results.length > 0) {
         setCache('inpa', query, results);
         return results;
       }
     }
   } catch {
-    // fall through to stealth
-  }
-
-  // Fallback: puppeteer stealth (INPA is a SPA, content loaded via JS)
-  try {
-    const result = await stealthFetch(url, {
-      waitSelector: 'h2, h3',
-      timeoutMs: 30000,
-    });
-    if (result.ok) {
-      const results = parseInpaHtml(result.html, maxResults);
-      setCache('inpa', query, results);
-      return results;
-    }
-  } catch (err) {
-    console.warn('[INPA] Stealth fetch failed:', err);
+    // ignore
   }
 
   return [];

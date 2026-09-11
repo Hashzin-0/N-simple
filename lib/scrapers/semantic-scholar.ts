@@ -83,7 +83,7 @@ function parseS2Item(paper: any): ScientificSource {
   };
 }
 
-async function fetchWithRetry(url: string, retries = 2): Promise<Response> {
+async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     const response = await fetch(url, {
       headers: {
@@ -93,8 +93,9 @@ async function fetchWithRetry(url: string, retries = 2): Promise<Response> {
     });
 
     if (response.status === 429 && attempt < retries) {
-      // Rate limited - wait with exponential backoff
-      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+      // Rate limited - wait with longer exponential backoff (S2 limits ~100 req/5min without key)
+      const waitTime = 2000 * Math.pow(2, attempt) + Math.random() * 1000;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
       continue;
     }
 
