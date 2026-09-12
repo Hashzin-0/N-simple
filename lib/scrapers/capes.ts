@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
-import { stealthFetch } from '@/lib/stealthBrowser';
+import { isBrowserAvailable } from '@/lib/stealthBrowser';
 import { getCached, setCache } from '@/lib/scraperCache';
 import { scrapeCrossref } from './crossref';
 
@@ -139,15 +139,18 @@ export async function scrapeCAPES(
   }
 
   // Fallback: puppeteer stealth
-  try {
-    const result = await stealthFetch(url, { timeoutMs: 20000 });
-    if (result.ok) {
-      const results = parseCapesHtml(result.html, maxResults);
-      setCache('capes', query, results);
-      return results;
+  if (isBrowserAvailable()) {
+    try {
+      const { stealthFetch } = await import('@/lib/stealthBrowser');
+      const result = await stealthFetch(url, { timeoutMs: 20000 });
+      if (result.ok) {
+        const results = parseCapesHtml(result.html, maxResults);
+        setCache('capes', query, results);
+        return results;
+      }
+    } catch {
+      // fall through to Crossref
     }
-  } catch {
-    // fall through to Crossref
   }
 
   // Final fallback: Crossref API (broad academic coverage)

@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { getCached, setCache } from '@/lib/scraperCache';
+import { isBrowserAvailable } from '@/lib/stealthBrowser';
 
 const BASE_URL = 'https://scholar.google.com.br';
 const SEARCH_URL = 'https://scholar.google.com.br/scholar';
@@ -93,6 +94,7 @@ async function fetchScholarWithStealth(
   const { getScholarBrowser } = await import('@/lib/stealthBrowser');
 
   const browser = await getScholarBrowser();
+  if (!browser) return [];
   const page = await browser.newPage();
 
   try {
@@ -194,14 +196,16 @@ export async function scrapeGoogleScholar(
   // Strategy 2: Stealth browser with anti-bot patches
   // Note: Google Scholar blocks most cloud server IPs even with stealth.
   // Residential proxy or ScraperAPI key required for reliable access.
-  try {
-    const results = await fetchScholarWithStealth(url, maxResults);
-    if (results.length > 0) {
-      setCache('scholar', query, results);
-      return results;
+  if (isBrowserAvailable()) {
+    try {
+      const results = await fetchScholarWithStealth(url, maxResults);
+      if (results.length > 0) {
+        setCache('scholar', query, results);
+        return results;
+      }
+    } catch (err) {
+      // Expected: Google Scholar blocks automated queries from cloud IPs
     }
-  } catch (err) {
-    // Expected: Google Scholar blocks automated queries from cloud IPs
   }
 
   return [];

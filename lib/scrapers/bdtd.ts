@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
-import { stealthFetch } from '@/lib/stealthBrowser';
+import { isBrowserAvailable } from '@/lib/stealthBrowser';
 import { getCached, setCache } from '@/lib/scraperCache';
 import { scrapeCrossref } from './crossref';
 
@@ -223,17 +223,20 @@ export async function scrapeBDTD(
   }
 
   // Strategy 2: Stealth browser
-  try {
-    const result = await stealthFetch(url, { timeoutMs: 20000 });
-    if (result.ok) {
-      const results = parseBdtdHtml(result.html, maxResults);
-      if (results.length > 0) {
-        setCache('bdtd', query, results);
-        return results;
+  if (isBrowserAvailable()) {
+    try {
+      const { stealthFetch } = await import('@/lib/stealthBrowser');
+      const result = await stealthFetch(url, { timeoutMs: 20000 });
+      if (result.ok) {
+        const results = parseBdtdHtml(result.html, maxResults);
+        if (results.length > 0) {
+          setCache('bdtd', query, results);
+          return results;
+        }
       }
+    } catch {
+      // fall through
     }
-  } catch {
-    // fall through
   }
 
   // Strategy 3: OAI-PMH endpoint

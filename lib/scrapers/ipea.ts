@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
-import { stealthFetch } from '@/lib/stealthBrowser';
+import { isBrowserAvailable } from '@/lib/stealthBrowser';
 import { getCached, setCache } from '@/lib/scraperCache';
 import { scrapeCrossref } from './crossref';
 
@@ -162,31 +162,34 @@ export async function scrapeIPEA(
   }
 
   // Strategy 2: Stealth browser search
-  const params = new URLSearchParams({
+  const searchParams = new URLSearchParams({
     q: query,
     limit: String(maxResults),
   });
-  const url = `${IPEA_SEARCH_URL}?${params.toString()}`;
+  const searchUrl = `${IPEA_SEARCH_URL}?${searchParams.toString()}`;
 
-  try {
-    const result = await stealthFetch(url, {
-      waitSelector: 'h2, h3',
-      timeoutMs: 30000,
-    });
-    if (result.ok) {
-      const results = parseIpeaHtml(result.html, maxResults);
-      if (results.length > 0) {
-        setCache('ipea', query, results);
-        return results;
+  if (isBrowserAvailable()) {
+    try {
+      const { stealthFetch } = await import('@/lib/stealthBrowser');
+      const result = await stealthFetch(searchUrl, {
+        waitSelector: 'h2, h3',
+        timeoutMs: 30000,
+      });
+      if (result.ok) {
+        const results = parseIpeaHtml(result.html, maxResults);
+        if (results.length > 0) {
+          setCache('ipea', query, results);
+          return results;
+        }
       }
+    } catch {
+      // fall through
     }
-  } catch {
-    // fall through
   }
 
   // Strategy 3: Direct fetch
   try {
-    const response = await fetch(url, {
+    const response = await fetch(searchUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',

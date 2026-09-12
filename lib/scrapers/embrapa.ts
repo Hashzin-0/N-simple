@@ -1,4 +1,5 @@
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
+import { isBrowserAvailable } from '@/lib/stealthBrowser';
 import { getCached, setCache } from '@/lib/scraperCache';
 
 const INFOTECA_OAI = 'http://www.infoteca.cnptia.embrapa.br/infoteca-oai/request';
@@ -183,62 +184,64 @@ export async function scrapeEmbrapa(
   }
 
   // Strategy 2: Stealth browser search
-  const searchUrl = `https://www.embrapa.br/busca-geral/-/busca?q=${encodeURIComponent(query)}`;
-  try {
-    const { stealthFetch } = await import('@/lib/stealthBrowser');
-    const result = await stealthFetch(searchUrl, {
-      waitSelector: '.conteudo',
-      timeoutMs: 25000,
-    });
-    if (result.ok && result.html.length > 10000) {
-      const cheerio = await import('cheerio');
-      const $ = cheerio.load(result.html);
-      const results: ScientificSource[] = [];
-
-      $('.conteudo').each((_i: number, el: any) => {
-        if (results.length >= maxResults) return false;
-        const tipo = $(el).find('.tipo-conteudo').text().trim();
-        if (tipo === 'Imagem') return;
-
-        const titleEl = $(el).find('h3.titulo a, .titulo a').first();
-        let title = cleanText(titleEl.text());
-        if (!title || title.length < 5) {
-          title = cleanText($(el).find('h3').first().text());
-        }
-        if (!title || title.length < 5) return;
-
-        const link = titleEl.attr('href') || $(el).find('h3 a').attr('href') || '';
-        const directUrl = link.startsWith('http') ? link : `https://www.embrapa.br${link}`;
-        const rawAuthor = cleanText($(el).find('.autoria').text()).replace(/^Por:\s*/, '').split('\n')[0].trim();
-        const authors = rawAuthor || 'Embrapa';
-        const dateText = cleanText($(el).find('.situacao').text());
-        const yearMatch = dateText.match(/\b(19|20)\d{2}\b/);
-        const year = yearMatch ? parseInt(yearMatch[0], 10) : new Date().getFullYear();
-        const abstract = cleanText($(el).find('.detalhes p:not(.autoria):not(:has(.label))').first().text()).replace(/\.\.\.\s*$/, '');
-
-        results.push({
-          id: `embrapa-${results.length}-${Date.now()}`,
-          title,
-          authors,
-          year,
-          publication: tipo || 'Embrapa',
-          sourceName: 'Embrapa',
-          sourceType: detectSourceType(title, abstract),
-          abstract: abstract || 'Publicação disponível no portal Embrapa.',
-          keywords: extractKeywords(title, abstract),
-          directUrl,
-          searchUrl,
-          abntCitation: `EMBRAPA. ${title}. Embrapa, ${year}. Disponível em: ${directUrl}.`,
-        });
+  if (isBrowserAvailable()) {
+    const searchUrl = `https://www.embrapa.br/busca-geral/-/busca?q=${encodeURIComponent(query)}`;
+    try {
+      const { stealthFetch } = await import('@/lib/stealthBrowser');
+      const result = await stealthFetch(searchUrl, {
+        waitSelector: '.conteudo',
+        timeoutMs: 25000,
       });
+      if (result.ok && result.html.length > 10000) {
+        const cheerio = await import('cheerio');
+        const $ = cheerio.load(result.html);
+        const results: ScientificSource[] = [];
 
-      if (results.length > 0) {
-        setCache('embrapa', query, results);
-        return results;
+        $('.conteudo').each((_i: number, el: any) => {
+          if (results.length >= maxResults) return false;
+          const tipo = $(el).find('.tipo-conteudo').text().trim();
+          if (tipo === 'Imagem') return;
+
+          const titleEl = $(el).find('h3.titulo a, .titulo a').first();
+          let title = cleanText(titleEl.text());
+          if (!title || title.length < 5) {
+            title = cleanText($(el).find('h3').first().text());
+          }
+          if (!title || title.length < 5) return;
+
+          const link = titleEl.attr('href') || $(el).find('h3 a').attr('href') || '';
+          const directUrl = link.startsWith('http') ? link : `https://www.embrapa.br${link}`;
+          const rawAuthor = cleanText($(el).find('.autoria').text()).replace(/^Por:\s*/, '').split('\n')[0].trim();
+          const authors = rawAuthor || 'Embrapa';
+          const dateText = cleanText($(el).find('.situacao').text());
+          const yearMatch = dateText.match(/\b(19|20)\d{2}\b/);
+          const year = yearMatch ? parseInt(yearMatch[0], 10) : new Date().getFullYear();
+          const abstract = cleanText($(el).find('.detalhes p:not(.autoria):not(:has(.label))').first().text()).replace(/\.\.\.\s*$/, '');
+
+          results.push({
+            id: `embrapa-${results.length}-${Date.now()}`,
+            title,
+            authors,
+            year,
+            publication: tipo || 'Embrapa',
+            sourceName: 'Embrapa',
+            sourceType: detectSourceType(title, abstract),
+            abstract: abstract || 'Publicação disponível no portal Embrapa.',
+            keywords: extractKeywords(title, abstract),
+            directUrl,
+            searchUrl,
+            abntCitation: `EMBRAPA. ${title}. Embrapa, ${year}. Disponível em: ${directUrl}.`,
+          });
+        });
+
+        if (results.length > 0) {
+          setCache('embrapa', query, results);
+          return results;
+        }
       }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
 
   return [];

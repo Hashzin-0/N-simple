@@ -2,6 +2,10 @@ import { NextRequest } from 'next/server';
 import { SCRAPERS, SCRAPERS_INTERNAL, SearchOptions, searchAllSources } from '@/lib/scrapers';
 import { computeTrigonometricSimilarity } from '@/components/PesquisadorAgro/trigonometry';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
+import { decideReuse } from '@/lib/reuseDecision';
+import { indexSources } from '@/lib/evidenceIndex';
+import { extractTopics } from '@/lib/topicExtractor';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +23,68 @@ export async function POST(req: NextRequest) {
 
     const searchOptions: SearchOptions = options || {};
 
+    // ── CAMADA 1: Verificar memória de evidências ──
+    const topics = extractTopics(cleanQuery);
+    const decision = isSupabaseConfigured()
+      ? await decideReuse(cleanQuery, topics)
+      : null;
+
+    if (decision && decision.action === 'reuse' && decision.sourcesToReuse.length > 0) {
+      const enrichedSources = decision.sourcesToReuse.map(src => ({
+        ...src,
+        trigonometricSimilarity: computeTrigonometricSimilarity(cleanQuery, src),
+      }));
+
+      enrichedSources.sort(
+        (a, b) =>
+          (b.trigonometricSimilarity?.cosTheta ?? 0) -
+          (a.trigonometricSimilarity?.cosTheta ?? 0)
+      );
+
+      if (stream) {
+        const encoder = new TextEncoder();
+        const readable = new ReadableStream({
+          async start(controller) {
+            const sendEvent = (event: string, data: unknown) => {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`));
+            };
+            sendEvent('memory_hit', {
+              decision: 'reuse',
+              coverage: decision.coverageScore,
+              sources: enrichedSources,
+              fromMemory: true,
+            });
+            sendEvent('complete', { totalFound: enrichedSources.length, fromMemory: true });
+            controller.close();
+          },
+        });
+        return new Response(readable, {
+          headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' },
+        });
+      }
+
+      return Response.json({
+        sources: enrichedSources,
+        query: cleanQuery,
+        totalFound: enrichedSources.length,
+        errors: [],
+        sourcesUsed: [],
+        fromMemory: true,
+        memoryDecision: {
+          action: 'reuse',
+          coverage: decision.coverageScore,
+          reuseScore: decision.reuseScore,
+          explorationNeed: decision.explorationNeed,
+          diversity: decision.diversityScore,
+        },
+      });
+    }
+
+    // ── CAMADA 2: Pesquisa web ──
+    const topicsToSearch = decision?.action === 'complementary'
+      ? decision.topicsNeedingSearch
+      : undefined;
+
     if (stream) {
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
@@ -27,6 +93,15 @@ export async function POST(req: NextRequest) {
             const sendEvent = (event: string, data: unknown) => {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`));
             };
+
+            if (decision && decision.action === 'complementary') {
+              sendEvent('memory_partial', {
+                decision: 'complementary',
+                coverage: decision.coverageScore,
+                cachedSources: decision.sourcesToReuse,
+                topicsNeedingSearch: decision.topicsNeedingSearch,
+              });
+            }
 
             sendEvent('start', { query: cleanQuery, scrapers: SCRAPERS.map(s => ({ name: s.name, maxAllowed: s.maxAllowed, description: s.description })) });
 
@@ -58,6 +133,13 @@ export async function POST(req: NextRequest) {
               }
             }
 
+            // ── CAMADA 3: Indexar novas fontes na memória ──
+            if (isSupabaseConfigured() && allSources.length > 0) {
+              indexSources(allSources, topics).catch(err =>
+                console.warn('[EvidenceIndex] Falha ao indexar:', err)
+              );
+            }
+
             sendEvent('complete', { totalFound: allSources.length });
 
             controller.close();
@@ -76,7 +158,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const result = await searchAllSources(cleanQuery, undefined, searchOptions);
+    const result = await searchAllSources(cleanQuery, topicsToSearch, searchOptions);
 
     const withTrigonometry = result.sources.map((src) => ({
       ...src,
@@ -89,12 +171,26 @@ export async function POST(req: NextRequest) {
         (a.trigonometricSimilarity?.cosTheta ?? 0)
     );
 
+    // Indexar novas fontes na memória
+    if (isSupabaseConfigured() && withTrigonometry.length > 0) {
+      indexSources(withTrigonometry, topics).catch(err =>
+        console.warn('[EvidenceIndex] Falha ao indexar:', err)
+      );
+    }
+
     return Response.json({
       sources: withTrigonometry,
       query: cleanQuery,
       totalFound: withTrigonometry.length,
       errors: result.errors,
       sourcesUsed: result.sourcesUsed,
+      memoryDecision: decision ? {
+        action: decision.action,
+        coverage: decision.coverageScore,
+        reuseScore: decision.reuseScore,
+        explorationNeed: decision.explorationNeed,
+        diversity: decision.diversityScore,
+      } : null,
     });
   } catch (error: unknown) {
     console.error('Error in pesquisador-fontes route:', error);

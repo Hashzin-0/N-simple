@@ -1,7 +1,8 @@
 import * as cheerio from 'cheerio';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
-import { stealthFetch } from '@/lib/stealthBrowser';
+import { isBrowserAvailable } from '@/lib/stealthBrowser';
 import { getCached, setCache } from '@/lib/scraperCache';
+import { scrapeCrossref } from './crossref';
 
 function cleanText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -115,23 +116,64 @@ export async function scrapeSciELO(
   const cached = getCached('scielo', query);
   if (cached) return cached;
 
-  // SciELO requires stealth browser - direct fetch returns empty
   const searchUrl = `https://search.scielo.org/?q=${encodeURIComponent(query)}&lang=pt&count=${maxResults * 2}`;
 
+  // Strategy 1: Direct fetch with realistic headers
   try {
-    const result = await stealthFetch(searchUrl, {
-      waitSelector: '.item, .record, .results .item, .results-list .item',
-      timeoutMs: 25000,
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        Accept:
+          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+      },
+      signal: AbortSignal.timeout(15000),
     });
-    if (result.ok && result.html.length > 1000) {
-      const results = parseScieloHtml(result.html, maxResults);
-      if (results.length > 0) {
-        setCache('scielo', query, results);
-        return results;
+
+    if (response.ok) {
+      const html = await response.text();
+      if (html.length > 1000) {
+        const results = parseScieloHtml(html, maxResults);
+        if (results.length > 0) {
+          setCache('scielo', query, results);
+          return results;
+        }
       }
     }
-  } catch (err) {
-    console.warn('[SciELO] Stealth fetch failed:', err);
+  } catch {
+    // fall through to stealth
+  }
+
+  // Strategy 2: Stealth browser (requires chromium)
+  if (isBrowserAvailable()) {
+    try {
+      const { stealthFetch } = await import('@/lib/stealthBrowser');
+      const result = await stealthFetch(searchUrl, {
+        waitSelector: '.item, .record, .results .item, .results-list .item',
+        timeoutMs: 25000,
+      });
+      if (result.ok && result.html.length > 1000) {
+        const results = parseScieloHtml(result.html, maxResults);
+        if (results.length > 0) {
+          setCache('scielo', query, results);
+          return results;
+        }
+      }
+    } catch (err) {
+      console.warn('[SciELO] Stealth fetch failed:', err);
+    }
+  }
+
+  // Strategy 3: Crossref fallback (broad academic coverage)
+  try {
+    const results = await scrapeCrossref(query, maxResults);
+    if (results.length > 0) {
+      setCache('scielo', query, results);
+      return results;
+    }
+  } catch {
+    // ignore
   }
 
   return [];

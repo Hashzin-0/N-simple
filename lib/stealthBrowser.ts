@@ -3,10 +3,17 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 puppeteerExtra.use(StealthPlugin());
 
+let chromiumUnavailable = false;
 let browserInstance: Awaited<ReturnType<typeof puppeteerExtra.launch>> | null = null;
 let launchPromise: Promise<typeof browserInstance> | null = null;
 
+export function isBrowserAvailable(): boolean {
+  return !chromiumUnavailable;
+}
+
 async function getBrowser() {
+  if (chromiumUnavailable) return null;
+
   if (browserInstance) {
     const alive = browserInstance.connected;
     if (alive) return browserInstance;
@@ -26,6 +33,10 @@ async function getBrowser() {
       });
       browserInstance = browser;
       return browser;
+    } catch (err) {
+      chromiumUnavailable = true;
+      console.warn('[StealthBrowser] Chromium unavailable, marking as disabled:', err instanceof Error ? err.message : err);
+      return null;
     } finally {
       launchPromise = null;
     }
@@ -39,6 +50,8 @@ let scholarBrowserInstance: Awaited<ReturnType<typeof puppeteerExtra.launch>> | 
 let scholarLaunchPromise: Promise<typeof scholarBrowserInstance> | null = null;
 
 export async function getScholarBrowser() {
+  if (chromiumUnavailable) return null;
+
   if (scholarBrowserInstance) {
     const alive = scholarBrowserInstance.connected;
     if (alive) return scholarBrowserInstance;
@@ -64,6 +77,10 @@ export async function getScholarBrowser() {
       });
       scholarBrowserInstance = browser;
       return browser;
+    } catch (err) {
+      chromiumUnavailable = true;
+      console.warn('[StealthBrowser] Chromium unavailable for Scholar, marking as disabled:', err instanceof Error ? err.message : err);
+      return null;
     } finally {
       scholarLaunchPromise = null;
     }
@@ -83,6 +100,9 @@ export async function stealthFetch(
   opts?: { waitSelector?: string; timeoutMs?: number }
 ): Promise<StealthFetchResult> {
   const browser = await getBrowser();
+  if (!browser) {
+    return { html: '', ok: false, status: 0 };
+  }
   const page = await browser.newPage();
 
   try {

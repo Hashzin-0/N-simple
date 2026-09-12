@@ -1,4 +1,5 @@
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
+import { isBrowserAvailable } from '@/lib/stealthBrowser';
 import { getCached, setCache } from '@/lib/scraperCache';
 
 const INPA_API = 'https://ri.inpa.gov.br/server/api';
@@ -153,49 +154,51 @@ export async function scrapeINPA(
   }
 
   // Strategy 2: Stealth browser fallback
-  const searchUrl = `https://ri.inpa.gov.br/discover?query=${encodeURIComponent(query)}`;
-  try {
-    const { stealthFetch } = await import('@/lib/stealthBrowser');
-    const result = await stealthFetch(searchUrl, {
-      waitSelector: '.item-list, .artifact-title, h3.title',
-      timeoutMs: 25000,
-    });
-    if (result.ok && result.html.length > 5000) {
-      const cheerio = await import('cheerio');
-      const $ = cheerio.load(result.html);
-      const results: ScientificSource[] = [];
-
-      $('h3.title a, .artifact-title a, .item-list .title a').each((_i: number, el: any) => {
-        if (results.length >= maxResults) return false;
-        const title = cleanText($(el).text());
-        if (!title || title.length < 5) return;
-
-        const href = $(el).attr('href') || '';
-        const directUrl = href.startsWith('http') ? href : `https://ri.inpa.gov.br${href}`;
-
-        results.push({
-          id: `inpa-stealth-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          title,
-          authors: 'INPA',
-          year: new Date().getFullYear(),
-          publication: 'INPA - Instituto Nacional de Pesquisas da Amazônia',
-          sourceName: 'INPA',
-          sourceType: 'artigo_periodico',
-          abstract: 'Pesquisa disponível no repositório do INPA.',
-          keywords: extractKeywords(title, ''),
-          directUrl,
-          searchUrl,
-          abntCitation: `INPA. ${title}. INPA, ${new Date().getFullYear()}.`,
-        });
+  if (isBrowserAvailable()) {
+    const searchUrl = `https://ri.inpa.gov.br/discover?query=${encodeURIComponent(query)}`;
+    try {
+      const { stealthFetch } = await import('@/lib/stealthBrowser');
+      const result = await stealthFetch(searchUrl, {
+        waitSelector: '.item-list, .artifact-title, h3.title',
+        timeoutMs: 25000,
       });
+      if (result.ok && result.html.length > 5000) {
+        const cheerio = await import('cheerio');
+        const $ = cheerio.load(result.html);
+        const results: ScientificSource[] = [];
 
-      if (results.length > 0) {
-        setCache('inpa', query, results);
-        return results;
+        $('h3.title a, .artifact-title a, .item-list .title a').each((_i: number, el: any) => {
+          if (results.length >= maxResults) return false;
+          const title = cleanText($(el).text());
+          if (!title || title.length < 5) return;
+
+          const href = $(el).attr('href') || '';
+          const directUrl = href.startsWith('http') ? href : `https://ri.inpa.gov.br${href}`;
+
+          results.push({
+            id: `inpa-stealth-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            title,
+            authors: 'INPA',
+            year: new Date().getFullYear(),
+            publication: 'INPA - Instituto Nacional de Pesquisas da Amazônia',
+            sourceName: 'INPA',
+            sourceType: 'artigo_periodico',
+            abstract: 'Pesquisa disponível no repositório do INPA.',
+            keywords: extractKeywords(title, ''),
+            directUrl,
+            searchUrl,
+            abntCitation: `INPA. ${title}. INPA, ${new Date().getFullYear()}.`,
+          });
+        });
+
+        if (results.length > 0) {
+          setCache('inpa', query, results);
+          return results;
+        }
       }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
   }
 
   return [];

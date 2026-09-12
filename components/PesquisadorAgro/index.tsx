@@ -5,7 +5,7 @@ import PesquisadorFontesCard from './PesquisadorFontesCard';
 import PortaisConfiaveisSection from './PortaisConfiaveisSection';
 import PesquisadorAutomaticoSection from './PesquisadorAutomaticoSection';
 import { ScientificSource } from './types';
-import { useSearchedSources } from '@/hooks/useSearchedSources';
+import { useEvidenceMemory } from '@/hooks/useEvidenceMemory';
 
 interface PesquisadorAgroProps {
   isDark?: boolean;
@@ -13,11 +13,12 @@ interface PesquisadorAgroProps {
 
 export default function PesquisadorAgro({ isDark = false }: PesquisadorAgroProps) {
   const [currentTheme, setCurrentTheme] = useState<string>('');
-  const { cachedSources, saveSources } = useSearchedSources();
+  const { cachedSources, saveSources, indexEvidence } = useEvidenceMemory();
 
-  const handleSourcesLoaded = (sources: ScientificSource[]) => {
+  const handleSourcesLoaded = async (sources: ScientificSource[]) => {
     if (currentTheme) {
       saveSources(currentTheme, sources);
+      await indexEvidence(sources, [], currentTheme);
     }
   };
 
