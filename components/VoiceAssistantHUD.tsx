@@ -15,7 +15,8 @@ interface VoiceAssistantHUDProps {
   onToggleMute: () => void;
 }
 
-const LONG_PRESS_MS = 500;
+const LONG_PRESS_MS = 700;
+const LONG_PRESS_GRACE_MS = 300;
 const MUTE_INDICATOR_DURATION_MS = 2000;
 
 export default function VoiceAssistantHUD({
@@ -38,6 +39,7 @@ export default function VoiceAssistantHUD({
   const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pressStartRef = useRef<{ x: number; y: number } | null>(null);
   const didLongPressRef = useRef(false);
+  const longPressGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const muteIndicatorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevMutedRef = useRef(isMuted);
 
@@ -57,10 +59,20 @@ export default function VoiceAssistantHUD({
     }
   }, [isMuted, flashMuteIndicator]);
 
+  useEffect(() => {
+    return () => {
+      if (longPressGraceRef.current) clearTimeout(longPressGraceRef.current);
+    };
+  }, []);
+
   const clearPressTimer = useCallback(() => {
     if (pressTimerRef.current) {
       clearTimeout(pressTimerRef.current);
       pressTimerRef.current = null;
+    }
+    if (longPressGraceRef.current) {
+      clearTimeout(longPressGraceRef.current);
+      longPressGraceRef.current = null;
     }
   }, []);
 
@@ -74,6 +86,9 @@ export default function VoiceAssistantHUD({
         didLongPressRef.current = true;
         onToggleMute();
         flashMuteIndicator();
+        longPressGraceRef.current = setTimeout(() => {
+          longPressGraceRef.current = null;
+        }, LONG_PRESS_GRACE_MS);
       }, LONG_PRESS_MS);
     },
     [isConnected, onToggleMute, flashMuteIndicator]
@@ -90,7 +105,7 @@ export default function VoiceAssistantHUD({
   }, [clearPressTimer]);
 
   const handlePointerUp = useCallback(() => {
-    if (didLongPressRef.current) {
+    if (didLongPressRef.current || longPressGraceRef.current) {
       didLongPressRef.current = false;
       pressStartRef.current = null;
       clearPressTimer();
@@ -126,7 +141,7 @@ export default function VoiceAssistantHUD({
             className="pointer-events-auto pb-4"
           >
             <AsciiSphere
-              size={56}
+              size={72}
               onClick={handleAsciiClick}
               isConnecting={isConnecting}
             />

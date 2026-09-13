@@ -6,6 +6,7 @@ import { decideReuse } from '@/lib/reuseDecision';
 import { indexSources } from '@/lib/evidenceIndex';
 import { extractTopics } from '@/lib/topicExtractor';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { scoreBySemanticRelevance } from '@/lib/scrapers/semanticFilter';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,7 +113,11 @@ export async function POST(req: NextRequest) {
 
                 try {
                   const results = await scraper.fn(cleanQuery, maxResults, searchOptions.language);
-                  const withTrigonometry = results.map((src) => ({
+
+                  // ── DIAGNOSTIC: Cross-Encoder semantic scoring ──
+                  const semanticScored = await scoreBySemanticRelevance(cleanQuery, results);
+
+                  const withTrigonometry = semanticScored.map((src) => ({
                     ...src,
                     trigonometricSimilarity: computeTrigonometricSimilarity(cleanQuery, src),
                   }));
@@ -160,7 +165,10 @@ export async function POST(req: NextRequest) {
 
     const result = await searchAllSources(cleanQuery, topicsToSearch, searchOptions);
 
-    const withTrigonometry = result.sources.map((src) => ({
+    // ── DIAGNOSTIC: Cross-Encoder semantic scoring ──
+    const semanticScored = await scoreBySemanticRelevance(cleanQuery, result.sources);
+
+    const withTrigonometry = semanticScored.map((src) => ({
       ...src,
       trigonometricSimilarity: computeTrigonometricSimilarity(cleanQuery, src),
     }));

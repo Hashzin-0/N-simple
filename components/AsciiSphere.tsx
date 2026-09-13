@@ -12,7 +12,7 @@ interface AsciiSphereProps {
 const CHAR_RAMP = ' .,:;+*%#@';
 
 export default function AsciiSphere({
-  size = 56,
+  size = 72,
   onClick,
   isConnecting = false,
   className = '',
