@@ -180,15 +180,24 @@ export default function PesquisadorFontesCard({
     }
   }, [dynamicSources, onSourcesLoaded]);
 
-  // Compute trigonometric similarity + BM25 for all available sources
+  // Quando não há filtro local digitado, usa o score REAL já calculado
+  // pelo motor semântico no servidor (lib/semantic/relevanceEngine.ts).
+  // A heurística local (computeTrigonometricSimilarity) só entra em jogo
+  // para reordenar instantaneamente a lista quando o usuário digita um
+  // termo de refinamento aqui no card — nunca para substituir o score real.
   const scoredSources: ScoredSource[] = useMemo(() => {
     const query = searchTerm.trim();
     if (!query || allAvailableSources.length === 0) {
       return allAvailableSources.map((src) => ({
         ...src,
-        trigonometricSimilarity: computeTrigonometricSimilarity(query || '', src),
+        trigonometricSimilarity: src.trigonometricSimilarity ?? {
+          cosTheta: 0,
+          angleDegrees: 90,
+          percentage: 0,
+          alignmentQuality: 'Moderada' as const,
+        },
         bm25Score: 0,
-        combinedScore: 0,
+        combinedScore: (src.trigonometricSimilarity?.percentage ?? 0) / 100,
       })) as ScoredSource[];
     }
 
@@ -211,7 +220,12 @@ export default function PesquisadorFontesCard({
     const bm25Norm = bm25Raw.map((s) => Math.min(1, s / maxBM25));
 
     return allAvailableSources.map((src, idx) => {
-      const trig = computeTrigonometricSimilarity(query, src);
+      // Prioriza o score REAL calculado pelo motor semântico no servidor
+      // (embeddings de texto completo). A heurística local (TF ponderado)
+      // só é usada como sinal secundário de keyword-boost, ou como
+      // fallback para fontes antigas em cache que não passaram pelo motor.
+      const realTrig = src.trigonometricSimilarity;
+      const trig = realTrig ?? computeTrigonometricSimilarity(query, src);
       const trigVal = trig?.cosTheta ?? 0;
       const bm25Val = bm25Norm[idx] || 0;
 
@@ -219,7 +233,7 @@ export default function PesquisadorFontesCard({
         ...src,
         trigonometricSimilarity: trig,
         bm25Score: bm25Val,
-        combinedScore: Math.max(trigVal, bm25Val),
+        combinedScore: Math.max(trigVal, bm25Val * 0.6),
       };
     }) as ScoredSource[];
   }, [allAvailableSources, searchTerm]);

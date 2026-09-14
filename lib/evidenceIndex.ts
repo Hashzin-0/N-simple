@@ -1,7 +1,8 @@
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { normalizeTopic, sourceKeyFromTitle } from '@/lib/topicExtractor';
-import { computeTrigonometricSimilarity } from '@/components/PesquisadorAgro/trigonometry';
+import { UnderstoodSource } from '@/lib/semantic/relevanceEngine';
+import { embedText, cosineSimilarity, cosineToPercentage } from '@/lib/semantic/embeddings';
+import { SEMANTIC_DISCARD_THRESHOLD } from '@/lib/semantic/config';
 
 interface IndexedSource {
   id: string;
@@ -9,80 +10,47 @@ interface IndexedSource {
 }
 
 /**
- * Calcula a força de evidência de uma fonte para um tópico específico.
- * Usa trigonometric similarity + cobertura de keywords + campos estruturados.
+ * Força de evidência de uma fonte para um tópico específico, calculada
+ * por similaridade de embedding real (docEmbedding da fonte vs. embedding
+ * do tópico) — não mais por overlap de substring. Retorna 0-1.
  */
-function computeEvidenceStrength(
-  source: ScientificSource,
+async function computeEvidenceStrength(
+  source: UnderstoodSource,
   topic: string
-): number {
-  const trig = computeTrigonometricSimilarity(topic, source);
-  const trigScore = trig?.cosTheta ?? 0.5;
-
-  const topicLower = topic.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  let structuralBonus = 0;
-
-  if (topicLower.includes('vantag') && (source.vantagens?.length ?? 0) > 0) {
-    structuralBonus += 0.15;
+): Promise<number> {
+  if (!source.docEmbedding || source.docEmbedding.length === 0) {
+    return 0;
   }
-  if (topicLower.includes('desvantag') && (source.desvantagens?.length ?? 0) > 0) {
-    structuralBonus += 0.15;
-  }
-  if (topicLower.includes('caracter') && (source.caracteristicas?.length ?? 0) > 0) {
-    structuralBonus += 0.12;
-  }
-
-  const keywordText = (source.keywords || []).join(' ').toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const topicTokens = topicLower.split(/[\s_]+/);
-  let keywordHits = 0;
-  for (const token of topicTokens) {
-    if (token.length > 2 && keywordText.includes(token)) keywordHits++;
-  }
-  if (topicTokens.length > 0) {
-    structuralBonus += (keywordHits / topicTokens.length) * 0.1;
-  }
-
-  return Math.min(1.0, Math.max(0.0, trigScore + structuralBonus));
+  const topicEmbedding = await embedText(topic.replace(/_/g, ' '));
+  const cos = cosineSimilarity(topicEmbedding, source.docEmbedding);
+  return cosineToPercentage(cos) / 100;
 }
 
 /**
- * Verifica se uma fonte realmente contém evidência sobre o tópico.
- */
-function hasSourceEvidence(
-  source: ScientificSource,
-  topic: string
-): boolean {
-  const strength = computeEvidenceStrength(source, topic);
-  if (strength >= 0.4) return true;
-
-  const topicLower = topic.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const allText = [
-    source.title,
-    source.abstract || '',
-    (source.keywords || []).join(' '),
-    (source.vantagens || []).join(' '),
-    (source.desvantagens || []).join(' '),
-    (source.caracteristicas || []).join(' '),
-  ].join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-  const tokens = topicLower.split(/[\s_]+/).filter(t => t.length > 2);
-  let matches = 0;
-  for (const token of tokens) {
-    if (allText.includes(token)) matches++;
-  }
-  return tokens.length > 0 && (matches / tokens.length) >= 0.5;
-}
-
-/**
- * Indexa uma fonte e seus tópicos no Supabase.
- * Faz upsert: se a fonte já existe, atualiza; senão, insere.
+ * Indexa uma fonte JÁ ENTENDIDA pelo motor semântico (embedding, chunks,
+ * categorias, score) no Supabase. Faz upsert na fonte, substitui seus
+ * chunks/categorias, e grava a força de evidência por tópico usando
+ * similaridade de embedding real.
+ *
+ * Regra de persistência (definida pelo usuário):
+ *  - semanticScore > 45 (relevante para a query): sempre salva.
+ *  - semanticScore <= 45 (irrelevante para a query): salva MESMO ASSIM
+ *    se a fonte for sobre agronegócio/agropecuária em geral (inAgroDomain),
+ *    para virar base de conhecimento reaproveitável no futuro — mas nunca
+ *    é retornada ao usuário nesta busca (isso é filtrado por
+ *    `filterAndRankRelevant`, que olha só `discarded`, não `shouldPersist`).
+ *  - Fora do domínio agro E irrelevante para a query: descartada por
+ *    completo, nunca chega ao banco.
  */
 export async function indexSource(
-  source: ScientificSource,
+  source: UnderstoodSource,
   topics: string[]
 ): Promise<IndexedSource | null> {
   if (!isSupabaseConfigured()) return null;
+
+  if (!source.shouldPersist) {
+    return null;
+  }
 
   const key = sourceKeyFromTitle(source.title);
 
@@ -94,50 +62,40 @@ export async function indexSource(
 
   let sourceId: string;
 
+  const sharedFields = {
+    title: source.title,
+    authors: source.authors,
+    year: source.year,
+    publication: source.publication,
+    source_name: source.sourceName,
+    source_type: source.sourceType,
+    abstract: source.abstract,
+    keywords: source.keywords,
+    direct_url: source.directUrl,
+    search_url: source.searchUrl,
+    doi: source.doi,
+    abnt_citation: source.abntCitation,
+    vantagens: source.vantagens || [],
+    desvantagens: source.desvantagens || [],
+    caracteristicas: source.caracteristicas || [],
+    embedding: source.docEmbedding && source.docEmbedding.length > 0 ? source.docEmbedding : null,
+    semantic_score: source.semanticScore,
+    used_full_text: source.usedFullText,
+    best_excerpt: source.bestExcerpt || null,
+    domain_score: source.domainScore,
+    in_agro_domain: source.inAgroDomain,
+  };
+
   if (existingSource) {
     sourceId = existingSource.id;
     await supabase!
       .from('sources')
-      .update({
-        title: source.title,
-        authors: source.authors,
-        year: source.year,
-        publication: source.publication,
-        source_name: source.sourceName,
-        source_type: source.sourceType,
-        abstract: source.abstract,
-        keywords: source.keywords,
-        direct_url: source.directUrl,
-        search_url: source.searchUrl,
-        doi: source.doi,
-        abnt_citation: source.abntCitation,
-        vantagens: source.vantagens || [],
-        desvantagens: source.desvantagens || [],
-        caracteristicas: source.caracteristicas || [],
-        last_verified: new Date().toISOString(),
-      })
+      .update({ ...sharedFields, last_verified: new Date().toISOString() })
       .eq('id', sourceId);
   } else {
     const { data: inserted, error } = await supabase!
       .from('sources')
-      .insert({
-        source_key: key,
-        title: source.title,
-        authors: source.authors,
-        year: source.year,
-        publication: source.publication,
-        source_name: source.sourceName,
-        source_type: source.sourceType,
-        abstract: source.abstract,
-        keywords: source.keywords,
-        direct_url: source.directUrl,
-        search_url: source.searchUrl,
-        doi: source.doi,
-        abnt_citation: source.abntCitation,
-        vantagens: source.vantagens || [],
-        desvantagens: source.desvantagens || [],
-        caracteristicas: source.caracteristicas || [],
-      })
+      .insert({ source_key: key, ...sharedFields })
       .select('id, source_key')
       .single();
 
@@ -148,10 +106,35 @@ export async function indexSource(
     sourceId = inserted.id;
   }
 
+  // Substitui os chunks e categorias (índice de reuso rápido) desta fonte.
+  await supabase!.from('source_chunks').delete().eq('source_id', sourceId);
+  if (source.chunks.length > 0) {
+    await supabase!.from('source_chunks').insert(
+      source.chunks.map((chunk, idx) => ({
+        source_id: sourceId,
+        chunk_index: idx,
+        chunk_text: chunk.text,
+        embedding: chunk.embedding,
+      }))
+    );
+  }
+
+  await supabase!.from('source_categories').delete().eq('source_id', sourceId);
+  if (source.semanticCategories.length > 0) {
+    await supabase!.from('source_categories').insert(
+      source.semanticCategories.map((cat) => ({
+        source_id: sourceId,
+        label: cat.label,
+        score: cat.score,
+      }))
+    );
+  }
+
+  // Força de evidência por tópico da busca (coverage), via embedding real.
   for (const topic of topics) {
     const normalized = normalizeTopic(topic);
-    const evidenceStrength = computeEvidenceStrength(source, topic);
-    const hasEvidence = hasSourceEvidence(source, topic);
+    const evidenceStrength = await computeEvidenceStrength(source, topic);
+    const hasEvidence = evidenceStrength * 100 > SEMANTIC_DISCARD_THRESHOLD;
 
     await supabase!
       .from('source_topics')
@@ -171,31 +154,46 @@ export async function indexSource(
 }
 
 /**
- * Indexa múltiplas fontes em lote.
+ * Indexa múltiplas fontes (já entendidas pelo motor semântico) em lote.
+ *  - `indexed`: relevantes para a query, salvas E mostráveis ao usuário.
+ *  - `archivedOffTopic`: irrelevantes para esta query mas sobre agro —
+ *    salvas no banco (base futura), NUNCA mostradas nesta busca.
+ *  - `discardedOutOfDomain`: fora do domínio agro inteiro — nunca salvas.
+ *  - `errors`: falha de gravação.
  */
 export async function indexSources(
-  sources: ScientificSource[],
+  sources: UnderstoodSource[],
   topics: string[]
-): Promise<{ indexed: number; errors: number }> {
+): Promise<{ indexed: number; archivedOffTopic: number; discardedOutOfDomain: number; errors: number }> {
   let indexed = 0;
+  let archivedOffTopic = 0;
+  let discardedOutOfDomain = 0;
   let errors = 0;
 
   const BATCH_SIZE = 10;
   for (let i = 0; i < sources.length; i += BATCH_SIZE) {
     const batch = sources.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
-      batch.map(src => indexSource(src, topics))
+      batch.map(async (src) => {
+        if (!src.shouldPersist) return 'discardedOutOfDomain' as const;
+        const result = await indexSource(src, topics);
+        if (!result) return 'error' as const;
+        return src.discarded ? ('archivedOffTopic' as const) : ('indexed' as const);
+      })
     );
     for (const result of results) {
-      if (result.status === 'fulfilled' && result.value) {
-        indexed++;
+      if (result.status === 'fulfilled') {
+        if (result.value === 'indexed') indexed++;
+        else if (result.value === 'archivedOffTopic') archivedOffTopic++;
+        else if (result.value === 'discardedOutOfDomain') discardedOutOfDomain++;
+        else errors++;
       } else {
         errors++;
       }
     }
   }
 
-  return { indexed, errors };
+  return { indexed, archivedOffTopic, discardedOutOfDomain, errors };
 }
 
 /**

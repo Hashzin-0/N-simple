@@ -106,6 +106,20 @@ function logitToProbability(logit: number): number {
 }
 
 /**
+ * Sinal secundário reutilizável pelo motor semântico principal
+ * (`lib/semantic/relevanceEngine.ts`): score de cross-encoder (0-1)
+ * para um par (query, texto) qualquer — não só título/abstract.
+ */
+export async function crossEncoderScore(query: string, text: string): Promise<number> {
+  try {
+    const logit = await scorePairRaw(query, text.slice(0, 512));
+    return logitToProbability(logit);
+  } catch {
+    return 0.5;
+  }
+}
+
+/**
  * Score all sources by semantic relevance and filter out irrelevant results.
  * 
  * Uses a cross-encoder model to score query-document relevance.
