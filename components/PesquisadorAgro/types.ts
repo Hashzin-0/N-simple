@@ -34,6 +34,14 @@ export interface ScientificSource {
   matchedTopics?: string[];
   videoDuration?: string;
   imageUrl?: string;
+  /** Score 0-100 do motor semântico local (LLM-free, embeddings + cross-encoder). Fontes com semanticScore <= 45 são descartadas. */
+  semanticScore?: number;
+  /** Categorias/assuntos reais da fonte, extraídos por similaridade de embedding (índice para reuso rápido). */
+  semanticCategories?: { label: string; score: number }[];
+  /** Trecho do texto integral mais relevante para a busca (não apenas o abstract). */
+  bestExcerpt?: string;
+  /** true quando conseguimos ler a página/PDF completo; false quando caímos de volta no abstract. */
+  usedFullText?: boolean;
 }
 
 export interface ReliablePortal {

@@ -1,6 +1,23 @@
 import { TrigonometricSimilarity } from './types';
 
 /**
+ * ATENÇÃO — ISTO NÃO É MAIS O MOTOR DE RELEVÂNCIA DO PROJETO.
+ *
+ * A decisão real de "essa fonte é relevante?" agora vive em
+ * `lib/semantic/relevanceEngine.ts`: embeddings contextuais reais
+ * (bi-encoder multilíngue) sobre o TEXTO COMPLETO de cada fonte, com
+ * cross-encoder como reforço — 100% LLM-free, sem palavras-chave
+ * hardcoded. É esse motor que decide o que é salvo/descartado no banco.
+ *
+ * Esta função aqui é só uma HEURÍSTICA LEVE (TF ponderado, síncrona,
+ * sem rede) usada exclusivamente pelo `PesquisadorFontesCard` para
+ * reordenar instantaneamente a lista já carregada enquanto o usuário
+ * digita num filtro local — não dá pra rodar um transformer a cada
+ * tecla no navegador. Quando o filtro local está vazio, o componente
+ * usa o `trigonometricSimilarity` que já veio do servidor (o score real).
+ */
+
+/**
  * Normaliza e tokeniza strings para espaço vetorial
  */
 function tokenizeAndNormalize(text: string): string[] {

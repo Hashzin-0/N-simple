@@ -1,6 +1,44 @@
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { extractTopics, normalizeTopic } from '@/lib/topicExtractor';
+import { SEMANTIC_DISCARD_THRESHOLD } from '@/lib/semantic/config';
+import { embedText } from '@/lib/semantic/embeddings';
+
+/** Limiar único de relevância (0-1), espelhando SEMANTIC_DISCARD_THRESHOLD (0-100). */
+const UNIFIED_THRESHOLD = SEMANTIC_DISCARD_THRESHOLD / 100;
+
+/**
+ * Busca vetorial direta (pgvector) sobre TODAS as fontes já indexadas,
+ * independente de correspondência textual de tópico. É o que torna o
+ * índice de embeddings útil de verdade para reuso: mesmo fontes salvas
+ * sob tópicos com redação diferente da query atual podem ser encontradas
+ * por similaridade semântica real.
+ */
+async function findSourcesByVector(
+  query: string,
+  limit = 15
+): Promise<Map<string, number>> {
+  const similarityByPk = new Map<string, number>();
+  if (!isSupabaseConfigured()) return similarityByPk;
+
+  try {
+    const queryEmbedding = await embedText(query);
+    const { data, error } = await supabase!.rpc('match_sources_by_embedding', {
+      query_embedding: queryEmbedding,
+      match_threshold: UNIFIED_THRESHOLD,
+      match_count: limit,
+    });
+    if (error || !data) return similarityByPk;
+
+    for (const row of data as Array<{ source_id: string; similarity: number }>) {
+      similarityByPk.set(row.source_id, row.similarity);
+    }
+  } catch (err) {
+    console.warn('[ReuseDecision] Busca vetorial falhou, seguindo só com tópicos:', err);
+  }
+
+  return similarityByPk;
+}
 
 export interface ReuseDecision {
   action: 'reuse' | 'complementary' | 'new_search';
@@ -28,7 +66,7 @@ interface ReuseOptions {
 
 const DEFAULT_OPTIONS: Required<ReuseOptions> = {
   minCoverage: 0.75,
-  complementaryThreshold: 0.45,
+  complementaryThreshold: UNIFIED_THRESHOLD,
   minDiversity: 2,
   maxAgeDays: 90,
 };
@@ -120,10 +158,22 @@ function buildSourceFromDb(row: {
   };
 }
 
-/**
- * Decision Layer principal.
- * Decide se deve reutilizar fontes existentes, complementar ou pesquisar novamente.
- */
+async function fetchSourcesByIds(ids: string[]): Promise<ScientificSource[]> {
+  if (ids.length === 0 || !isSupabaseConfigured()) return [];
+
+  const { data, error } = await supabase!
+    .from('sources')
+    .select(
+      'id, title, authors, year, publication, source_name, source_type, abstract, keywords, direct_url, search_url, doi, abnt_citation, vantagens, desvantagens, caracteristicas, last_verified, reuse_count'
+    )
+    .in('id', ids);
+
+  if (error || !data) return [];
+
+  return data.map((row) =>
+    buildSourceFromDb({ ...row, source_topics: [] } as Parameters<typeof buildSourceFromDb>[0])
+  );
+}
 export async function decideReuse(
   query: string,
   explicitTopics?: string[],
@@ -155,25 +205,30 @@ export async function decideReuse(
 
   const normalizedTopics = allTopics.map(normalizeTopic);
 
-  const { data: topicRows, error: topicError } = await supabase!
-    .from('source_topics')
-    .select(`
-      source_id,
-      topic,
-      topic_normalized,
-      evidence_strength,
-      has_evidence,
-      sources!inner(
-        id, title, authors, year, publication, source_name, source_type,
-        abstract, keywords, direct_url, search_url, doi, abnt_citation,
-        vantagens, desvantagens, caracteristicas, last_verified, reuse_count
-      )
-    `)
-    .in('topic_normalized', normalizedTopics)
-    .eq('has_evidence', true)
-    .gte('evidence_strength', 0.3);
+  const [topicResult, vectorMatches] = await Promise.all([
+    supabase!
+      .from('source_topics')
+      .select(`
+        source_id,
+        topic,
+        topic_normalized,
+        evidence_strength,
+        has_evidence,
+        sources!inner(
+          id, title, authors, year, publication, source_name, source_type,
+          abstract, keywords, direct_url, search_url, doi, abnt_citation,
+          vantagens, desvantagens, caracteristicas, last_verified, reuse_count
+        )
+      `)
+      .in('topic_normalized', normalizedTopics)
+      .eq('has_evidence', true)
+      .gte('evidence_strength', UNIFIED_THRESHOLD),
+    findSourcesByVector(query),
+  ]);
 
-  if (topicError || !topicRows || topicRows.length === 0) {
+  const { data: topicRows, error: topicError } = topicResult;
+
+  if ((topicError || !topicRows || topicRows.length === 0) && vectorMatches.size === 0) {
     return {
       action: 'new_search',
       coverageScore: 0,
@@ -185,6 +240,29 @@ export async function decideReuse(
       diversityScore: 0,
       stats: {
         totalSourcesFound: 0,
+        topicsWithEvidence: 0,
+        topicsWithoutEvidence: allTopics.length,
+        avgEvidenceStrength: 0,
+      },
+    };
+  }
+
+  // Sem nenhum match textual por tópico, mas o índice vetorial achou
+  // fontes semanticamente parecidas com a query (frases diferentes, mesmo
+  // assunto) — reaproveita essas fontes e ainda assim busca material novo.
+  if (!topicRows || topicRows.length === 0) {
+    const vectorSources = await fetchSourcesByIds([...vectorMatches.keys()]);
+    return {
+      action: 'complementary',
+      coverageScore: 0,
+      reuseScore: 0,
+      explorationNeed: 1,
+      sourcesToReuse: vectorSources,
+      topicsNeedingSearch: allTopics,
+      allTopics,
+      diversityScore: 0,
+      stats: {
+        totalSourcesFound: vectorSources.length,
         topicsWithEvidence: 0,
         topicsWithoutEvidence: allTopics.length,
         avgEvidenceStrength: 0,
@@ -255,7 +333,7 @@ export async function decideReuse(
   }
 
   const topicsWithEvidence = [...topicStrengths.entries()]
-    .filter(([_, strengths]) => strengths.some(s => s >= 0.4))
+    .filter(([_, strengths]) => strengths.some(s => s >= UNIFIED_THRESHOLD))
     .map(([topic]) => topic);
 
   const topicsWithoutEvidence = allTopics.filter(
@@ -293,6 +371,17 @@ export async function decideReuse(
     .sort((a, b) => b.maxStrength - a.maxStrength)
     .map(e => e.source);
 
+  // Enriquecimento pelo índice vetorial: fontes que o pgvector achou
+  // semanticamente parecidas com a query, mas que não bateram por texto
+  // de tópico (redação diferente) — soma-se ao pool de reuso, sem alterar
+  // o cálculo de coverage/diversidade (que continua só por tópico, já
+  // validado). É o índice de embeddings "valendo a pena" na prática.
+  const extraVectorIds = [...vectorMatches.keys()].filter((id) => !sourceMap.has(id));
+  if (extraVectorIds.length > 0) {
+    const extraSources = await fetchSourcesByIds(extraVectorIds);
+    sourcesToReuse.push(...extraSources);
+  }
+
   if (coverageScore >= opts.minCoverage && diversityScore >= (opts.minDiversity / 5)) {
     action = 'reuse';
   } else if (coverageScore >= opts.complementaryThreshold) {
@@ -317,17 +406,23 @@ export async function decideReuse(
     action = 'new_search';
   }
 
+  // Regra do usuário: entre 45% e 75% de cobertura, sempre reutiliza E
+  // busca fontes novas (mesmo em tópicos já cobertos) para fazer um
+  // contraponto — não é só "preencher lacuna", é validar cruzado.
+  const topicsNeedingSearch =
+    action === 'new_search' ? allTopics : action === 'complementary' ? allTopics : topicsWithoutEvidence;
+
   return {
     action,
     coverageScore: Math.round(coverageScore * 1000) / 1000,
     reuseScore: Math.round(reuseScore * 1000) / 1000,
     explorationNeed: Math.round(explorationNeed * 1000) / 1000,
     sourcesToReuse,
-    topicsNeedingSearch: action === 'new_search' ? allTopics : topicsWithoutEvidence,
+    topicsNeedingSearch,
     allTopics,
     diversityScore: Math.round(diversityScore * 1000) / 1000,
     stats: {
-      totalSourcesFound: sourceMap.size,
+      totalSourcesFound: sourcesToReuse.length,
       topicsWithEvidence: topicsWithEvidence.length,
       topicsWithoutEvidence: topicsWithoutEvidence.length,
       avgEvidenceStrength: Math.round(avgEvidenceStrength * 1000) / 1000,

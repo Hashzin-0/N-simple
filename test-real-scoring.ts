@@ -15,8 +15,8 @@ async function runFilterTests() {
     console.log(`QUERY: "${query}"`);
     console.log('='.repeat(80));
     
-    const crossrefResults = await scrapeCrossref(query, 5, 'pt');
-    const openalexResults = await scrapeOpenAlex(query, 5, 'pt');
+    const crossrefResults = await scrapeCrossref(query, 5);
+    const openalexResults = await scrapeOpenAlex(query, 5);
     const allResults = [...crossrefResults, ...openalexResults];
     
     console.log(`Raw: ${allResults.length}`);

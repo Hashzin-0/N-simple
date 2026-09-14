@@ -1,12 +1,10 @@
 import { NextRequest } from 'next/server';
 import { SCRAPERS, SCRAPERS_INTERNAL, SearchOptions, searchAllSources } from '@/lib/scrapers';
-import { computeTrigonometricSimilarity } from '@/components/PesquisadorAgro/trigonometry';
-import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { decideReuse } from '@/lib/reuseDecision';
 import { indexSources } from '@/lib/evidenceIndex';
 import { extractTopics } from '@/lib/topicExtractor';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { scoreBySemanticRelevance } from '@/lib/scrapers/semanticFilter';
+import { understandSources, filterAndRankRelevant } from '@/lib/semantic/relevanceEngine';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,17 +28,10 @@ export async function POST(req: NextRequest) {
       ? await decideReuse(cleanQuery, topics)
       : null;
 
+    // ── ≥75% de cobertura: reutiliza sem precisar pesquisar fontes novas ──
     if (decision && decision.action === 'reuse' && decision.sourcesToReuse.length > 0) {
-      const enrichedSources = decision.sourcesToReuse.map(src => ({
-        ...src,
-        trigonometricSimilarity: computeTrigonometricSimilarity(cleanQuery, src),
-      }));
-
-      enrichedSources.sort(
-        (a, b) =>
-          (b.trigonometricSimilarity?.cosTheta ?? 0) -
-          (a.trigonometricSimilarity?.cosTheta ?? 0)
-      );
+      const understood = await understandSources(cleanQuery, decision.sourcesToReuse);
+      const relevant = filterAndRankRelevant(understood);
 
       if (stream) {
         const encoder = new TextEncoder();
@@ -52,10 +43,10 @@ export async function POST(req: NextRequest) {
             sendEvent('memory_hit', {
               decision: 'reuse',
               coverage: decision.coverageScore,
-              sources: enrichedSources,
+              sources: relevant,
               fromMemory: true,
             });
-            sendEvent('complete', { totalFound: enrichedSources.length, fromMemory: true });
+            sendEvent('complete', { totalFound: relevant.length, fromMemory: true });
             controller.close();
           },
         });
@@ -65,9 +56,9 @@ export async function POST(req: NextRequest) {
       }
 
       return Response.json({
-        sources: enrichedSources,
+        sources: relevant,
         query: cleanQuery,
-        totalFound: enrichedSources.length,
+        totalFound: relevant.length,
         errors: [],
         sourcesUsed: [],
         fromMemory: true,
@@ -81,10 +72,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ── CAMADA 2: Pesquisa web ──
-    const topicsToSearch = decision?.action === 'complementary'
+    // ── 45%-75% (complementary) ou <45% (new_search): pesquisa fontes novas.
+    // No caso "complementary", isso serve de CONTRAPONTO às fontes reutilizadas
+    // (mesmo tópicos já cobertos são pesquisados de novo para validação cruzada).
+    const isComplementary = decision?.action === 'complementary';
+    const topicsToSearch = decision?.action === 'complementary' || decision?.action === 'new_search'
       ? decision.topicsNeedingSearch
       : undefined;
+
+    // Fontes reutilizadas (já reentendidas com a query atual) para contraponto.
+    const reusedUnderstood = isComplementary && decision
+      ? filterAndRankRelevant(await understandSources(cleanQuery, decision.sourcesToReuse))
+      : [];
 
     if (stream) {
       const encoder = new TextEncoder();
@@ -95,12 +94,13 @@ export async function POST(req: NextRequest) {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`));
             };
 
-            if (decision && decision.action === 'complementary') {
+            if (isComplementary) {
               sendEvent('memory_partial', {
                 decision: 'complementary',
-                coverage: decision.coverageScore,
-                cachedSources: decision.sourcesToReuse,
-                topicsNeedingSearch: decision.topicsNeedingSearch,
+                coverage: decision!.coverageScore,
+                cachedSources: reusedUnderstood,
+                topicsNeedingSearch: decision!.topicsNeedingSearch,
+                note: 'Fontes reutilizadas mostradas como contraponto às pesquisadas agora.',
               });
             }
 
@@ -112,40 +112,40 @@ export async function POST(req: NextRequest) {
                 sendEvent('scraper_start', { name: scraper.name, maxResults });
 
                 try {
-                  const results = await scraper.fn(cleanQuery, maxResults, searchOptions.language);
+                  const rawResults = await scraper.fn(cleanQuery, maxResults, searchOptions.language);
 
-                  // ── DIAGNOSTIC: Cross-Encoder semantic scoring ──
-                  const semanticScored = await scoreBySemanticRelevance(cleanQuery, results);
+                  // ── Motor semântico: lê, entende e pontua cada fonte de verdade ──
+                  const understood = await understandSources(cleanQuery, rawResults);
+                  const relevant = filterAndRankRelevant(understood);
 
-                  const withTrigonometry = semanticScored.map((src) => ({
-                    ...src,
-                    trigonometricSimilarity: computeTrigonometricSimilarity(cleanQuery, src),
-                  }));
-                  sendEvent('scraper_complete', { name: scraper.name, results: withTrigonometry, count: withTrigonometry.length });
-                  return { name: scraper.name, results: withTrigonometry };
+                  sendEvent('scraper_complete', { name: scraper.name, results: relevant, count: relevant.length });
+                  return { name: scraper.name, understood };
                 } catch (err) {
                   const msg = err instanceof Error ? err.message : String(err);
                   sendEvent('scraper_error', { name: scraper.name, error: msg });
-                  return { name: scraper.name, results: [] };
+                  return { name: scraper.name, understood: [] };
                 }
               })
             );
 
-            const allSources: (ScientificSource & { trigonometricSimilarity: ReturnType<typeof computeTrigonometricSimilarity> })[] = [];
+            const allUnderstood: Awaited<ReturnType<typeof understandSources>> = [];
             for (const result of allResults) {
               if (result.status === 'fulfilled') {
-                allSources.push(...result.value.results);
+                allUnderstood.push(...result.value.understood);
               }
             }
 
-            // ── CAMADA 3: Indexar novas fontes na memória ──
-            if (isSupabaseConfigured() && allSources.length > 0) {
-              indexSources(allSources, topics).catch(err =>
+            // ── Indexa TODAS as fontes entendidas (a regra de persistência —
+            // relevante para a query, ou fora de tópico mas sobre agro — é
+            // aplicada dentro de indexSources; o resto é descartado). ──
+            if (isSupabaseConfigured() && allUnderstood.length > 0) {
+              indexSources(allUnderstood, topics).catch(err =>
                 console.warn('[EvidenceIndex] Falha ao indexar:', err)
               );
             }
 
-            sendEvent('complete', { totalFound: allSources.length });
+            const totalRelevant = filterAndRankRelevant(allUnderstood).length + reusedUnderstood.length;
+            sendEvent('complete', { totalFound: totalRelevant });
 
             controller.close();
           } catch (err) {
@@ -165,31 +165,28 @@ export async function POST(req: NextRequest) {
 
     const result = await searchAllSources(cleanQuery, topicsToSearch, searchOptions);
 
-    // ── DIAGNOSTIC: Cross-Encoder semantic scoring ──
-    const semanticScored = await scoreBySemanticRelevance(cleanQuery, result.sources);
+    // ── Motor semântico: lê, entende e pontua cada fonte de verdade ──
+    const understood = await understandSources(cleanQuery, result.sources);
+    const relevantNew = filterAndRankRelevant(understood);
 
-    const withTrigonometry = semanticScored.map((src) => ({
-      ...src,
-      trigonometricSimilarity: computeTrigonometricSimilarity(cleanQuery, src),
-    }));
-
-    withTrigonometry.sort(
-      (a, b) =>
-        (b.trigonometricSimilarity?.cosTheta ?? 0) -
-        (a.trigonometricSimilarity?.cosTheta ?? 0)
-    );
-
-    // Indexar novas fontes na memória
-    if (isSupabaseConfigured() && withTrigonometry.length > 0) {
-      indexSources(withTrigonometry, topics).catch(err =>
+    // Indexa tudo (relevantes + fora-de-tópico-mas-agro; o resto é descartado dentro).
+    if (isSupabaseConfigured() && understood.length > 0) {
+      indexSources(understood, topics).catch(err =>
         console.warn('[EvidenceIndex] Falha ao indexar:', err)
       );
     }
 
+    // Combina contraponto (reutilizadas) + novas, sem duplicar por título.
+    const seenTitles = new Set(reusedUnderstood.map(s => s.title));
+    const combined = [
+      ...reusedUnderstood,
+      ...relevantNew.filter(s => !seenTitles.has(s.title)),
+    ].sort((a, b) => b.semanticScore - a.semanticScore);
+
     return Response.json({
-      sources: withTrigonometry,
+      sources: combined,
       query: cleanQuery,
-      totalFound: withTrigonometry.length,
+      totalFound: combined.length,
       errors: result.errors,
       sourcesUsed: result.sourcesUsed,
       memoryDecision: decision ? {
