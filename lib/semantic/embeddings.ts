@@ -22,6 +22,7 @@ async function getExtractor() {
       const { pipeline, env } = await import('@xenova/transformers');
       env.useBrowserCache = false;
       env.allowLocalModels = true;
+      env.cacheDir = '/tmp';
       return pipeline('feature-extraction', EMBEDDING_MODEL);
     })();
   }

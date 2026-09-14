@@ -50,6 +50,7 @@ async function getTokenizer() {
   const { AutoTokenizer, env } = await import('@xenova/transformers');
   env.useBrowserCache = false;
   env.allowLocalModels = true;
+  env.cacheDir = '/tmp';
   if (!tokenizerCache) {
     tokenizerCache = await AutoTokenizer.from_pretrained('Xenova/ms-marco-MiniLM-L-6-v2');
   }
@@ -60,6 +61,7 @@ async function getModel() {
   const { AutoModelForSequenceClassification, env } = await import('@xenova/transformers');
   env.useBrowserCache = false;
   env.allowLocalModels = true;
+  env.cacheDir = '/tmp';
   if (!modelCache) {
     modelCache = await AutoModelForSequenceClassification.from_pretrained('Xenova/ms-marco-MiniLM-L-6-v2');
   }
