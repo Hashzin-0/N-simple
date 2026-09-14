@@ -1,28 +1,32 @@
 /**
- * Configuração central do Motor Semântico Local (LLM-Free).
+ * Configuração central do Motor Semântico.
  *
- * Inspirado no LiteSemRAG (arXiv:2604.16350) — "Lightweight LLM-Free
- * Semantic-Aware Graph Retrieval for Robust RAG": entendimento de
- * relevância via embeddings contextuais (token-level -> chunk-level),
- * sem depender de nenhuma chamada a LLM para indexar ou julgar fontes.
+ * Arquitetura híbrida:
+ * - Bi-encoder: Gemini Embedding 2 (API, 768 dims via Matryoshka)
+ * - Cross-encoder: ONNX local (~90MB) para reranking de precisão
  *
  * Este arquivo é a ÚNICA fonte de verdade para o corte de relevância.
- * Antes existiam dois limiares desconectados (logit do cross-encoder e
- * coverageScore da decisão de reuso). Agora existe um único score
- * semântico 0-100 e uma única regra de descarte.
+ * Antes existiam dois limiares desconectados. Agora existe um único
+ * score semântico 0-100 e uma única regra de descarte.
  */
 
 /** Fontes com score semântico <= a este valor são descartadas (nunca salvas). */
 export const SEMANTIC_DISCARD_THRESHOLD = 45;
 
-/** Modelo de embeddings bi-encoder, multilíngue (cobre PT-BR nativamente). */
-export const EMBEDDING_MODEL = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2';
+/** Modelo de embeddings bi-encoder (Gemini Embedding 2 via API). */
+export const EMBEDDING_MODEL = 'gemini-embedding-2';
 
-/** Dimensão do vetor de saída do modelo acima. */
-export const EMBEDDING_DIM = 384;
+/** Dimensão do vetor de saída do modelo acima (Matryoshka: 768 recomendado). */
+export const EMBEDDING_DIM = 768;
 
-/** Cross-encoder já existente no projeto, usado como sinal secundário de reranqueamento. */
+/** Cross-encoder local, usado como sinal secundário de reranqueamento. */
 export const CROSS_ENCODER_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
+
+/** Top-K para recuperação vetorial (primeira etapa do pipeline). */
+export const RETRIEVAL_TOP_K = 50;
+
+/** Top-K para reranking (segunda etapa do pipeline). */
+export const RERANK_TOP_K = 10;
 
 /** Tamanho alvo de cada chunk de texto completo, em caracteres (~ half token ratio p/ PT-BR). */
 export const CHUNK_TARGET_CHARS = 900;
@@ -31,7 +35,7 @@ export const CHUNK_TARGET_CHARS = 900;
 export const CHUNK_OVERLAP_CHARS = 150;
 
 /** Máximo de chunks avaliados por fonte (limita custo computacional por documento). */
-export const MAX_CHUNKS_PER_SOURCE = 24;
+export const MAX_CHUNKS_PER_SOURCE = 8;
 
 /** Timeout ao buscar o texto completo da página/PDF de uma fonte. */
 export const FULL_TEXT_FETCH_TIMEOUT_MS = 12000;
@@ -40,7 +44,7 @@ export const FULL_TEXT_FETCH_TIMEOUT_MS = 12000;
 export const MAX_FULL_TEXT_CHARS = 40000;
 
 /** Quantas fontes são processadas em paralelo pelo motor (ler + entender). */
-export const ENGINE_CONCURRENCY = 4;
+export const ENGINE_CONCURRENCY = 2;
 
 /** Quantos chunks de maior similaridade entram na média ponderada do score final. */
 export const TOP_K_CHUNKS_FOR_SCORE = 3;
@@ -50,7 +54,7 @@ export const BI_ENCODER_WEIGHT = 0.7;
 export const CROSS_ENCODER_WEIGHT = 0.3;
 
 /** Quantas categorias semânticas (índice de assunto) extrair por fonte. */
-export const MAX_CATEGORIES_PER_SOURCE = 8;
+export const MAX_CATEGORIES_PER_SOURCE = 4;
 
 /**
  * Relevância de DOMÍNIO (agronegócio/agropecuária em geral) — eixo

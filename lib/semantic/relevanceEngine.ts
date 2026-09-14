@@ -12,20 +12,16 @@ import {
   ENGINE_CONCURRENCY,
   AGRO_DOMAIN_RELEVANCE_THRESHOLD,
   AGRO_DOMAIN_DESCRIPTOR,
+  RETRIEVAL_TOP_K,
+  RERANK_TOP_K,
 } from './config';
 
 /**
- * MOTOR SEMÂNTICO PRINCIPAL — 100% LLM-free.
+ * MOTOR SEMÂNTICO — Arquitetura híbrida retrieval + reranking.
  *
- * Para cada fonte:
- *   1. Lê o conteúdo de verdade (página/PDF completo, não só título+resumo).
- *   2. Divide em chunks e gera embeddings contextuais reais (bi-encoder).
- *   3. Compara com o embedding da pergunta do usuário via cosseno.
- *   4. Reforça com um cross-encoder (2º sinal, também local) sobre o
- *      trecho mais parecido — mesma ideia do LiteSemRAG de combinar
- *      similaridade estrutural com recuperação semântica isolada.
- *   5. Produz UM score 0-100 e categoriza o assunto real da fonte,
- *      pronto para indexar no Supabase e ser reaproveitado depois.
+ * Etapa 1 (retrieve): Gemini Embedding 2 → pgvector → TOP_K candidatas
+ * Etapa 2 (rerank): Cross-Encoder ONNX → RERANK_TOP_K finais
+ * Etapa 3 (entender): Análise completa com chunks, categorias, domínio
  *
  * Fontes com score final <= 45 são marcadas `discarded` e nunca devem
  * ser salvas nem mostradas ao usuário.
@@ -34,7 +30,7 @@ import {
 export interface UnderstoodChunk {
   text: string;
   embedding: number[];
-  score: number; // similaridade com a query, 0-1
+  score: number;
 }
 
 export interface UnderstoodSource extends ScientificSource {
@@ -45,24 +41,16 @@ export interface UnderstoodSource extends ScientificSource {
   docEmbedding: number[];
   chunks: UnderstoodChunk[];
   usedFullText: boolean;
-  /** Score 0-100 de pertencimento ao domínio agronegócio/agropecuária (eixo independente da query). */
   domainScore: number;
-  /** true se a fonte é sobre agro em geral, mesmo que não relevante para a query atual. */
   inAgroDomain: boolean;
-  /**
-   * true quando a fonte deve ser salva no banco: ou é relevante para a
-   * query (semanticScore > 45), ou é irrelevante para a query mas ainda
-   * assim sobre agronegócio/agropecuária (inAgroDomain). Fontes fora do
-   * domínio inteiro E irrelevantes para a query nunca são persistidas.
-   */
   shouldPersist: boolean;
 }
 
-// Embedding do descritor de domínio agro — calculado uma única vez e reaproveitado.
+// Embedding do descritor de domínio agro — calculado uma única vez.
 let domainAnchorEmbeddingPromise: Promise<number[]> | null = null;
 function getDomainAnchorEmbedding(): Promise<number[]> {
   if (!domainAnchorEmbeddingPromise) {
-    domainAnchorEmbeddingPromise = embedText(AGRO_DOMAIN_DESCRIPTOR);
+    domainAnchorEmbeddingPromise = embedText(AGRO_DOMAIN_DESCRIPTOR, 'RETRIEVAL_DOCUMENT');
   }
   return domainAnchorEmbeddingPromise;
 }
@@ -91,10 +79,75 @@ function angleQuality(pct: number): 'Excepcional' | 'Muito Alta' | 'Alta' | 'Mod
   return 'Moderada';
 }
 
+/**
+ * ETAPA 1: Retrieval — gera embedding da query e retorna fontes ranqueadas
+ * por similaridade de cosseno. Não aplica cross-encoder (isser para o rerank).
+ */
+export async function retrieve(
+  query: string,
+  sources: ScientificSource[],
+  topK: number = RETRIEVAL_TOP_K,
+): Promise<{ source: ScientificSource; score: number; queryEmbedding: number[] }[]> {
+  const queryEmbedding = await embedText(query, 'RETRIEVAL_QUERY');
+
+  const scored = sources.map((source) => {
+    const text = [source.title, source.abstract, (source.keywords || []).join(' ')]
+      .filter(Boolean)
+      .join(' ');
+    const sourceEmbedding = embedText(text, 'RETRIEVAL_DOCUMENT');
+    return sourceEmbedding.then((emb) => ({
+      source,
+      score: cosineSimilarity(queryEmbedding, emb),
+      queryEmbedding,
+    }));
+  });
+
+  const results = await Promise.all(scored);
+  return results
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
+}
+
+/**
+ * ETAPA 2: Reranking — aplica cross-encoder ONNX sobre os top-K candidatos
+ * do retrieval para refinar a ordenação.
+ */
+export async function rerank(
+  query: string,
+  candidates: { source: ScientificSource; score: number; queryEmbedding: number[] }[],
+  topK: number = RERANK_TOP_K,
+): Promise<{ source: ScientificSource; retrievalScore: number; rerankScore: number; queryEmbedding: number[] }[]> {
+  const reranked = await Promise.all(
+    candidates.map(async (c) => {
+      const docText = [c.source.title, c.source.abstract, (c.source.keywords || []).join(' ')]
+        .filter(Boolean)
+        .join(' ')
+        .slice(0, 512);
+
+      const crossProb = await crossEncoderScore(query, docText);
+      return {
+        source: c.source,
+        retrievalScore: c.score,
+        rerankScore: crossProb,
+        queryEmbedding: c.queryEmbedding,
+      };
+    }),
+  );
+
+  return reranked
+    .sort((a, b) => b.rerankScore - a.rerankScore)
+    .slice(0, topK);
+}
+
+/**
+ * Entende uma única fonte: fetch full text, gera chunks, embeddings,
+ * categorias, e score final combinando bi-encoder + cross-encoder.
+ */
 async function understandOne(
   query: string,
   queryEmbedding: number[],
-  source: ScientificSource
+  source: ScientificSource,
+  retrievalScore: number,
 ): Promise<UnderstoodSource> {
   const { text: fullText, ok: hasFullText } = await fetchFullText(source.directUrl);
   const analysisText = buildAnalysisText(source, fullText, hasFullText);
@@ -132,9 +185,6 @@ async function understandOne(
   const domainScore = cosineToPercentage(domainCos);
   const inAgroDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
 
-  // Regra do usuário: fontes ≤45% só são salvas se forem sobre agro em
-  // geral (base de conhecimento futura); fora do domínio, são descartadas
-  // por completo e nunca chegam ao banco.
   const shouldPersist = !discarded || inAgroDomain;
 
   return {
@@ -153,7 +203,6 @@ async function understandOne(
       embedding: chunkEmbeddings[i],
       score: chunkScores[i],
     })),
-    // Mantém o campo de exibição existente na UI, agora alimentado pelo score real.
     trigonometricSimilarity: {
       cosTheta: Math.round(Math.max(0, avgTopKCos) * 1000) / 1000,
       angleDegrees:
@@ -165,9 +214,8 @@ async function understandOne(
 }
 
 /**
- * Lê e entende um lote de fontes em relação à query, com paralelismo
- * limitado (importante em serverless: cada fonte pode envolver 1 fetch
- * de rede + várias inferências locais).
+ * Pipeline completo: retrieve → rerank → understand.
+ * Mantém interface estável para o restante do sistema.
  */
 export async function understandSources(
   query: string,
@@ -175,19 +223,31 @@ export async function understandSources(
 ): Promise<UnderstoodSource[]> {
   if (sources.length === 0) return [];
 
-  const queryEmbedding = await embedText(query);
-  const results: UnderstoodSource[] = new Array(sources.length);
+  // Etapa 1: Retrieval (Gemini Embedding)
+  const retrieved = await retrieve(query, sources, RETRIEVAL_TOP_K);
+
+  // Etapa 2: Reranking (Cross-Encoder ONNX)
+  const reranked = await rerank(query, retrieved, RERANK_TOP_K);
+
+  // Etapa 3: Entender cada fonte final
+  const queryEmbedding = reranked[0]?.queryEmbedding ?? await embedText(query, 'RETRIEVAL_QUERY');
+  const results: UnderstoodSource[] = new Array(reranked.length);
   let cursor = 0;
 
   async function worker() {
-    while (cursor < sources.length) {
+    while (cursor < reranked.length) {
       const i = cursor++;
       try {
-        results[i] = await understandOne(query, queryEmbedding, sources[i]);
+        results[i] = await understandOne(
+          query,
+          queryEmbedding,
+          reranked[i].source,
+          reranked[i].retrievalScore,
+        );
       } catch (err) {
-        console.warn('[SemanticEngine] Falha ao entender fonte, descartando:', sources[i]?.title, err);
+        console.warn('[SemanticEngine] Falha ao entender fonte, descartando:', reranked[i]?.source.title, err);
         results[i] = {
-          ...sources[i],
+          ...reranked[i].source,
           semanticScore: 0,
           semanticCategories: [],
           bestExcerpt: '',
@@ -203,13 +263,13 @@ export async function understandSources(
     }
   }
 
-  const workerCount = Math.min(ENGINE_CONCURRENCY, sources.length);
+  const workerCount = Math.min(ENGINE_CONCURRENCY, reranked.length);
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
   return results;
 }
 
-/** Aplica a regra única de descarte (≤45%) e ordena por relevância real. */
+/** Aplica a regra de descarte e ordena por relevância. */
 export function filterAndRankRelevant(sources: UnderstoodSource[]): UnderstoodSource[] {
   return sources
     .filter((s) => !s.discarded)

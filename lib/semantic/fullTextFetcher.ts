@@ -15,8 +15,38 @@ interface FullTextResult {
   fromCache: boolean;
 }
 
-// Cache em memória por processo (evita re-baixar a mesma URL na mesma execução).
+/**
+ * Cache LRU com limite de 30 entradas para evitar OOM.
+ * Em serverless, cada request é uma instância nova, então o cache
+ * só persiste dentro da mesma execução (é suficiente para batch).
+ */
+const LRU_CACHE_MAX = 30;
 const inMemoryCache = new Map<string, string>();
+
+function lruGet(key: string): string | undefined {
+  const value = inMemoryCache.get(key);
+  if (value !== undefined) {
+    // Move para o final (mais recente)
+    inMemoryCache.delete(key);
+    inMemoryCache.set(key, value);
+  }
+  return value;
+}
+
+function lruSet(key: string, value: string): void {
+  // Remove se já existe (para atualizar ordem)
+  if (inMemoryCache.has(key)) {
+    inMemoryCache.delete(key);
+  }
+  // Remove a entrada mais antiga se atingiu o limite
+  if (inMemoryCache.size >= LRU_CACHE_MAX) {
+    const firstKey = inMemoryCache.keys().next().value;
+    if (firstKey !== undefined) {
+      inMemoryCache.delete(firstKey);
+    }
+  }
+  inMemoryCache.set(key, value);
+}
 
 const BROWSER_HEADERS = {
   'User-Agent':
@@ -136,7 +166,7 @@ function looksLikePdf(url: string): boolean {
 export async function fetchFullText(url: string | undefined): Promise<FullTextResult> {
   if (!url) return { text: '', ok: false, fromCache: false };
 
-  const cached = inMemoryCache.get(url);
+  const cached = lruGet(url);
   if (cached !== undefined) {
     return { text: cached, ok: cached.length > 0, fromCache: true };
   }
@@ -154,7 +184,7 @@ export async function fetchFullText(url: string | undefined): Promise<FullTextRe
   }
 
   const text = raw ? normalizeWhitespace(raw).slice(0, MAX_FULL_TEXT_CHARS) : '';
-  inMemoryCache.set(url, text);
+  lruSet(url, text);
 
   return { text, ok: text.length > 200, fromCache: false };
 }
