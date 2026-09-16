@@ -1,0 +1,96 @@
+'use client';
+
+import React, { useState, useCallback } from 'react';
+import { useTheme } from '@/components/ThemeProvider';
+import { Search, BookOpen } from 'lucide-react';
+import { motion } from 'motion/react';
+import LibrasSearch from './LibrasSearch';
+import LibrasCourse from './LibrasCourse';
+import { useLibrasProgress } from '@/hooks/useLibrasProgress';
+
+type SubTab = 'search' | 'course';
+
+const SUB_TABS: { id: SubTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'search', label: 'Buscar Sinais', icon: Search },
+  { id: 'course', label: 'Mini-Curso', icon: BookOpen },
+];
+
+export default React.memo(function LibrasNoAgro() {
+  const { isDark } = useTheme();
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>('search');
+  const progress = useLibrasProgress();
+
+  const handleSubTabChange = useCallback((tab: SubTab) => {
+    setActiveSubTab(tab);
+  }, []);
+
+  return (
+    <div id="libras_section" className="space-y-4 p-4 sm:p-6">
+      {/* Header */}
+      <div className="text-center space-y-2">
+        <h2
+          className={`text-xl sm:text-2xl font-bold ${
+            isDark ? 'text-[#E8E6DF]' : 'text-[#3D3D3D]'
+          }`}
+        >
+          🤟 Libras no Agro
+        </h2>
+        <p
+          className={`text-sm max-w-md mx-auto ${
+            isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'
+          }`}
+        >
+          Aprenda sinais em Libras relacionados ao agronegócio e à agropecuária
+        </p>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex justify-center">
+        <div
+          className={`inline-flex rounded-xl p-1 gap-1 ${
+            isDark ? 'bg-[#242720]' : 'bg-[#F0EDE5]'
+          }`}
+        >
+          {SUB_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeSubTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => handleSubTabChange(tab.id)}
+                className={`relative flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  isActive
+                    ? isDark
+                      ? 'bg-[#9CB386] text-[#121511]'
+                      : 'bg-[#2E6F40] text-white'
+                    : isDark
+                    ? 'text-[#9EA399] hover:text-[#E8E6DF]'
+                    : 'text-[#8C897E] hover:text-[#3D3D3D]'
+                }`}
+              >
+                <Icon className="size-4" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div
+        id={activeSubTab === 'search' ? 'libras_search' : 'librascurso'}
+        className={`p-4 sm:p-5 rounded-2xl border transition-colors ${
+          isDark
+            ? 'bg-[#1C201A] border-[#2C3328]'
+            : 'bg-white border-[#E5E2D9]'
+        }`}
+      >
+        {activeSubTab === 'search' ? (
+          <LibrasSearch maxResults={3} />
+        ) : (
+          <LibrasCourse progress={progress} />
+        )}
+      </div>
+    </div>
+  );
+});

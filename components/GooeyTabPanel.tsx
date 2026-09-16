@@ -2,9 +2,9 @@
 
 import React, { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { useTheme } from './ThemeProvider';
-import { Sprout, TrendingUp, Landmark, BookOpen, Compass } from 'lucide-react';
+import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand } from 'lucide-react';
 
-export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador';
+export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador' | 'libras';
 
 interface GooeyTabPanelProps {
   activeTab: TabId;
@@ -14,6 +14,7 @@ interface GooeyTabPanelProps {
   itrContent?: React.ReactNode;
   abntContent?: React.ReactNode;
   pesquisadorContent?: React.ReactNode;
+  librasContent?: React.ReactNode;
 }
 
 interface TabItem {
@@ -24,7 +25,7 @@ interface TabItem {
   badge?: string;
 }
 
-export const ALL_4_TABS: TabItem[] = [
+export const ALL_TABS: TabItem[] = [
   {
     id: 'nitrogen',
     label: 'Adubação Nitrogenada',
@@ -60,6 +61,13 @@ export const ALL_4_TABS: TabItem[] = [
     icon: Compass,
     badge: 'Fontes & Artigos',
   },
+  {
+    id: 'libras',
+    label: 'Libras no Agro',
+    shortLabel: 'Libras',
+    icon: Hand,
+    badge: 'Libras',
+  },
 ];
 
 const TAB_INDEX: Record<TabId, number> = {
@@ -68,9 +76,10 @@ const TAB_INDEX: Record<TabId, number> = {
   itr: 2,
   abnt: 3,
   pesquisador: 4,
+  libras: 5,
 };
 
-const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador'];
+const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras'];
 
 export default function GooeyTabPanel({
   activeTab,
@@ -80,6 +89,7 @@ export default function GooeyTabPanel({
   itrContent,
   abntContent,
   pesquisadorContent,
+  librasContent,
 }: GooeyTabPanelProps) {
   const { isDark } = useTheme();
   const rawId = useId();
@@ -190,6 +200,8 @@ export default function GooeyTabPanel({
         return abntContent || null;
       case 'pesquisador':
         return pesquisadorContent || null;
+      case 'libras':
+        return librasContent || null;
       default:
         return nitrogenContent;
     }
@@ -213,7 +225,7 @@ export default function GooeyTabPanel({
           aria-label="Calculadoras Agronômicas N-Pro"
           className="relative flex items-end gap-0 px-0 w-full h-[52px]"
         >
-          {ALL_4_TABS.map((tab) => {
+          {ALL_TABS.map((tab) => {
             const isActive = activeTab === tab.id;
             const Icon = tab.icon;
 
@@ -269,7 +281,7 @@ export default function GooeyTabPanel({
           className={`w-full bg-white dark:bg-[#1C201A] border border-[#E5E2D9] dark:border-[#2C3328] shadow-lg border-r-[4px] border-b-[4px] border-r-[#D0CCC0] dark:border-r-[#242A20] border-b-[#D0CCC0] dark:border-b-[#242A20] transition-all duration-300 ease-out ${
             activeTabIdx === 0
               ? 'rounded-b-3xl rounded-tr-3xl rounded-tl-none'
-              : activeTabIdx === ALL_4_TABS.length - 1
+              :               activeTabIdx === ALL_TABS.length - 1
               ? 'rounded-b-3xl rounded-tl-3xl rounded-tr-none'
               : 'rounded-3xl'
           }`}

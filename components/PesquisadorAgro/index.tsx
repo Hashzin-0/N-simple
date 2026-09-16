@@ -41,7 +41,7 @@ export default function PesquisadorAgro({ isDark = false }: PesquisadorAgroProps
         isDark={isDark}
       />
 
-      {/* 2. SESSÃO: PORTAIS & ACERVOS CONFIÁVEIS (Google Acadêmico, SciELO, Embrapa, etc.) */}
+      {/* 2. SESSÃO: PORTAIS & ACERVOS CONFIÁVEIS (Semantic Scholar, SciELO, Embrapa, etc.) */}
       <PortaisConfiaveisSection
         currentTheme={currentTheme}
         isDark={isDark}

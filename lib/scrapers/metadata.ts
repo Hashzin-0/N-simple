@@ -8,13 +8,6 @@ export interface ScraperMetadata {
 
 export const SCRAPERS_METADATA: ScraperMetadata[] = [
   { 
-    name: 'Google Acadêmico', 
-    max: 25, 
-    maxAllowed: 100, 
-    description: 'Artigos científicos indexados',
-    limitations: 'Sem limite oficial, mas bloqueia requisições automatizadas. Máximo recomendado: 100 por busca.'
-  },
-  { 
     name: 'Embrapa', 
     max: 15, 
     maxAllowed: 50, 

@@ -140,7 +140,6 @@ async function fetchPdfText(url: string): Promise<string | null> {
       parser.on('pdfParser_dataError', (errData: Error | { parserError: Error }) => {
         reject(errData instanceof Error ? errData : errData.parserError);
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       parser.on('pdfParser_dataReady', () => {
         resolve((parser as any).getRawTextContent() as string);
       });

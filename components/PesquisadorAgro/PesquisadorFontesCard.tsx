@@ -249,7 +249,6 @@ export default function PesquisadorFontesCard({
       }
       // Portal filter
       if (selectedPortal !== 'todos') {
-        if (selectedPortal === 'Google Acadêmico' && src.sourceName !== 'Google Acadêmico') return false;
         if (selectedPortal === 'Embrapa' && src.sourceName !== 'Embrapa') return false;
         if (selectedPortal === 'SciELO' && src.sourceName !== 'SciELO') return false;
         if (selectedPortal === 'CAPES' && src.sourceName !== 'CAPES') return false;
@@ -422,7 +421,7 @@ export default function PesquisadorFontesCard({
                   Pesquisador de Fontes Científicas
                 </h2>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-[#2E6F40]/10 text-[#2E6F40] dark:bg-[#9CB386]/20 dark:text-[#9CB386]">
-                  Google Acadêmico • SciELO • Embrapa • CAPES • BDTD • YouTube
+                  Semantic Scholar • SciELO • Embrapa • CAPES • BDTD • YouTube
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-[#8C897E] dark:text-[#A6A395] mt-0.5">
@@ -517,7 +516,6 @@ export default function PesquisadorFontesCard({
             <div className="flex flex-wrap gap-1.5">
               {[
                 { id: 'todos', label: 'Todos os Repositórios' },
-                { id: 'Google Acadêmico', label: 'Google Acadêmico' },
                 { id: 'Embrapa', label: 'Embrapa' },
                 { id: 'SciELO', label: 'SciELO' },
                 { id: 'CAPES', label: 'Portal CAPES' },

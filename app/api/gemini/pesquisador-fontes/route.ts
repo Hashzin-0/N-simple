@@ -8,8 +8,14 @@ import { understandSources, filterAndRankRelevant } from '@/lib/semantic/relevan
 
 export const dynamic = 'force-dynamic';
 
+function logMemory(label: string) {
+  const m = process.memoryUsage();
+  console.log(`[MEMORY] ${label}: rss=${Math.round(m.rss / 1024 / 1024)}MB heap=${Math.round(m.heapUsed / 1024 / 1024)}MB external=${Math.round(m.external / 1024 / 1024)}MB`);
+}
+
 export async function POST(req: NextRequest) {
   try {
+    logMemory('request start');
     const { query, options, stream } = await req.json();
     const cleanQuery = (query || '').trim();
 
@@ -106,6 +112,7 @@ export async function POST(req: NextRequest) {
 
             sendEvent('start', { query: cleanQuery, scrapers: SCRAPERS.map(s => ({ name: s.name, maxAllowed: s.maxAllowed, description: s.description })) });
 
+            logMemory('before scrapers (stream)');
             const allResults = await Promise.allSettled(
               SCRAPERS_INTERNAL.map(async (scraper) => {
                 const maxResults = searchOptions.maxPerSource?.[scraper.name] ?? scraper.max;
@@ -135,6 +142,8 @@ export async function POST(req: NextRequest) {
               }
             }
 
+            logMemory('after scrapers (stream)');
+
             // ── Indexa TODAS as fontes entendidas (a regra de persistência —
             // relevante para a query, ou fora de tópico mas sobre agro — é
             // aplicada dentro de indexSources; o resto é descartado). ──
@@ -163,11 +172,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    logMemory('before scrapers (non-stream)');
     const result = await searchAllSources(cleanQuery, topicsToSearch, searchOptions);
+    logMemory('after scrapers (non-stream)');
 
     // ── Motor semântico: lê, entende e pontua cada fonte de verdade ──
+    logMemory('before relevance engine');
     const understood = await understandSources(cleanQuery, result.sources);
     const relevantNew = filterAndRankRelevant(understood);
+    logMemory('after relevance engine');
 
     // Indexa tudo (relevantes + fora-de-tópico-mas-agro; o resto é descartado dentro).
     if (isSupabaseConfigured() && understood.length > 0) {

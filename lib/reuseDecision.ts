@@ -141,7 +141,7 @@ function buildSourceFromDb(row: {
     authors: row.authors || '',
     year: row.year || new Date().getFullYear(),
     publication: row.publication || '',
-    sourceName: (row.source_name as ScientificSource['sourceName']) || 'Google Acadêmico',
+    sourceName: (row.source_name as ScientificSource['sourceName']) || 'Semantic Scholar',
     sourceType: (row.source_type as ScientificSource['sourceType']) || 'artigo_periodico',
     abstract: row.abstract || '',
     keywords: row.keywords || [],

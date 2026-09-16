@@ -3,7 +3,6 @@ import { scrapeSciELO } from '../lib/scrapers/scielo';
 import { scrapeEmbrapa } from '../lib/scrapers/embrapa';
 import { scrapeBDTD } from '../lib/scrapers/bdtd';
 import { scrapeCAPES } from '../lib/scrapers/capes';
-import { scrapeGoogleScholar } from '../lib/scrapers/scholar';
 import { scrapeYouTube } from '../lib/scrapers/youtube';
 import { scrapeCNPEM } from '../lib/scrapers/cnpem';
 import { scrapeINPA } from '../lib/scrapers/inpa';
@@ -23,7 +22,6 @@ const scrapers = [
   { name: 'Embrapa', fn: scrapeEmbrapa, max: 20 },
   { name: 'BDTD', fn: scrapeBDTD, max: 20 },
   { name: 'CAPES', fn: scrapeCAPES, max: 25 },
-  { name: 'Scholar', fn: scrapeGoogleScholar, max: 25 },
   { name: 'YouTube', fn: scrapeYouTube, max: 50 },
   { name: 'CNPEM', fn: scrapeCNPEM, max: 15 },
   { name: 'INPA', fn: scrapeINPA, max: 15 },

@@ -25,9 +25,10 @@ async function getBrowser() {
   launchPromise = (async () => {
     try {
       const chromium = await import('@sparticuz/chromium');
+      const execPath = process.env.CHROMIUM_BIN_PATH || await chromium.default.executablePath();
       const browser = await puppeteerExtra.launch({
         args: chromium.default.args,
-        executablePath: await chromium.default.executablePath(),
+        executablePath: execPath,
         headless: true,
         defaultViewport: { width: 1280, height: 800 },
       });
@@ -43,50 +44,6 @@ async function getBrowser() {
   })();
 
   return launchPromise;
-}
-
-// Separate browser instance with extra anti-bot patches for Google Scholar
-let scholarBrowserInstance: Awaited<ReturnType<typeof puppeteerExtra.launch>> | null = null;
-let scholarLaunchPromise: Promise<typeof scholarBrowserInstance> | null = null;
-
-export async function getScholarBrowser() {
-  if (chromiumUnavailable) return null;
-
-  if (scholarBrowserInstance) {
-    const alive = scholarBrowserInstance.connected;
-    if (alive) return scholarBrowserInstance;
-    scholarBrowserInstance = null;
-  }
-
-  if (scholarLaunchPromise) return scholarLaunchPromise;
-
-  scholarLaunchPromise = (async () => {
-    try {
-      const chromium = await import('@sparticuz/chromium');
-      const browser = await puppeteerExtra.launch({
-        args: [
-          ...chromium.default.args,
-          '--disable-blink-features=AutomationControlled',
-          '--disable-features=IsolateOrigins,site-per-process',
-          '--disable-dev-shm-usage',
-          '--no-sandbox',
-        ],
-        executablePath: await chromium.default.executablePath(),
-        headless: true,
-        defaultViewport: { width: 1280, height: 900 },
-      });
-      scholarBrowserInstance = browser;
-      return browser;
-    } catch (err) {
-      chromiumUnavailable = true;
-      console.warn('[StealthBrowser] Chromium unavailable for Scholar, marking as disabled:', err instanceof Error ? err.message : err);
-      return null;
-    } finally {
-      scholarLaunchPromise = null;
-    }
-  })();
-
-  return scholarLaunchPromise;
 }
 
 export interface StealthFetchResult {

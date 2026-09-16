@@ -47,6 +47,7 @@ const CornYieldCalculator = dynamic(() => import('@/components/CornYieldCalculat
 const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr: false });
 const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
 const PesquisadorAgro = dynamic(() => import('@/components/PesquisadorAgro'), { ssr: false });
+const LibrasNoAgro = dynamic(() => import('@/components/LibrasNoAgro'), { ssr: false });
 const AccessibilityPanel = dynamic(() => import('@/components/AccessibilityPanel'), { ssr: false });
 import VLibrasWidget from '@/components/LibrasWidget';
 
@@ -423,6 +424,15 @@ export default function Home() {
       </div>
     ),
     [isDark],
+  );
+
+  const librasContent = useMemo(
+    () => (
+      <div className="w-full">
+        <LibrasNoAgro />
+      </div>
+    ),
+    [],
   );
 
   return (
@@ -1068,6 +1078,7 @@ export default function Home() {
           itrContent={itrContent}
           abntContent={abntContent}
           pesquisadorContent={pesquisadorContent}
+          librasContent={librasContent}
         />
 
         {/* GEMINI LIVE VOICE ASSISTANT HUD WITH 3D ORB */}

@@ -108,7 +108,7 @@ export default function PesquisadorAutomaticoSection({
     if (repo.includes('youtube')) {
       return `https://www.youtube.com/results?search_query=${encodeURIComponent(cleanTitle)}`;
     }
-    return `https://scholar.google.com.br/scholar?q=${encodeURIComponent(`"${cleanTitle}"`)}`;
+    return `https://www.semanticscholar.org/search?q=${encodeURIComponent(cleanTitle)}&sort=relevance`;
   };
 
   // Sync with prop when changed from parent
@@ -1157,7 +1157,7 @@ ${article.referenciasABNT.join('\n\n')}
                   <div className="space-y-2.5">
                     {article.referenciasABNT.map((ref, idx) => {
                       const cleanSearch = ref.replace(/^[A-Z\s,]+;\s*/, '').slice(0, 120);
-                      const scholarUrl = `https://scholar.google.com.br/scholar?q=${encodeURIComponent(cleanSearch)}`;
+                      const scholarUrl = `https://www.semanticscholar.org/search?q=${encodeURIComponent(cleanSearch)}&sort=relevance`;
 
                       return (
                         <div
@@ -1178,7 +1178,7 @@ ${article.referenciasABNT.join('\n\n')}
                             target="_blank"
                             rel="noreferrer"
                             className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#2E6F40] hover:text-[#1E4D2B] dark:text-[#9CB386] dark:hover:text-[#C5D9B0] bg-[#2E6F40]/10 hover:bg-[#2E6F40]/20 dark:bg-[#9CB386]/15 dark:hover:bg-[#9CB386]/25 px-2.5 py-1.5 rounded-xl transition-all shrink-0 self-start sm:self-center active:scale-95 group/refLink cursor-pointer"
-                            title="Acessar publicação no Google Acadêmico"
+                            title="Acessar publicação no Semantic Scholar"
                           >
                             <span>Acessar fonte</span>
                             <span className="text-sm font-bold transition-transform group-hover/refLink:translate-x-0.5">→</span>
