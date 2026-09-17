@@ -25,6 +25,48 @@ interface BatchEmbedContentResponse {
 }
 
 /**
+ * Fila de embeddings com concorrência limitada.
+ * Evita que múltiples chamadas simultâneas à API atinjam rate limits.
+ */
+class EmbeddingQueue {
+  private queue: Array<() => void> = [];
+  private running = 0;
+  private concurrency: number;
+
+  constructor(concurrency: number) {
+    this.concurrency = concurrency;
+  }
+
+  add<T>(fn: () => Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const task = () => {
+        this.running++;
+        fn().then(
+          (val) => resolve(val),
+          (err) => reject(err),
+        ).finally(() => {
+          this.running--;
+          this.processNext();
+        });
+      };
+      this.queue.push(task);
+      this.processNext();
+    });
+  }
+
+  private processNext() {
+    while (this.running < this.concurrency && this.queue.length > 0) {
+      const next = this.queue.shift()!;
+      next();
+    }
+  }
+}
+
+const embeddingQueue = new EmbeddingQueue(
+  parseInt(process.env.EMBEDDING_CONCURRENCY || '2', 10),
+);
+
+/**
  * Obtém a API key do Gemini das variáveis de ambiente.
  */
 function getApiKey(): string {
@@ -37,25 +79,32 @@ function getApiKey(): string {
 
 /**
  * Gera embedding de um único texto via Gemini Embedding 2.
- *
- * Para tarefas de retrieval, usa o prefixo de task no prompt:
- * - "task: search result | query: ..." para queries
- * - "task: search result | document: ..." para documentos
+ * Passa por uma fila com concorrência limitada para evitar rate limits.
  *
  * @param text Texto para gerar embedding
  * @param taskType Tipo de tarefa (afeta qualidade do embedding)
  * @returns Vetor de embedding normalizado
  */
-export async function geminiEmbedText(
+export function geminiEmbedText(
   text: string,
   taskType: 'RETRIEVAL_QUERY' | 'RETRIEVAL_DOCUMENT' | 'SEMANTIC_SIMILARITY' = 'SEMANTIC_SIMILARITY',
 ): Promise<number[]> {
   const clean = (text || '').trim();
-  if (!clean) return new Array(EMBEDDING_DIM).fill(0);
+  if (!clean) return Promise.resolve(new Array(EMBEDDING_DIM).fill(0));
 
+  return embeddingQueue.add(() => geminiEmbedTextInternal(clean, taskType));
+}
+
+/**
+ * Implementação interna — chamada pela fila.
+ */
+async function geminiEmbedTextInternal(
+  text: string,
+  taskType: 'RETRIEVAL_QUERY' | 'RETRIEVAL_DOCUMENT' | 'SEMANTIC_SIMILARITY',
+): Promise<number[]> {
   const apiKey = getApiKey();
   const taskPrefix = getTaskPrefix(taskType);
-  const content = taskPrefix ? `${taskPrefix} ${clean}` : clean;
+  const content = taskPrefix ? `${taskPrefix} ${text}` : text;
 
   const url = `${GEMINI_API_BASE}/models/gemini-embedding-2:embedContent?key=${apiKey}`;
 

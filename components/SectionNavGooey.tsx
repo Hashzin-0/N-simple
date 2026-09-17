@@ -23,6 +23,7 @@ import {
   Search,
   Globe,
   Hand,
+  Camera,
 } from 'lucide-react';
 
 interface SectionConfig {
@@ -71,6 +72,7 @@ const PESQUISADOR_SECTIONS: SectionConfig[] = [
 const LIBRAS_SECTIONS: SectionConfig[] = [
   { id: 'libras_search', label: 'Buscar Sinais', shortLabel: 'Buscar', icon: Search, color: '#2E6F40', colorDark: '#86efac' },
   { id: 'librascurso', label: 'Mini-Curso', shortLabel: 'Curso', icon: BookOpen, color: '#D4A373', colorDark: '#D4A373' },
+  { id: 'libras_capture_test', label: 'Teste Câmera', shortLabel: 'Câmera', icon: Camera, color: '#5A5A40', colorDark: '#9CB386' },
 ];
 
 interface SectionNavGooeyProps {

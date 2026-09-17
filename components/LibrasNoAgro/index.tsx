@@ -2,17 +2,19 @@
 
 import React, { useState, useCallback } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
-import { Search, BookOpen } from 'lucide-react';
+import { Search, BookOpen, Camera } from 'lucide-react';
 import { motion } from 'motion/react';
 import LibrasSearch from './LibrasSearch';
 import LibrasCourse from './LibrasCourse';
+import LibrasCaptureTest from '@/components/LibrasCaptureTest';
 import { useLibrasProgress } from '@/hooks/useLibrasProgress';
 
-type SubTab = 'search' | 'course';
+type SubTab = 'search' | 'course' | 'capture-test';
 
 const SUB_TABS: { id: SubTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'search', label: 'Buscar Sinais', icon: Search },
   { id: 'course', label: 'Mini-Curso', icon: BookOpen },
+  { id: 'capture-test', label: 'Teste Câmera', icon: Camera },
 ];
 
 export default React.memo(function LibrasNoAgro() {
@@ -78,18 +80,22 @@ export default React.memo(function LibrasNoAgro() {
 
       {/* Content */}
       <div
-        id={activeSubTab === 'search' ? 'libras_search' : 'librascurso'}
+        id={
+          activeSubTab === 'search'
+            ? 'libras_search'
+            : activeSubTab === 'course'
+            ? 'librascurso'
+            : 'libras_capture_test'
+        }
         className={`p-4 sm:p-5 rounded-2xl border transition-colors ${
           isDark
             ? 'bg-[#1C201A] border-[#2C3328]'
             : 'bg-white border-[#E5E2D9]'
         }`}
       >
-        {activeSubTab === 'search' ? (
-          <LibrasSearch maxResults={3} />
-        ) : (
-          <LibrasCourse progress={progress} />
-        )}
+        {activeSubTab === 'search' && <LibrasSearch maxResults={3} />}
+        {activeSubTab === 'course' && <LibrasCourse progress={progress} />}
+        {activeSubTab === 'capture-test' && <LibrasCaptureTest />}
       </div>
     </div>
   );
