@@ -2,18 +2,22 @@
 
 import React, { useState, useCallback } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
-import { Search, BookOpen, Camera } from 'lucide-react';
+import { Search, BookOpen, Camera, Hand, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import LibrasSearch from './LibrasSearch';
 import LibrasCourse from './LibrasCourse';
 import LibrasCaptureTest from '@/components/LibrasCaptureTest';
+import LibrasPractice from '@/components/LibrasPractice';
+import LibrasTutor from '@/components/LibrasTutor';
 import { useLibrasProgress } from '@/hooks/useLibrasProgress';
 
-type SubTab = 'search' | 'course' | 'capture-test';
+type SubTab = 'search' | 'course' | 'practice' | 'tutor' | 'capture-test';
 
 const SUB_TABS: { id: SubTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'search', label: 'Buscar Sinais', icon: Search },
   { id: 'course', label: 'Mini-Curso', icon: BookOpen },
+  { id: 'practice', label: 'Praticar', icon: Hand },
+  { id: 'tutor', label: 'Tutor', icon: Sparkles },
   { id: 'capture-test', label: 'Teste Câmera', icon: Camera },
 ];
 
@@ -85,6 +89,10 @@ export default React.memo(function LibrasNoAgro() {
             ? 'libras_search'
             : activeSubTab === 'course'
             ? 'librascurso'
+            : activeSubTab === 'practice'
+            ? 'libras_practice'
+            : activeSubTab === 'tutor'
+            ? 'libras_tutor'
             : 'libras_capture_test'
         }
         className={`p-4 sm:p-5 rounded-2xl border transition-colors ${
@@ -95,6 +103,8 @@ export default React.memo(function LibrasNoAgro() {
       >
         {activeSubTab === 'search' && <LibrasSearch maxResults={3} />}
         {activeSubTab === 'course' && <LibrasCourse progress={progress} />}
+        {activeSubTab === 'practice' && <LibrasPractice />}
+        {activeSubTab === 'tutor' && <LibrasTutor />}
         {activeSubTab === 'capture-test' && <LibrasCaptureTest />}
       </div>
     </div>

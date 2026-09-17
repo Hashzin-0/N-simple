@@ -73,6 +73,8 @@ const PESQUISADOR_SECTIONS: SectionConfig[] = [
 const LIBRAS_SECTIONS: SectionConfig[] = [
   { id: 'libras_search', label: 'Buscar Sinais', shortLabel: 'Buscar', icon: Search, color: '#2E6F40', colorDark: '#86efac' },
   { id: 'librascurso', label: 'Mini-Curso', shortLabel: 'Curso', icon: BookOpen, color: '#D4A373', colorDark: '#D4A373' },
+  { id: 'libras_practice', label: 'Praticar', shortLabel: 'Praticar', icon: Hand, color: '#9CB386', colorDark: '#86efac' },
+  { id: 'libras_tutor', label: 'Tutor', shortLabel: 'Tutor', icon: Sparkles, color: '#5A5A40', colorDark: '#9CB386' },
   { id: 'libras_capture_test', label: 'Teste Câmera', shortLabel: 'Câmera', icon: Camera, color: '#5A5A40', colorDark: '#9CB386' },
 ];
 
@@ -176,7 +178,7 @@ export default React.memo(function SectionNavGooey({ activeTab, activeSectionIds
         - Inset well recessed into #app_header surface (darker cavity tone + subtle inner shadow)
         - Crisp edge highlight and borders reinforcing visual depth
       */}
-      <div className={`relative z-10 flex ${isMobile ? 'justify-center max-w-full overflow-x-auto scrollbar-none px-1 py-1' : 'w-full py-1'}`}>
+      <div className={`relative z-10 flex ${isMobile ? 'justify-center max-w-full overflow-x-auto no-scrollbar px-1 py-1' : 'w-full py-1'}`}>
         <MultiButton
           gooey
           variant="secondary"

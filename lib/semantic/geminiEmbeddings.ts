@@ -67,14 +67,34 @@ const embeddingQueue = new EmbeddingQueue(
 );
 
 /**
- * Obtém a API key do Gemini das variáveis de ambiente.
+ * Obtém todas as API keys do Gemini das variáveis de ambiente.
+ * Prefere GEMINI_API_KEYS (comma-separated), fallback para GEMINI_API_KEY.
  */
-function getApiKey(): string {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) {
-    throw new Error('[GeminiEmbeddings] GEMINI_API_KEY não configurada.');
+function getGeminiKeys(): string[] {
+  const keysEnv = process.env.GEMINI_API_KEYS;
+  if (keysEnv) {
+    return keysEnv
+      .split(',')
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0);
   }
-  return key;
+  const singleKey = process.env.GEMINI_API_KEY;
+  return singleKey ? [singleKey] : [];
+}
+
+/**
+ * Detecta erros de quota/rate-limit que justificam trocar de chave.
+ */
+function isQuotaError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes('429') ||
+    msg.includes('quota') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('rate limit') ||
+    msg.includes('403') ||
+    msg.includes('PERMISSION_DENIED')
+  );
 }
 
 /**
@@ -97,40 +117,70 @@ export function geminiEmbedText(
 
 /**
  * Implementação interna — chamada pela fila.
+ * Inclui rotação de chaves: se uma chave atinge quota, tenta a próxima.
  */
 async function geminiEmbedTextInternal(
   text: string,
   taskType: 'RETRIEVAL_QUERY' | 'RETRIEVAL_DOCUMENT' | 'SEMANTIC_SIMILARITY',
 ): Promise<number[]> {
-  const apiKey = getApiKey();
+  const keys = getGeminiKeys();
+  if (keys.length === 0) {
+    throw new Error('[GeminiEmbeddings] Nenhuma API key configurada. Defina GEMINI_API_KEYS ou GEMINI_API_KEY.');
+  }
+
   const taskPrefix = getTaskPrefix(taskType);
   const content = taskPrefix ? `${taskPrefix} ${text}` : text;
 
-  const url = `${GEMINI_API_BASE}/models/gemini-embedding-2:embedContent?key=${apiKey}`;
+  let lastError: unknown = null;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      content: {
-        parts: [{ text: content }],
-      },
-      outputDimensionality: EMBEDDING_DIM,
-    }),
-  });
+  for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+    const apiKey = keys[keyIndex];
+    const url = `${GEMINI_API_BASE}/models/gemini-embedding-2:embedContent?key=${apiKey}`;
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`[GeminiEmbeddings] API error ${response.status}: ${error}`);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: {
+            parts: [{ text: content }],
+          },
+          outputDimensionality: EMBEDDING_DIM,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const error = new Error(`API error ${response.status}: ${errorText}`);
+
+        if (isQuotaError(error) || response.status === 429) {
+          console.warn(`[GeminiEmbeddings] Key ${keyIndex + 1}/${keys.length} quota/rate-limit, rotacionando...`);
+          lastError = error;
+          continue;
+        }
+
+        throw new Error(`[GeminiEmbeddings] ${error.message}`);
+      }
+
+      const data: EmbedContentResponse = await response.json();
+      return data.embedding.values;
+    } catch (err: unknown) {
+      if (isQuotaError(err)) {
+        console.warn(`[GeminiEmbeddings] Key ${keyIndex + 1}/${keys.length} quota error, rotacionando...`);
+        lastError = err;
+        continue;
+      }
+      throw err;
+    }
   }
 
-  const data: EmbedContentResponse = await response.json();
-  return data.embedding.values;
+  throw new Error(`[GeminiEmbeddings] Todas as ${keys.length} chaves esgotaram quota. Último erro: ${lastError}`);
 }
 
 /**
  * Gera embeddings para múltiplos textos usando Batch API.
  * Processa em lotes pequenos para controlar rate limits.
+ * Rota entre chaves se uma atingir quota.
  *
  * @param texts Array de textos
  * @param batchSize Tamanho do lote (default: 20 para free tier)
@@ -142,12 +192,16 @@ export async function geminiEmbedTexts(
 ): Promise<number[][]> {
   if (texts.length === 0) return [];
 
-  const apiKey = getApiKey();
+  const keys = getGeminiKeys();
+  if (keys.length === 0) {
+    throw new Error('[GeminiEmbeddings] Nenhuma API key configurada. Defina GEMINI_API_KEYS ou GEMINI_API_KEY.');
+  }
+
   const results: number[][] = [];
 
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
-    const batchResults = await embedBatch(apiKey, batch);
+    const batchResults = await embedBatch(keys, batch);
     results.push(...batchResults);
 
     // Delay entre lotes para evitar rate limit
@@ -161,15 +215,13 @@ export async function geminiEmbedTexts(
 
 /**
  * Envia um lote de textos para a Batch Embed API.
- * Inclui retry com backoff exponencial para rate limits.
+ * Rota entre chaves no quota, com retry para erros transient.
  */
 async function embedBatch(
-  apiKey: string,
+  keys: string[],
   texts: string[],
-  retries = 3,
+  retries = 2,
 ): Promise<number[][]> {
-  const url = `${GEMINI_API_BASE}/models/gemini-embedding-2:batchEmbedContents?key=${apiKey}`;
-
   const requests = texts.map((text) => ({
     model: 'models/gemini-embedding-2',
     content: {
@@ -177,30 +229,60 @@ async function embedBatch(
     },
   }));
 
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requests }),
-    });
+  let lastError: unknown = null;
 
-    if (response.status === 429) {
-      const delay = Math.pow(2, attempt) * 5000;
-      console.warn(`[GeminiEmbeddings] Rate limit atingido, aguardando ${delay}ms...`);
-      await new Promise((r) => setTimeout(r, delay));
-      continue;
+  for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+    const apiKey = keys[keyIndex];
+    const url = `${GEMINI_API_BASE}/models/gemini-embedding-2:batchEmbedContents?key=${apiKey}`;
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests }),
+        });
+
+        if (response.status === 429) {
+          if (attempt < retries) {
+            const delay = Math.pow(2, attempt) * 3000;
+            console.warn(`[GeminiEmbeddings] Batch key ${keyIndex + 1}/${keys.length} rate limit, retry ${attempt + 1}/${retries} em ${delay}ms...`);
+            await new Promise((r) => setTimeout(r, delay));
+            continue;
+          }
+          // Esgotou retries nesta chave, rotaciona
+          console.warn(`[GeminiEmbeddings] Batch key ${keyIndex + 1}/${keys.length} esgotou retries, rotacionando...`);
+          lastError = new Error('429 rate limit');
+          break;
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          const error = new Error(`Batch API error ${response.status}: ${errorText}`);
+
+          if (isQuotaError(error)) {
+            console.warn(`[GeminiEmbeddings] Batch key ${keyIndex + 1}/${keys.length} quota error, rotacionando...`);
+            lastError = error;
+            break;
+          }
+
+          throw new Error(`[GeminiEmbeddings] ${error.message}`);
+        }
+
+        const data: BatchEmbedContentResponse = await response.json();
+        return data.embeddings.map((e) => e.values);
+      } catch (err: unknown) {
+        if (isQuotaError(err)) {
+          console.warn(`[GeminiEmbeddings] Batch key ${keyIndex + 1}/${keys.length} quota error, rotacionando...`);
+          lastError = err;
+          break;
+        }
+        throw err;
+      }
     }
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`[GeminiEmbeddings] Batch API error ${response.status}: ${error}`);
-    }
-
-    const data: BatchEmbedContentResponse = await response.json();
-    return data.embeddings.map((e) => e.values);
   }
 
-  throw new Error('[GeminiEmbeddings] Batch API: max retries excedido');
+  throw new Error(`[GeminiEmbeddings] Batch: todas as ${keys.length} chaves esgotaram. Último erro: ${lastError}`);
 }
 
 /**

@@ -72,7 +72,7 @@ export default function RootLayout({children}: {children: React.ReactNode}) {
         />
         <script src="https://vlibras.gov.br/app/vlibras-plugin.js" defer></script>
       </head>
-      <body suppressHydrationWarning className="antialiased transition-colors duration-300 overflow-x-clip">
+      <body suppressHydrationWarning className="antialiased transition-colors duration-300 overflow-x-hidden">
         <ThemeProvider>
           {children}
         </ThemeProvider>
