@@ -1,10 +1,7 @@
 import { NextRequest } from 'next/server';
-import { SCRAPERS, SCRAPERS_INTERNAL, SearchOptions, searchAllSources } from '@/lib/scrapers';
-import { decideReuse } from '@/lib/reuseDecision';
-import { indexSources } from '@/lib/evidenceIndex';
-import { extractTopics } from '@/lib/topicExtractor';
-import { isSupabaseConfigured } from '@/lib/supabase';
-import { understandSources, filterAndRankRelevant } from '@/lib/semantic/relevanceEngine';
+import { SCRAPERS, SCRAPERS_INTERNAL, SCRAPER_CONCURRENCY, SearchOptions } from '@/lib/scrapers';
+import { searchSources } from '@/lib/research';
+import { ScientificSource } from '@/components/PesquisadorAgro/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,138 +25,79 @@ export async function POST(req: NextRequest) {
 
     const searchOptions: SearchOptions = options || {};
 
-    // ── CAMADA 1: Verificar memória de evidências ──
-    const topics = extractTopics(cleanQuery);
-    const decision = isSupabaseConfigured()
-      ? await decideReuse(cleanQuery, topics)
-      : null;
-
-    // ── ≥75% de cobertura: reutiliza sem precisar pesquisar fontes novas ──
-    if (decision && decision.action === 'reuse' && decision.sourcesToReuse.length > 0) {
-      const understood = await understandSources(cleanQuery, decision.sourcesToReuse);
-      const relevant = filterAndRankRelevant(understood);
-
-      if (stream) {
-        const encoder = new TextEncoder();
-        const readable = new ReadableStream({
-          async start(controller) {
-            const sendEvent = (event: string, data: unknown) => {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`));
-            };
-            sendEvent('memory_hit', {
-              decision: 'reuse',
-              coverage: decision.coverageScore,
-              sources: relevant,
-              fromMemory: true,
-            });
-            sendEvent('complete', { totalFound: relevant.length, fromMemory: true });
-            controller.close();
-          },
-        });
-        return new Response(readable, {
-          headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' },
-        });
-      }
-
-      return Response.json({
-        sources: relevant,
-        query: cleanQuery,
-        totalFound: relevant.length,
-        errors: [],
-        sourcesUsed: [],
-        fromMemory: true,
-        memoryDecision: {
-          action: 'reuse',
-          coverage: decision.coverageScore,
-          reuseScore: decision.reuseScore,
-          explorationNeed: decision.explorationNeed,
-          diversity: decision.diversityScore,
-        },
-      });
-    }
-
-    // ── 45%-75% (complementary) ou <45% (new_search): pesquisa fontes novas.
-    // No caso "complementary", isso serve de CONTRAPONTO às fontes reutilizadas
-    // (mesmo tópicos já cobertos são pesquisados de novo para validação cruzada).
-    const isComplementary = decision?.action === 'complementary';
-    const topicsToSearch = decision?.action === 'complementary' || decision?.action === 'new_search'
-      ? decision.topicsNeedingSearch
-      : undefined;
-
-    // Fontes reutilizadas (já reentendidas com a query atual) para contraponto.
-    const reusedUnderstood = isComplementary && decision
-      ? filterAndRankRelevant(await understandSources(cleanQuery, decision.sourcesToReuse))
-      : [];
-
     if (stream) {
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
         async start(controller) {
-          try {
-            const sendEvent = (event: string, data: unknown) => {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`));
-            };
+          const sendEvent = (event: string, data: unknown) => {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`));
+          };
 
-            if (isComplementary) {
-              sendEvent('memory_partial', {
-                decision: 'complementary',
-                coverage: decision!.coverageScore,
-                cachedSources: reusedUnderstood,
-                topicsNeedingSearch: decision!.topicsNeedingSearch,
-                note: 'Fontes reutilizadas mostradas como contraponto às pesquisadas agora.',
-              });
-            }
+          sendEvent('start', {
+            query: cleanQuery,
+            scrapers: SCRAPERS.map(s => ({
+              name: s.name,
+              maxAllowed: s.maxAllowed,
+              description: s.description,
+            })),
+          });
 
-            sendEvent('start', { query: cleanQuery, scrapers: SCRAPERS.map(s => ({ name: s.name, maxAllowed: s.maxAllowed, description: s.description })) });
+          logMemory('before scrapers (stream)');
 
-            logMemory('before scrapers (stream)');
-            const allResults = await Promise.allSettled(
-              SCRAPERS_INTERNAL.map(async (scraper) => {
-                const maxResults = searchOptions.maxPerSource?.[scraper.name] ?? scraper.max;
-                sendEvent('scraper_start', { name: scraper.name, maxResults });
+          const { understandSources, filterAndRankRelevant } = await import('@/lib/semantic/relevanceEngine');
 
-                try {
-                  const rawResults = await scraper.fn(cleanQuery, maxResults, searchOptions.language);
+          // ── Fase 1: Executar scrapers com worker pool, enviar resultados brutos ──
+          const rawResultsMap = new Map<string, ScientificSource[]>();
+          const scraperErrors: string[] = [];
+          let cursor = 0;
 
-                  // ── Motor semântico: lê, entende e pontua cada fonte de verdade ──
-                  const understood = await understandSources(cleanQuery, rawResults);
-                  const relevant = filterAndRankRelevant(understood);
+          async function scraperWorker() {
+            while (cursor < SCRAPERS_INTERNAL.length) {
+              const i = cursor++;
+              const scraper = SCRAPERS_INTERNAL[i];
+              const maxResults = searchOptions.maxPerSource?.[scraper.name] ?? scraper.max;
+              sendEvent('scraper_start', { name: scraper.name, maxResults });
 
-                  sendEvent('scraper_complete', { name: scraper.name, results: relevant, count: relevant.length });
-                  return { name: scraper.name, understood };
-                } catch (err) {
-                  const msg = err instanceof Error ? err.message : String(err);
-                  sendEvent('scraper_error', { name: scraper.name, error: msg });
-                  return { name: scraper.name, understood: [] };
-                }
-              })
-            );
-
-            const allUnderstood: Awaited<ReturnType<typeof understandSources>> = [];
-            for (const result of allResults) {
-              if (result.status === 'fulfilled') {
-                allUnderstood.push(...result.value.understood);
+              try {
+                const rawResults = await scraper.fn(cleanQuery, maxResults, searchOptions.language);
+                rawResultsMap.set(scraper.name, rawResults);
+                sendEvent('scraper_complete', { name: scraper.name, results: rawResults, count: rawResults.length });
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                scraperErrors.push(`${scraper.name}: ${msg}`);
+                sendEvent('scraper_error', { name: scraper.name, error: msg });
+                rawResultsMap.set(scraper.name, []);
               }
             }
-
-            logMemory('after scrapers (stream)');
-
-            // ── Indexa TODAS as fontes entendidas (a regra de persistência —
-            // relevante para a query, ou fora de tópico mas sobre agro — é
-            // aplicada dentro de indexSources; o resto é descartado). ──
-            if (isSupabaseConfigured() && allUnderstood.length > 0) {
-              indexSources(allUnderstood, topics).catch(err =>
-                console.warn('[EvidenceIndex] Falha ao indexar:', err)
-              );
-            }
-
-            const totalRelevant = filterAndRankRelevant(allUnderstood).length + reusedUnderstood.length;
-            sendEvent('complete', { totalFound: totalRelevant });
-
-            controller.close();
-          } catch (err) {
-            controller.error(err);
           }
+
+          const workerCount = Math.min(SCRAPER_CONCURRENCY, SCRAPERS_INTERNAL.length);
+          await Promise.all(Array.from({ length: workerCount }, () => scraperWorker()));
+
+          logMemory('after scrapers (stream)');
+
+          // ── Fase 2: UnderstandSources uma única vez em todos os resultados combinados ──
+          const allRawResults: ScientificSource[] = [];
+          for (const results of rawResultsMap.values()) {
+            allRawResults.push(...results);
+          }
+
+          sendEvent('processing_start', { totalSources: allRawResults.length, message: 'Processando relevância semântica...' });
+          logMemory('before understandSources (stream)');
+
+          const understood = await understandSources(cleanQuery, allRawResults);
+          const relevant = filterAndRankRelevant(understood);
+
+          logMemory('after understandSources (stream)');
+          sendEvent('processing_complete', { processedCount: understood.length, relevantCount: relevant.length });
+
+          sendEvent('complete', {
+            totalFound: relevant.length,
+            sources: relevant,
+            errors: scraperErrors,
+          });
+
+          controller.close();
         },
       });
 
@@ -172,42 +110,26 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    logMemory('before scrapers (non-stream)');
-    const result = await searchAllSources(cleanQuery, topicsToSearch, searchOptions);
-    logMemory('after scrapers (non-stream)');
-
-    // ── Motor semântico: lê, entende e pontua cada fonte de verdade ──
-    logMemory('before relevance engine');
-    const understood = await understandSources(cleanQuery, result.sources);
-    const relevantNew = filterAndRankRelevant(understood);
-    logMemory('after relevance engine');
-
-    // Indexa tudo (relevantes + fora-de-tópico-mas-agro; o resto é descartado dentro).
-    if (isSupabaseConfigured() && understood.length > 0) {
-      indexSources(understood, topics).catch(err =>
-        console.warn('[EvidenceIndex] Falha ao indexar:', err)
-      );
-    }
-
-    // Combina contraponto (reutilizadas) + novas, sem duplicar por título.
-    const seenTitles = new Set(reusedUnderstood.map(s => s.title));
-    const combined = [
-      ...reusedUnderstood,
-      ...relevantNew.filter(s => !seenTitles.has(s.title)),
-    ].sort((a, b) => b.semanticScore - a.semanticScore);
+    // Non-streaming path: usa o orquestrador unificado
+    logMemory('before searchSources (non-stream)');
+    const result = await searchSources({
+      query: cleanQuery,
+      searchOptions,
+    });
+    logMemory('after searchSources (non-stream)');
 
     return Response.json({
-      sources: combined,
+      sources: result.sources,
       query: cleanQuery,
-      totalFound: combined.length,
+      totalFound: result.sources.length,
       errors: result.errors,
-      sourcesUsed: result.sourcesUsed,
-      memoryDecision: decision ? {
-        action: decision.action,
-        coverage: decision.coverageScore,
-        reuseScore: decision.reuseScore,
-        explorationNeed: decision.explorationNeed,
-        diversity: decision.diversityScore,
+      sourcesUsed: [],
+      memoryDecision: result.memoryDecision ? {
+        action: result.memoryDecision.action,
+        coverage: result.memoryDecision.coverageScore,
+        reuseScore: result.memoryDecision.reuseScore,
+        explorationNeed: result.memoryDecision.explorationNeed,
+        diversity: result.memoryDecision.diversityScore,
       } : null,
     });
   } catch (error: unknown) {

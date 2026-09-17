@@ -24,6 +24,7 @@ import {
   Globe,
   Hand,
   Camera,
+  PenTool,
 } from 'lucide-react';
 
 interface SectionConfig {
@@ -75,6 +76,14 @@ const LIBRAS_SECTIONS: SectionConfig[] = [
   { id: 'libras_capture_test', label: 'Teste Câmera', shortLabel: 'Câmera', icon: Camera, color: '#5A5A40', colorDark: '#9CB386' },
 ];
 
+const REDACAO_SECTIONS: SectionConfig[] = [
+  { id: 'redacao_tema', label: 'Tema', shortLabel: 'Tema', icon: PenTool, color: '#5A5A40', colorDark: '#9CB386' },
+  { id: 'redacao_repertorio', label: 'Repertório', shortLabel: 'Repertório', icon: BookOpen, color: '#2E6F40', colorDark: '#86efac' },
+  { id: 'redacao_expressoes', label: 'Expressões', shortLabel: 'Expressões', icon: Sparkles, color: '#D4A373', colorDark: '#D4A373' },
+  { id: 'redacao_estrutura', label: 'Estrutura', shortLabel: 'Estrutura', icon: Layers, color: '#5A5A40', colorDark: '#9CB386' },
+  { id: 'redacao_resultado', label: 'Resultado', shortLabel: 'Resultado', icon: FileText, color: '#2E6F40', colorDark: '#86efac' },
+];
+
 interface SectionNavGooeyProps {
   activeTab: string;
   activeSectionIds?: string[];
@@ -93,6 +102,7 @@ export default React.memo(function SectionNavGooey({ activeTab, activeSectionIds
       case 'abnt': return ABNT_SECTIONS;
       case 'pesquisador': return PESQUISADOR_SECTIONS;
       case 'libras': return LIBRAS_SECTIONS;
+      case 'redacao': return REDACAO_SECTIONS;
       default: return NITROGEN_SECTIONS;
     }
   }, [activeTab]);

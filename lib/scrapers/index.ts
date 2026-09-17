@@ -54,7 +54,7 @@ export const SCRAPERS: ScraperMetadata[] = SCRAPERS_INTERNAL.map(({ name, max, m
   name, max, maxAllowed, description,
 }));
 
-const SCRAPER_CONCURRENCY = Math.max(1, Number(process.env.SCRAPER_CONCURRENCY ?? 3));
+export const SCRAPER_CONCURRENCY = Math.max(1, Number(process.env.SCRAPER_CONCURRENCY ?? 3));
 
 export interface SearchOptions {
   maxPerSource?: Record<string, number>;

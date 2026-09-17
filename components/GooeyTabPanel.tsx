@@ -2,9 +2,9 @@
 
 import React, { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { useTheme } from './ThemeProvider';
-import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand } from 'lucide-react';
+import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool } from 'lucide-react';
 
-export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador' | 'libras';
+export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao';
 
 interface GooeyTabPanelProps {
   activeTab: TabId;
@@ -15,6 +15,7 @@ interface GooeyTabPanelProps {
   abntContent?: React.ReactNode;
   pesquisadorContent?: React.ReactNode;
   librasContent?: React.ReactNode;
+  redacaoContent?: React.ReactNode;
 }
 
 interface TabItem {
@@ -68,6 +69,13 @@ export const ALL_TABS: TabItem[] = [
     icon: Hand,
     badge: 'Libras',
   },
+  {
+    id: 'redacao',
+    label: 'Pesquisador de Redação',
+    shortLabel: 'Redação',
+    icon: PenTool,
+    badge: 'Redação',
+  },
 ];
 
 const TAB_INDEX: Record<TabId, number> = {
@@ -77,9 +85,10 @@ const TAB_INDEX: Record<TabId, number> = {
   abnt: 3,
   pesquisador: 4,
   libras: 5,
+  redacao: 6,
 };
 
-const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras'];
+const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao'];
 
 export default function GooeyTabPanel({
   activeTab,
@@ -90,6 +99,7 @@ export default function GooeyTabPanel({
   abntContent,
   pesquisadorContent,
   librasContent,
+  redacaoContent,
 }: GooeyTabPanelProps) {
   const { isDark } = useTheme();
   const rawId = useId();
@@ -202,6 +212,8 @@ export default function GooeyTabPanel({
         return pesquisadorContent || null;
       case 'libras':
         return librasContent || null;
+      case 'redacao':
+        return redacaoContent || null;
       default:
         return nitrogenContent;
     }

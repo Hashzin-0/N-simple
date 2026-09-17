@@ -126,7 +126,7 @@ export default function PesquisadorFontesCard({
   const [searchingLive, setSearchingLive] = useState(false);
   const [dynamicSources, setDynamicSources] = useState<ScientificSource[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [scraperProgress, setScraperProgress] = useState<Record<string, { status: 'pending' | 'loading' | 'complete' | 'error'; count?: number }>>({});
+  const [scraperProgress, setScraperProgress] = useState<Record<string, { status: 'pending' | 'loading' | 'complete' | 'error'; count?: number; message?: string }>>({});
   const [searchOptions, setSearchOptions] = useState<{ maxPerSource?: Record<string, number>; language?: 'pt-br' | 'pt-br-en' }>({ language: 'pt-br' });
   const [showScraperConfig, setShowScraperConfig] = useState(false);
   const [resolvedImages, setResolvedImages] = useState<Record<string, string>>({});
@@ -360,6 +360,19 @@ export default function PesquisadorFontesCard({
                   ...prev,
                   [data.name]: { status: 'error' }
                 }));
+              } else if (event === 'processing_start') {
+                setScraperProgress(prev => ({
+                  ...prev,
+                  _processing: { status: 'loading', message: data.message }
+                }));
+              } else if (event === 'processing_complete') {
+                setScraperProgress(prev => {
+                  const next = { ...prev };
+                  delete next._processing;
+                  return next;
+                });
+              } else if (event === 'complete' && data.sources) {
+                setDynamicSources(data.sources);
               }
             } catch {
               // ignore parse errors
@@ -653,7 +666,9 @@ export default function PesquisadorFontesCard({
                   <div
                     key={name}
                     className={`text-[10px] px-2 py-1.5 rounded-lg border ${
-                      status.status === 'complete'
+                      name === '_processing'
+                        ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 col-span-full'
+                        : status.status === 'complete'
                         ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
                         : status.status === 'loading'
                         ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300'
@@ -662,12 +677,15 @@ export default function PesquisadorFontesCard({
                         : 'bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400'
                     }`}
                   >
-                    <span className="font-medium">{name}</span>
+                    <span className="font-medium">{name === '_processing' ? '🧠 Processamento Semântico' : name}</span>
                     {status.status === 'loading' && <span className="ml-1 animate-pulse">...</span>}
                     {status.status === 'complete' && status.count !== undefined && (
                       <span className="ml-1">({status.count})</span>
                     )}
                     {status.status === 'error' && <span className="ml-1">Erro</span>}
+                    {name === '_processing' && status.message && (
+                      <span className="ml-1 opacity-75">— {status.message}</span>
+                    )}
                   </div>
                 ))}
               </div>

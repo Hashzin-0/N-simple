@@ -6,7 +6,7 @@ const STOP_WORDS = new Set([
   'pode', 'devem', 'deve', 'ser', 'ter', 'está', 'estao', 'foi', 'era',
 ]);
 
-const SYNONYM_MAP: Record<string, string[]> = {
+const DEFAULT_SYNONYM_MAP: Record<string, string[]> = {
   calagem: ['calagem', 'calcar', 'calcario', 'correcao da acidez', 'acidificacao'],
   acidez: ['acidez', 'ph', 'aluminio', 'toxicidade', 'solo acido'],
   vantagens: ['vantagens', 'beneficios', 'vantajoso', 'eficiencia', 'qualidade'],
@@ -25,6 +25,11 @@ const SYNONYM_MAP: Record<string, string[]> = {
   magnesio: ['magnesio', 'mg', 'saturacao por bases'],
 };
 
+export interface TopicExtractorConfig {
+  synonymMap?: Record<string, string[]>;
+  compoundPatterns?: [RegExp, string[]][];
+}
+
 function normalizeText(text: string): string {
   return text
     .toLowerCase()
@@ -40,11 +45,34 @@ function extractTokens(text: string): string[] {
     .filter(t => t.length > 2 && !STOP_WORDS.has(t));
 }
 
+const DEFAULT_COMPOUND_PATTERNS: [RegExp, string[]][] = [
+  [/vantag\w*\s+e\s+desvantag\w*/, ['vantagens', 'desvantagens']],
+  [/vantag\w*\s+desvantag\w*/, ['vantagens', 'desvantagens']],
+  [/calag\w*\s+caract/, ['calagem', 'caracteristicas']],
+  [/calag\w*\s+vantag/, ['calagem', 'vantagens']],
+  [/calag\w*\s+desvantag/, ['calagem', 'desvantagens']],
+  [/calag\w*\s+produtiv/, ['calagem', 'produtividade']],
+  [/calag\w*\s+acidez/, ['calagem', 'acidez']],
+  [/calag\w*\s+sol/, ['calagem', 'solo']],
+  [/calag\w*\s+necessidade/, ['calagem', 'necessidade']],
+  [/calag\w*\s+calc/, ['calagem', 'calcario']],
+  [/nitrog\w*\s+milho/, ['nitrogenio', 'milho']],
+  [/adubac\w*\s+nitrog/, ['nitrogenio', 'adubacao']],
+  [/adubac\w*\s+fosfat/, ['fosforo', 'adubacao']],
+  [/adubac\w*\s+potassic/, ['potassio', 'adubacao']],
+];
+
 /**
  * Extrai tópicos normalizados de uma query do usuário.
  * Retorna tópicos como strings normalizadas (lowercase, sem acento, snake_case).
+ *
+ * Aceita config opcional para substituir o mapa de sinônimos e padrões
+ * compostos — útil para domínios que não são agronegócio.
  */
-export function extractTopics(query: string): string[] {
+export function extractTopics(
+  query: string,
+  config?: TopicExtractorConfig
+): string[] {
   const normalized = normalizeText(query);
   const tokens = extractTokens(query);
   const topics: string[] = [];
@@ -69,7 +97,8 @@ export function extractTopics(query: string): string[] {
   }
 
   // 3. Detecção de sinônimos/conceitos relacionados
-  for (const [concept, synonyms] of Object.entries(SYNONYM_MAP)) {
+  const synonymMap = config?.synonymMap ?? DEFAULT_SYNONYM_MAP;
+  for (const [concept, synonyms] of Object.entries(synonymMap)) {
     const queryLower = normalized;
     for (const synonym of synonyms) {
       if (queryLower.includes(synonym) && !seen.has(concept)) {
@@ -81,22 +110,7 @@ export function extractTopics(query: string): string[] {
   }
 
   // 4. Detecção de padrões compostos conhecidos
-  const compoundPatterns: [RegExp, string[]][] = [
-    [/vantag\w*\s+e\s+desvantag\w*/, ['vantagens', 'desvantagens']],
-    [/vantag\w*\s+desvantag\w*/, ['vantagens', 'desvantagens']],
-    [/calag\w*\s+caract/, ['calagem', 'caracteristicas']],
-    [/calag\w*\s+vantag/, ['calagem', 'vantagens']],
-    [/calag\w*\s+desvantag/, ['calagem', 'desvantagens']],
-    [/calag\w*\s+produtiv/, ['calagem', 'produtividade']],
-    [/calag\w*\s+acidez/, ['calagem', 'acidez']],
-    [/calag\w*\s+sol/, ['calagem', 'solo']],
-    [/calag\w*\s+necessidade/, ['calagem', 'necessidade']],
-    [/calag\w*\s+calc/, ['calagem', 'calcario']],
-    [/nitrog\w*\s+milho/, ['nitrogenio', 'milho']],
-    [/adubac\w*\s+nitrog/, ['nitrogenio', 'adubacao']],
-    [/adubac\w*\s+fosfat/, ['fosforo', 'adubacao']],
-    [/adubac\w*\s+potassic/, ['potassio', 'adubacao']],
-  ];
+  const compoundPatterns = config?.compoundPatterns ?? DEFAULT_COMPOUND_PATTERNS;
 
   for (const [pattern, synTopics] of compoundPatterns) {
     if (pattern.test(normalized)) {

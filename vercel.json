@@ -5,6 +5,18 @@
   "functions": {
     "app/api/gemini/live-token/route.ts": {
       "maxDuration": 10
+    },
+    "app/api/gemini/pesquisador-fontes/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/gemini/pesquisador-artigo/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/gemini/redacao-pesquisa/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/gemini/redacao-gerar/route.ts": {
+      "maxDuration": 300
     }
   },
   "headers": [

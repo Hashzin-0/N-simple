@@ -75,3 +75,22 @@ export const AGRO_DOMAIN_DESCRIPTOR = [
   'na produção agrícola, culturas como soja, milho, cana-de-açúcar,',
   'café e pecuária de corte e leite.',
 ].join(' ');
+
+/**
+ * Descritores de domínio para diferentes contextos de pesquisa.
+ * Cada domínio define o "universo semântico" que o motor usa para
+ * classificar se uma fonte pertence ao domínio geral (independentemente
+ * da relevância temática específica da query).
+ */
+export const DOMAIN_DESCRIPTORS = {
+  agro: AGRO_DOMAIN_DESCRIPTOR,
+  redacao: [
+    'Redação dissertativa argumentativa, texto acadêmico, argumentação,',
+    'coesão textual, repertório sociocultural, dados estatísticos,',
+    'citações de autores, fatos históricos, exemplos, contrapontos,',
+    'temas de vestibulares e ENEM, inclusão social, tecnologia,',
+    'educação, meio ambiente, política pública, saúde, cultura.',
+  ].join(' '),
+} as const;
+
+export type DomainKey = keyof typeof DOMAIN_DESCRIPTORS;

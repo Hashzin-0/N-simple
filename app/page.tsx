@@ -48,6 +48,7 @@ const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr:
 const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
 const PesquisadorAgro = dynamic(() => import('@/components/PesquisadorAgro'), { ssr: false });
 const LibrasNoAgro = dynamic(() => import('@/components/LibrasNoAgro'), { ssr: false });
+const PesquisadorRedacao = dynamic(() => import('@/components/PesquisadorRedacao'), { ssr: false });
 const AccessibilityPanel = dynamic(() => import('@/components/AccessibilityPanel'), { ssr: false });
 import VLibrasWidget from '@/components/LibrasWidget';
 
@@ -433,6 +434,17 @@ export default function Home() {
       </div>
     ),
     [],
+  );
+
+  const redacaoContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
+          <PesquisadorRedacao isDark={isDark} />
+        </ScrollStack>
+      </div>
+    ),
+    [isDark],
   );
 
   return (
@@ -1079,6 +1091,7 @@ export default function Home() {
           abntContent={abntContent}
           pesquisadorContent={pesquisadorContent}
           librasContent={librasContent}
+          redacaoContent={redacaoContent}
         />
 
         {/* GEMINI LIVE VOICE ASSISTANT HUD WITH 3D ORB */}
