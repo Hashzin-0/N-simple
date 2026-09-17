@@ -40,6 +40,11 @@ export function useLibrasCapture(): UseLibrasCaptureReturn {
   const startTimeRef = useRef(0);
   const frameCountRef = useRef(0);
 
+  // Refs for real-time data (avoids stale closures)
+  const isRecordingRef = useRef(false);
+  const capturedFramesRef = useRef<CapturedFrame[]>([]);
+  const diagnosticRef = useRef<Partial<CaptureDiagnostic>>({});
+
   const [isReady, setIsReady] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [diagnostic, setDiagnostic] = useState<Partial<CaptureDiagnostic>>({});
@@ -130,6 +135,8 @@ export function useLibrasCapture(): UseLibrasCaptureReturn {
               stability,
             });
 
+            // Update refs (real-time, no stale closure)
+            diagnosticRef.current = diag;
             setDiagnostic(diag);
             setLatestLeftHand(left);
             setLatestRightHand(right);
@@ -142,9 +149,10 @@ export function useLibrasCapture(): UseLibrasCaptureReturn {
               handCount,
             };
 
-            // If recording, accumulate frames
-            if (isRecording) {
-              setCapturedFrames((prev) => [...prev, frame]);
+            // If recording, accumulate frames via ref (always current)
+            if (isRecordingRef.current) {
+              capturedFramesRef.current.push(frame);
+              setCapturedFrames([...capturedFramesRef.current]);
             }
 
             resolve(frame);
@@ -157,45 +165,50 @@ export function useLibrasCapture(): UseLibrasCaptureReturn {
         }
       });
     },
-    [isRecording]
+    [] // No dependencies — reads from refs, always current
   );
 
   const startRecording = useCallback(() => {
-    setCapturedFrames([]);
+    capturedFramesRef.current = [];
     startTimeRef.current = performance.now();
     frameCountRef.current = 0;
     fpsTracker.current.reset();
     frameHistory.current = [];
+    isRecordingRef.current = true;
     setIsRecording(true);
+    setCapturedFrames([]);
   }, []);
 
   const stopRecording = useCallback((): CaptureRecording | null => {
+    isRecordingRef.current = false;
     setIsRecording(false);
 
+    // Read from refs (always current, not stale)
     const diag = buildDiagnostic({
       frameCount: frameCountRef.current,
       startTime: startTimeRef.current,
       fps: fpsTracker.current.getFPS(),
-      handCount: diagnostic.handsDetected ?? 0,
-      handedness: diagnostic.handedness ?? 'unknown',
-      landmarksPerHand: diagnostic.landmarksPerHand ?? 0,
+      handCount: diagnosticRef.current.handsDetected ?? 0,
+      handedness: diagnosticRef.current.handedness ?? 'unknown',
+      landmarksPerHand: diagnosticRef.current.landmarksPerHand ?? 0,
       stability: calculateStability(frameHistory.current, STABILITY_WINDOW),
     });
 
     const result: CaptureRecording = {
       id: `rec_${Date.now()}`,
-      frames: capturedFrames,
+      frames: [...capturedFramesRef.current], // Copy from ref
       diagnostic: diag,
       recordedAt: new Date().toISOString(),
     };
 
     setRecording(result);
     return result;
-  }, [capturedFrames, diagnostic]);
+  }, []);
 
   const clearRecording = useCallback(() => {
     setRecording(null);
     setCapturedFrames([]);
+    capturedFramesRef.current = [];
   }, []);
 
   return {
