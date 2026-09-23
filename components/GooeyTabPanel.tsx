@@ -2,9 +2,9 @@
 
 import React, { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { useTheme } from './ThemeProvider';
-import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool } from 'lucide-react';
+import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap } from 'lucide-react';
 
-export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao';
+export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor';
 
 interface GooeyTabPanelProps {
   activeTab: TabId;
@@ -16,6 +16,7 @@ interface GooeyTabPanelProps {
   pesquisadorContent?: React.ReactNode;
   librasContent?: React.ReactNode;
   redacaoContent?: React.ReactNode;
+  tutorContent?: React.ReactNode;
 }
 
 interface TabItem {
@@ -76,6 +77,13 @@ export const ALL_TABS: TabItem[] = [
     icon: PenTool,
     badge: 'Redação',
   },
+  {
+    id: 'tutor',
+    label: 'Tutor Inteligente',
+    shortLabel: 'Tutor',
+    icon: GraduationCap,
+    badge: 'Revisão Oral',
+  },
 ];
 
 const TAB_INDEX: Record<TabId, number> = {
@@ -86,9 +94,10 @@ const TAB_INDEX: Record<TabId, number> = {
   pesquisador: 4,
   libras: 5,
   redacao: 6,
+  tutor: 7,
 };
 
-const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao'];
+const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor'];
 
 export default function GooeyTabPanel({
   activeTab,
@@ -100,14 +109,18 @@ export default function GooeyTabPanel({
   pesquisadorContent,
   librasContent,
   redacaoContent,
+  tutorContent,
 }: GooeyTabPanelProps) {
   const { isDark } = useTheme();
   const rawId = useId();
   const activeTabIdx = TAB_INDEX[activeTab] ?? 0;
 
   const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const tablistScrollRef = useRef<HTMLDivElement>(null);
+  const tabpanelScrollRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
+  const touchStartScrollLeft = useRef(0);
   const lastSwapTime = useRef(0);
 
   const changeTab = useCallback(
@@ -142,6 +155,19 @@ export default function GooeyTabPanel({
       const delta = absX >= absY ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
 
       if (Math.abs(delta) > 10) {
+        const tablist = tablistScrollRef.current;
+        const tabpanel = tabpanelScrollRef.current;
+        const target = e.target as Node;
+
+        const canNativeScroll = (el: HTMLElement | null) =>
+          !!el &&
+          el.contains(target) &&
+          el.scrollWidth - el.clientWidth > 4;
+
+        if (absX >= absY && (canNativeScroll(tablist) || canNativeScroll(tabpanel))) {
+          return;
+        }
+
         e.preventDefault();
         const now = performance.now();
         if (now - lastSwapTime.current > 260) {
@@ -161,12 +187,25 @@ export default function GooeyTabPanel({
     };
   }, [goToNextTab, goToPrevTab]);
 
+  useEffect(() => {
+    const tablist = tablistScrollRef.current;
+    if (!tablist) return;
+    const activeBtn = tablist.querySelector<HTMLElement>(`#tab-btn-${activeTab}`);
+    activeBtn?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  }, [activeTab]);
+
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
+    touchStartScrollLeft.current = tablistScrollRef.current?.scrollLeft ?? 0;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    const tablist = tablistScrollRef.current;
+    const scrolledBar =
+      !!tablist && Math.abs(tablist.scrollLeft - touchStartScrollLeft.current) > 4;
+    if (scrolledBar) return;
+
     const deltaX = e.changedTouches[0].clientX - touchStartX.current;
     const deltaY = e.changedTouches[0].clientY - touchStartY.current;
     if (Math.abs(deltaX) > 25 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
@@ -214,6 +253,8 @@ export default function GooeyTabPanel({
         return librasContent || null;
       case 'redacao':
         return redacaoContent || null;
+      case 'tutor':
+        return tutorContent || null;
       default:
         return nitrogenContent;
     }
@@ -233,9 +274,10 @@ export default function GooeyTabPanel({
         className="relative w-full select-none pt-2"
       >
         <div
+          ref={tablistScrollRef}
           role="tablist"
           aria-label="Calculadoras Agronômicas N-Pro"
-          className="relative flex items-end gap-0 px-0 w-full h-[52px]"
+          className="relative flex items-end gap-0 px-0 w-full h-[52px] overflow-x-auto no-scrollbar"
         >
           {ALL_TABS.map((tab) => {
             const isActive = activeTab === tab.id;
@@ -249,7 +291,7 @@ export default function GooeyTabPanel({
                 aria-selected={isActive}
                 aria-controls={`tabpanel-${tab.id}`}
                 onClick={() => changeTab(tab.id)}
-                className={`relative z-20 flex-1 h-[48px] flex items-center justify-center gap-1.5 sm:gap-2 px-2 transition-all duration-200 focus:outline-none cursor-pointer ${
+                className={`relative z-20 min-w-[92px] sm:min-w-[104px] flex-1 h-[48px] flex items-center justify-center gap-1.5 sm:gap-2 px-2 transition-all duration-200 focus:outline-none cursor-pointer ${
                   isActive
                     ? 'text-[#242A20] dark:text-[#F3F1EC] font-semibold'
                     : 'text-[#8C897E] dark:text-[#9EA399] hover:text-[#3D3D3D] dark:hover:text-[#E8E6DF] font-medium'
@@ -283,14 +325,15 @@ export default function GooeyTabPanel({
 
       {/* TAB CONTENT */}
       <div
+        ref={tabpanelScrollRef}
         id={`tabpanel-${activeTab}`}
         role="tabpanel"
         aria-labelledby={`tab-btn-${activeTab}`}
-        className="relative z-0 w-full overflow-visible"
+        className="relative z-0 w-full overflow-x-auto no-scrollbar"
       >
         <div
           key={activeTab}
-          className={`w-full bg-white dark:bg-[#1C201A] border border-[#E5E2D9] dark:border-[#2C3328] shadow-lg border-r-[4px] border-b-[4px] border-r-[#D0CCC0] dark:border-r-[#242A20] border-b-[#D0CCC0] dark:border-b-[#242A20] transition-all duration-300 ease-out ${
+          className={`w-full min-w-0 bg-white dark:bg-[#1C201A] border border-[#E5E2D9] dark:border-[#2C3328] shadow-lg border-r-[4px] border-b-[4px] border-r-[#D0CCC0] dark:border-r-[#242A20] border-b-[#D0CCC0] dark:border-b-[#242A20] transition-all duration-300 ease-out ${
             activeTabIdx === 0
               ? 'rounded-b-3xl rounded-tr-3xl rounded-tl-none'
               :               activeTabIdx === ALL_TABS.length - 1
@@ -307,7 +350,7 @@ export default function GooeyTabPanel({
             style={{ height: 1 }}
           />
 
-          <div className="w-full">
+          <div className="w-full min-w-0">
             {renderActiveContent()}
           </div>
         </div>

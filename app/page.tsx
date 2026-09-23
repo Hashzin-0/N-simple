@@ -48,6 +48,7 @@ const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr:
 const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
 const PesquisadorAgro = dynamic(() => import('@/components/PesquisadorAgro'), { ssr: false });
 const LibrasNoAgro = dynamic(() => import('@/components/LibrasNoAgro'), { ssr: false });
+const TutorInteligente = dynamic(() => import('@/components/TutorInteligente'), { ssr: false });
 const PesquisadorRedacao = dynamic(() => import('@/components/PesquisadorRedacao'), { ssr: false });
 const AccessibilityPanel = dynamic(() => import('@/components/AccessibilityPanel'), { ssr: false });
 import VLibrasWidget from '@/components/LibrasWidget';
@@ -447,6 +448,29 @@ export default function Home() {
     [isDark],
   );
 
+  const tutorContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
+          <div className="bg-white dark:bg-[#1C201A] p-4 sm:p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328]">
+            <TutorInteligente isDark={isDark} />
+          </div>
+        </ScrollStack>
+      </div>
+    ),
+    [isDark],
+  );
+
+  // Troca de mic: ao entrar na tab Tutor, desconecta o agente global.
+  // O agente do Tutor desconecta sozinho ao desmontar (unmount cleanup).
+  const voiceAgentIsConnected = voiceAgent.state.isConnected;
+  const voiceAgentDisconnect = voiceAgent.disconnect;
+  useEffect(() => {
+    if (activeTab === 'tutor' && voiceAgentIsConnected) {
+      voiceAgentDisconnect();
+    }
+  }, [activeTab, voiceAgentIsConnected, voiceAgentDisconnect]);
+
   return (
     <>
       <LoadingSkeleton3D
@@ -456,7 +480,7 @@ export default function Home() {
 
       <main
         id="main_container"
-        className="min-h-screen bg-[#FDFBF7] dark:bg-[#121511] text-[#3D3D3D] dark:text-[#E8E6DF] antialiased pb-8 font-sans transition-colors duration-300"
+        className="min-h-screen bg-[#FDFBF7] dark:bg-[#121511] text-[#3D3D3D] dark:text-[#E8E6DF] antialiased pb-8 font-sans transition-colors duration-300 overflow-x-clip"
         style={{ opacity: isLoading ? 0 : 1, transition: 'opacity 0.5s ease-in-out' }}
       >
       {/* HERO SECTION - rolls with page */}
@@ -1092,6 +1116,7 @@ export default function Home() {
           pesquisadorContent={pesquisadorContent}
           librasContent={librasContent}
           redacaoContent={redacaoContent}
+          tutorContent={tutorContent}
         />
 
         {/* GEMINI LIVE VOICE ASSISTANT HUD WITH 3D ORB */}

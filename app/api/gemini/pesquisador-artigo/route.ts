@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
   let themeInput = '';
   let userLinks: string[] = [];
   let customTopics: string[] = [];
+  let existingSources: unknown[] = [];
   let articleMode: ArticleMode = 'padrao';
 
   try {
@@ -28,6 +29,13 @@ export async function POST(req: NextRequest) {
       customTopics = body.customTopics
         .map((t: unknown) => (typeof t === 'string' ? t.trim() : ''))
         .filter((t: string) => t.length > 0);
+    }
+    // Fontes da pesquisa anterior (checkbox "Usar N fontes já pesquisadas").
+    // Antes o body era ignorado; agora entram no pool do orquestrador.
+    if (Array.isArray(body?.existingSources)) {
+      existingSources = body.existingSources.filter(
+        (s: unknown) => s !== null && typeof s === 'object'
+      );
     }
     if (body?.articleMode === 'aprofundado') {
       articleMode = 'aprofundado';
@@ -57,6 +65,10 @@ export async function POST(req: NextRequest) {
     const searchResult = await searchSources({
       query: themeInput,
       customTopics: customTopics.length > 0 ? customTopics : undefined,
+      existingSources:
+        existingSources.length > 0
+          ? (existingSources as Parameters<typeof searchSources>[0]['existingSources'])
+          : undefined,
     });
 
     const reuseStats: ReuseResult['stats'] = {

@@ -22,7 +22,8 @@ async function findSourcesByVector(
   if (!isSupabaseConfigured()) return similarityByPk;
 
   try {
-    const queryEmbedding = await embedText(query);
+    // Mesmo task family do docEmbedding armazenado (RETRIEVAL_DOCUMENT).
+    const queryEmbedding = await embedText(query, 'RETRIEVAL_QUERY');
     const { data, error } = await supabase!.rpc('match_sources_by_embedding', {
       query_embedding: queryEmbedding,
       match_threshold: UNIFIED_THRESHOLD,

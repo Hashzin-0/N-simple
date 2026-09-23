@@ -1,7 +1,7 @@
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { normalizeTopic, sourceKeyFromTitle } from '@/lib/topicExtractor';
 import { UnderstoodSource } from '@/lib/semantic/relevanceEngine';
-import { embedText, cosineSimilarity, cosineToPercentage } from '@/lib/semantic/embeddings';
+import { embedTexts, cosineSimilarity, cosineToPercentage } from '@/lib/semantic/embeddings';
 import { SEMANTIC_DISCARD_THRESHOLD } from '@/lib/semantic/config';
 
 interface IndexedSource {
@@ -13,17 +13,35 @@ interface IndexedSource {
  * Força de evidência de uma fonte para um tópico específico, calculada
  * por similaridade de embedding real (docEmbedding da fonte vs. embedding
  * do tópico) — não mais por overlap de substring. Retorna 0-1.
+ *
+ * @param topicEmbedding Vetor do tópico já calculado (memoizado pelo caller)
  */
-async function computeEvidenceStrength(
+function computeEvidenceStrength(
   source: UnderstoodSource,
-  topic: string
-): Promise<number> {
+  topicEmbedding: number[]
+): number {
   if (!source.docEmbedding || source.docEmbedding.length === 0) {
     return 0;
   }
-  const topicEmbedding = await embedText(topic.replace(/_/g, ' '));
   const cos = cosineSimilarity(topicEmbedding, source.docEmbedding);
   return cosineToPercentage(cos) / 100;
+}
+
+/**
+ * Pré-calcula o embedding de cada tópico UMA vez (batch), em vez de
+ * embedText(topic) dentro do loop fonte×tópico (N×M chamadas idênticas).
+ */
+async function buildTopicEmbeddings(topics: string[]): Promise<Map<string, number[]>> {
+  const unique = [...new Set(topics.map((t) => t.replace(/_/g, ' ')))];
+  const map = new Map<string, number[]>();
+  if (unique.length === 0) return map;
+  try {
+    const vectors = await embedTexts(unique, 'RETRIEVAL_DOCUMENT');
+    unique.forEach((t, i) => map.set(t, vectors[i]));
+  } catch (err) {
+    console.warn('[EvidenceIndex] Falha ao embedar tópicos em lote:', err);
+  }
+  return map;
 }
 
 /**
@@ -44,7 +62,8 @@ async function computeEvidenceStrength(
  */
 export async function indexSource(
   source: UnderstoodSource,
-  topics: string[]
+  topics: string[],
+  topicEmbeddings?: Map<string, number[]>
 ): Promise<IndexedSource | null> {
   if (!isSupabaseConfigured()) return null;
 
@@ -130,10 +149,13 @@ export async function indexSource(
     );
   }
 
-  // Força de evidência por tópico da busca (coverage), via embedding real.
+  // Força de evidência por tópico da busca (via embedding pré-calculado).
+  const localTopicEmbeddings =
+    topicEmbeddings ?? (await buildTopicEmbeddings(topics));
   for (const topic of topics) {
     const normalized = normalizeTopic(topic);
-    const evidenceStrength = await computeEvidenceStrength(source, topic);
+    const emb = localTopicEmbeddings.get(topic.replace(/_/g, ' '));
+    const evidenceStrength = emb ? computeEvidenceStrength(source, emb) : 0;
     const hasEvidence = evidenceStrength * 100 > SEMANTIC_DISCARD_THRESHOLD;
 
     await supabase!
@@ -170,13 +192,16 @@ export async function indexSources(
   let discardedOutOfDomain = 0;
   let errors = 0;
 
+  // Embeddings de tópico calculados 1x para o lote inteiro (antes: N×M).
+  const topicEmbeddings = await buildTopicEmbeddings(topics);
+
   const BATCH_SIZE = 10;
   for (let i = 0; i < sources.length; i += BATCH_SIZE) {
     const batch = sources.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async (src) => {
         if (!src.shouldPersist) return 'discardedOutOfDomain' as const;
-        const result = await indexSource(src, topics);
+        const result = await indexSource(src, topics, topicEmbeddings);
         if (!result) return 'error' as const;
         return src.discarded ? ('archivedOffTopic' as const) : ('indexed' as const);
       })

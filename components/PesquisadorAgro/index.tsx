@@ -13,12 +13,16 @@ interface PesquisadorAgroProps {
 
 export default function PesquisadorAgro({ isDark = false }: PesquisadorAgroProps) {
   const [currentTheme, setCurrentTheme] = useState<string>('');
-  const { cachedSources, saveSources, indexEvidence } = useEvidenceMemory();
+  const { cachedSources, saveSources } = useEvidenceMemory();
 
   const handleSourcesLoaded = async (sources: ScientificSource[]) => {
     if (currentTheme) {
+      // Persiste só no localStorage. A indexação Supabase + re-entendimento
+      // semântico já acontecem no servidor, dentro de searchSources
+      // (orquestrador usado pelo stream de pesquisador-fontes e pelo artigo).
+      // A chamada antiga a indexEvidence re-entendia as mesmas fontes e
+      // estourava o orçamento RPM de embeddings.
       saveSources(currentTheme, sources);
-      await indexEvidence(sources, [], currentTheme);
     }
   };
 

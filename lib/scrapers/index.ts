@@ -56,59 +56,15 @@ export const SCRAPERS: ScraperMetadata[] = SCRAPERS_INTERNAL.map(({ name, max, m
 
 export const SCRAPER_CONCURRENCY = Math.max(1, Number(process.env.SCRAPER_CONCURRENCY ?? 3));
 
-export interface SearchOptions {
-  maxPerSource?: Record<string, number>;
-  language?: 'pt-br' | 'pt-br-en';
-}
-
 interface ScraperTaskResult {
   name: string;
   results: ScientificSource[];
   error: string | null;
 }
 
-async function runScrapersForQuery(
-  query: string,
-  options?: SearchOptions
-): Promise<{ sources: ScientificSource[]; errors: string[]; sourcesUsed: string[] }> {
-  const errors: string[] = [];
-  const results: ScientificSource[] = [];
-  const sourcesUsed: string[] = [];
-
-  const settled: ScraperTaskResult[] = new Array(SCRAPERS_INTERNAL.length);
-  let cursor = 0;
-
-  async function worker() {
-    while (cursor < SCRAPERS_INTERNAL.length) {
-      const i = cursor++;
-      const scraper = SCRAPERS_INTERNAL[i];
-      try {
-        const maxResults = options?.maxPerSource?.[scraper.name] ?? scraper.max;
-        const scraperResults = await scraper.fn(query, maxResults, options?.language);
-        settled[i] = { name: scraper.name, results: scraperResults, error: null };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[Scrapers] ${scraper.name} failed:`, msg);
-        settled[i] = { name: scraper.name, results: [], error: msg };
-      }
-    }
-  }
-
-  const workerCount = Math.min(SCRAPER_CONCURRENCY, SCRAPERS_INTERNAL.length);
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
-
-  for (const result of settled) {
-    if (!result) continue;
-    results.push(...result.results);
-    if (result.results.length > 0) {
-      sourcesUsed.push(result.name);
-    }
-    if (result.error) {
-      errors.push(`${result.name}: ${result.error}`);
-    }
-  }
-
-  return { sources: results, errors, sourcesUsed };
+export interface SearchOptions {
+  maxPerSource?: Record<string, number>;
+  language?: 'pt-br' | 'pt-br-en';
 }
 
 export async function searchAllSources(
@@ -116,23 +72,84 @@ export async function searchAllSources(
   topics?: string[],
   options?: SearchOptions
 ): Promise<ScrapedResult> {
+  return searchAllSourcesWithProgress(query, topics, options);
+}
+
+export interface SearchProgressHooks {
+  onScrapersStart?: (scrapers: Array<{ name: string; maxAllowed: number; description: string }>) => void;
+  onScraperStart?: (name: string, maxResults: number) => void;
+  onScraperComplete?: (name: string, results: ScientificSource[]) => void;
+  onScraperError?: (name: string, error: string) => void;
+}
+
+/**
+ * searchAllSources com hooks de progresso por scraper (SSE).
+ * Mesma lógica de fan-out/dedup; os hooks são opcionais e não alteram resultado.
+ */
+export async function searchAllSourcesWithProgress(
+  query: string,
+  topics?: string[],
+  options?: SearchOptions,
+  hooks?: SearchProgressHooks
+): Promise<ScrapedResult> {
+  hooks?.onScrapersStart?.(
+    SCRAPERS.map(({ name, maxAllowed, description }) => ({
+      name,
+      maxAllowed,
+      description,
+    }))
+  );
+
   const allErrors: string[] = [];
   const allResults: ScientificSource[] = [];
   const allSourcesUsed: string[] = [];
 
+  const runOne = async (scraper: ScraperConfig, combinedQuery: string): Promise<ScraperTaskResult> => {
+    const maxResults = options?.maxPerSource?.[scraper.name] ?? scraper.max;
+    hooks?.onScraperStart?.(scraper.name, maxResults);
+    try {
+      const results = await scraper.fn(combinedQuery, maxResults, options?.language);
+      hooks?.onScraperComplete?.(scraper.name, results);
+      return { name: scraper.name, results, error: null };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Scrapers] ${scraper.name} failed:`, msg);
+      hooks?.onScraperError?.(scraper.name, msg);
+      return { name: scraper.name, results: [], error: msg };
+    }
+  };
+
   if (!topics || topics.length === 0) {
-    const { sources, errors, sourcesUsed } = await runScrapersForQuery(query, options);
-    allErrors.push(...errors);
-    allSourcesUsed.push(...sourcesUsed);
+    const settled: ScraperTaskResult[] = new Array(SCRAPERS_INTERNAL.length);
+    let cursor = 0;
 
-    const deduplicated = deduplicateSources(sources);
+    async function worker() {
+      while (cursor < SCRAPERS_INTERNAL.length) {
+        const i = cursor++;
+        settled[i] = await runOne(SCRAPERS_INTERNAL[i], query);
+      }
+    }
 
+    const workerCount = Math.min(SCRAPER_CONCURRENCY, SCRAPERS_INTERNAL.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+    const errors: string[] = [];
+    const results: ScientificSource[] = [];
+    const sourcesUsed: string[] = [];
+    for (const result of settled) {
+      if (!result) continue;
+      results.push(...result.results);
+      if (result.results.length > 0) sourcesUsed.push(result.name);
+      if (result.error) errors.push(`${result.name}: ${result.error}`);
+    }
+
+    const deduplicated = deduplicateSources(results);
     return {
       sources: deduplicated,
       query,
       totalFound: deduplicated.length,
-      errors: allErrors,
-      sourcesUsed: allSourcesUsed,
+      errors,
+      sourcesUsed,
     };
   }
 
@@ -151,12 +168,29 @@ export async function searchAllSources(
       const i = topicCursor++;
       const topic = searchTopics[i];
       const combinedQuery = `${query} ${topic}`;
-      const { sources, errors, sourcesUsed } = await runScrapersForQuery(combinedQuery, options);
-      topicResults[i] = {
-        sources: sources.map((src) => ({ ...src, matchedTopics: [topic] })),
-        errors,
-        sourcesUsed,
-      };
+      const settled: ScraperTaskResult[] = new Array(SCRAPERS_INTERNAL.length);
+      let scraperCursor = 0;
+
+      async function perTopicWorker() {
+        while (scraperCursor < SCRAPERS_INTERNAL.length) {
+          const j = scraperCursor++;
+          settled[j] = await runOne(SCRAPERS_INTERNAL[j], combinedQuery);
+        }
+      }
+
+      const perTopicCount = Math.min(SCRAPER_CONCURRENCY, SCRAPERS_INTERNAL.length);
+      await Promise.all(Array.from({ length: perTopicCount }, () => perTopicWorker()));
+
+      const sources: ScientificSource[] = [];
+      const errors: string[] = [];
+      const sourcesUsed: string[] = [];
+      for (const r of settled) {
+        if (!r) continue;
+        sources.push(...r.results.map((src) => ({ ...src, matchedTopics: [topic] })));
+        if (r.results.length > 0) sourcesUsed.push(r.name);
+        if (r.error) errors.push(`${r.name}: ${r.error}`);
+      }
+      topicResults[i] = { sources, errors, sourcesUsed };
     }
   }
 

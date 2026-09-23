@@ -29,6 +29,27 @@ Two env vars (see `.env.example`):
 
 Do not hardcode or commit these. The `.env` file is gitignored.
 
+Embeddings / research (optional, see `.env.example`):
+- `GEMINI_API_KEYS` — comma-separated keys; rotation + per-key RPM budget
+- `EMBEDDING_RPM_PER_KEY` — max embed requests/min **per key** (default `80`, hard cap `95`; must stay **below** free-tier 100 RPM)
+- `SCRAPER_CONCURRENCY` — parallel scrapers (default 3)
+- `EMBEDDING_CONCURRENCY` — legacy, no longer the primary throttle (RPM window is)
+
+## Database / Supabase migrations
+
+| File | Role |
+|------|------|
+| `supabase/schema.sql` | **Baseline** already applied on production. Do not edit it to add new features — re-running a modified baseline can conflict with live objects. |
+| `supabase/migration-*.sql` | **Incremental, idempotent** migrations. New schema changes go here only (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`). Safe to re-run. |
+| `supabase/tutor-schema.sql` | Additive schema for Tutor Inteligente (separate feature). |
+| `supabase/migration-semantic-engine.sql` | Adds `sources.embedding` + semantic columns, `source_chunks`, `source_categories`, RPC `match_sources_by_embedding`, RLS for new tables. Required by `lib/semantic/**`, `lib/evidenceIndex.ts`, `lib/reuseDecision.ts`. |
+
+Rules:
+1. Never rewrite an already-applied baseline file with new DDL — create the next `migration-*.sql` instead.
+2. Migrations must be re-runnable (idempotent).
+3. Document each new migration in this table.
+4. After deploy, run the verification queries at the bottom of the migration file.
+
 ## Architecture
 
 - **App Router**: `app/page.tsx` is the single-page calculator (client component) — orchestrates layout and passes data, no business logic or UI state in results

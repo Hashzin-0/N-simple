@@ -25,6 +25,9 @@ import {
   Hand,
   Camera,
   PenTool,
+  GraduationCap,
+  MessagesSquare,
+  Library,
 } from 'lucide-react';
 
 interface SectionConfig {
@@ -86,6 +89,13 @@ const REDACAO_SECTIONS: SectionConfig[] = [
   { id: 'redacao_resultado', label: 'Resultado', shortLabel: 'Resultado', icon: FileText, color: '#2E6F40', colorDark: '#86efac' },
 ];
 
+const TUTOR_SECTIONS: SectionConfig[] = [
+  { id: 'tutor_tema', label: 'Sessão', shortLabel: 'Sessão', icon: GraduationCap, color: '#2E6F40', colorDark: '#86efac' },
+  { id: 'tutor_session', label: 'Progresso', shortLabel: 'Progresso', icon: Trophy, color: '#5A5A40', colorDark: '#9CB386' },
+  { id: 'tutor_research', label: 'Questões', shortLabel: 'Questões', icon: Library, color: '#D4A373', colorDark: '#D4A373' },
+  { id: 'tutor_progress', label: 'Desempenho', shortLabel: 'Desempenho', icon: MessagesSquare, color: '#2E6F40', colorDark: '#9CB386' },
+];
+
 interface SectionNavGooeyProps {
   activeTab: string;
   activeSectionIds?: string[];
@@ -105,6 +115,7 @@ export default React.memo(function SectionNavGooey({ activeTab, activeSectionIds
       case 'pesquisador': return PESQUISADOR_SECTIONS;
       case 'libras': return LIBRAS_SECTIONS;
       case 'redacao': return REDACAO_SECTIONS;
+      case 'tutor': return TUTOR_SECTIONS;
       default: return NITROGEN_SECTIONS;
     }
   }, [activeTab]);

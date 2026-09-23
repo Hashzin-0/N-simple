@@ -103,7 +103,9 @@ export async function extractSemanticCategories(
   const candidates = extractCandidatePhrases(fullText);
   if (candidates.length === 0) return [];
 
-  const candidateEmbeddings = await embedTexts(candidates);
+  // Mesmo taskType dos chunks/docEmbedding (RETRIEVAL_DOCUMENT) para o
+  // cosseno candidata×documento viver no mesmo espaço vetorial.
+  const candidateEmbeddings = await embedTexts(candidates, 'RETRIEVAL_DOCUMENT');
 
   const ranked = candidates
     .map((label, idx) => ({

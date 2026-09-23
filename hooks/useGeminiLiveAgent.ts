@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { AudioStreamer } from '@/lib/audioStreamer';
 import { smoothScrollToSection, PageSection } from '@/lib/pageAutomator';
 import { ABNTReference } from '@/lib/abnt/types';
+import { LIVE_MODEL_ID } from '@/lib/liveConfig';
 
 export interface LiveAgentState {
   isConnected: boolean;
@@ -377,10 +378,13 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
         // Build setup message with voice "Puck" and function declarations
         const setupMsg = {
           setup: {
-            model: 'models/gemini-3.1-flash-live-preview',
+            model: LIVE_MODEL_ID,
             generationConfig: {
               responseModalities: ['AUDIO'],
               temperature: 0,
+              thinkingConfig: {
+                thinkingLevel: 'low',
+              },
               speechConfig: {
                 voiceConfig: {
                   prebuiltVoiceConfig: {
@@ -431,6 +435,7 @@ Sempre responda de forma concisa e direta, pois se trata de uma conversa falada 
                   {
                     name: 'calculateCornYield',
                     description: 'Calcula a estimativa de produtividade de milho baseada em estande (população), grãos por espiga, PMG e quebra (perdas), e rola a tela até a calculadora.',
+                    behavior: 'NON_BLOCKING',
                     parameters: {
                       type: 'OBJECT',
                       properties: {
@@ -468,6 +473,7 @@ Sempre responda de forma concisa e direta, pois se trata de uma conversa falada 
                   {
                     name: 'getUserLocalDateTime',
                     description: 'Obtém a data e hora local atual do usuário, dia da semana, ano e fuso horário.',
+                    behavior: 'NON_BLOCKING',
                     parameters: {
                       type: 'OBJECT',
                       properties: {},
@@ -476,6 +482,7 @@ Sempre responda de forma concisa e direta, pois se trata de uma conversa falada 
                   {
                     name: 'getCurrentSimulatorState',
                     description: 'Retorna todos os valores e respostas dos cálculos atuais da calculadora de adubação nitrogenada.',
+                    behavior: 'NON_BLOCKING',
                     parameters: {
                       type: 'OBJECT',
                       properties: {},
@@ -484,6 +491,7 @@ Sempre responda de forma concisa e direta, pois se trata de uma conversa falada 
                   {
                     name: 'setYieldGoal',
                     description: 'Ajusta a meta de produtividade de milho em sacas por hectare (sc/ha). Rola a tela até o formulário de produtividade.',
+                    behavior: 'NON_BLOCKING',
                     parameters: {
                       type: 'OBJECT',
                       properties: {
@@ -498,6 +506,7 @@ Sempre responda de forma concisa e direta, pois se trata de uma conversa falada 
                   {
                     name: 'setSoilParameters',
                     description: 'Ajusta a contribuição de N do solo (MOS), crédito da cultura anterior (soja) e/ou a eficiência de aproveitamento.',
+                    behavior: 'NON_BLOCKING',
                     parameters: {
                       type: 'OBJECT',
                       properties: {
@@ -519,6 +528,7 @@ Sempre responda de forma concisa e direta, pois se trata de uma conversa falada 
                   {
                     name: 'setFertilizerParceling',
                     description: 'Ajusta a dose de base (semeadura) e os percentuais de cobertura em V4-V6 e V8-V10.',
+                    behavior: 'NON_BLOCKING',
                     parameters: {
                       type: 'OBJECT',
                       properties: {
@@ -540,6 +550,7 @@ Sempre responda de forma concisa e direta, pois se trata de uma conversa falada 
                   {
                     name: 'loadAgronomicPreset',
                     description: 'Carrega um cenário pré-configurado pronto.',
+                    behavior: 'NON_BLOCKING',
                     parameters: {
                       type: 'OBJECT',
                       properties: {
@@ -554,6 +565,7 @@ Sempre responda de forma concisa e direta, pois se trata de uma conversa falada 
                   {
                     name: 'scrollToSection',
                     description: 'Rola suavemente a tela até uma seção específica para o usuário visualizar.',
+                    behavior: 'NON_BLOCKING',
                     parameters: {
                       type: 'OBJECT',
                       properties: {
@@ -659,6 +671,16 @@ Sempre responda de forma concisa e direta, pois se trata de uma conversa falada 
             if (!streamer.getIsPlaying()) {
               setStatus('listening');
             }
+          }
+
+          // 4b. Background reasoning / async task status (Extended Thinking)
+          const interactionStatus = msg.serverContent?.interactionStatus;
+          if (interactionStatus === 'IN_PROGRESS') {
+            setStatus('thinking');
+            setActionLabel('Pensando…');
+          } else if (interactionStatus === 'IDLE' && !streamer.getIsPlaying()) {
+            setStatus('listening');
+            setActionLabel('Ouvindo…');
           }
 
           // 5. Tool Call (Function Calling from Voice Agent)

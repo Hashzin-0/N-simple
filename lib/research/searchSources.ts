@@ -1,10 +1,12 @@
-import { searchAllSources, SearchOptions } from '@/lib/scrapers';
+import { searchAllSourcesWithProgress, SearchOptions, ScrapedResult } from '@/lib/scrapers';
 import { decideReuse, ReuseDecision } from '@/lib/reuseDecision';
 import { indexSources } from '@/lib/evidenceIndex';
 import { extractTopics, TopicExtractorConfig } from '@/lib/topicExtractor';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { understandSources, filterAndRankRelevant, UnderstoodSource } from '@/lib/semantic/relevanceEngine';
-import { DomainKey, DOMAIN_DESCRIPTORS, AGRO_DOMAIN_RELEVANCE_THRESHOLD } from '@/lib/semantic/config';
+import { embedText } from '@/lib/semantic/embeddings';
+import { DomainKey } from '@/lib/semantic/config';
+import { ScientificSource } from '@/components/PesquisadorAgro/types';
 
 export interface SourceSearchRequest {
   query: string;
@@ -12,6 +14,25 @@ export interface SourceSearchRequest {
   searchOptions?: SearchOptions;
   domain?: DomainKey;
   topicExtractorConfig?: TopicExtractorConfig;
+  /**
+   * Fontes que o cliente já tem (localStorage) — entram no pool de
+   * re-entendimento sem depender só do Supabase. Ainda passam pelo
+   * re-entendimento completo com a query atual; servem para cobrir
+   * tópicos e reduzir o fan-out de scrapers.
+   */
+  existingSources?: ScientificSource[];
+  /** Callbacks de progresso (ex.: eventos SSE do stream de pesquisador-fontes). */
+  onProgress?: SourceSearchProgress;
+}
+
+export interface SourceSearchProgress {
+  onScrapersStart?: (scrapers: Array<{ name: string; maxAllowed: number; description: string }>) => void;
+  onScraperStart?: (name: string, maxResults: number) => void;
+  onScraperComplete?: (name: string, results: ScientificSource[]) => void;
+  onScraperError?: (name: string, error: string) => void;
+  onMemoryDecision?: (decision: ReuseDecision | null) => void;
+  onProcessingStart?: (totalSources: number, message: string) => void;
+  onProcessingComplete?: (processedCount: number, relevantCount: number) => void;
 }
 
 export interface SourceSearchResult {
@@ -37,6 +58,10 @@ export interface SourceSearchResult {
  *
  * Consome os mesmos serviços usados pelo pesquisador-fontes e pesquisador-artigo,
  * eliminando duplicação de lógica entre as duas rotas.
+ *
+ * O embedding da query é gerado UMA vez e compartilhado entre o
+ * re-entendimento das fontes reutilizadas e o das novas (e pelo cache LRU
+ * de embeddings, repete 0 chamadas HTTP repetidas entre calls do mesmo request).
  */
 export async function searchSources(
   req: SourceSearchRequest
@@ -45,22 +70,53 @@ export async function searchSources(
     query,
     customTopics,
     searchOptions = {},
-    domain = 'agro',
+    domain: _domain,
     topicExtractorConfig,
+    existingSources,
+    onProgress,
   } = req;
 
   const topics = customTopics && customTopics.length > 0
     ? customTopics
     : extractTopics(query, topicExtractorConfig);
 
+  // 1 única embed da query, reutilizada em todos os understandSources deste request.
+  const sharedQueryEmbedding = await embedText(query, 'RETRIEVAL_QUERY').catch(() => undefined);
+
   // ── CAMADA 1: Verificar memória de evidências ──
   const decision = isSupabaseConfigured()
     ? await decideReuse(query, topics.length > 0 ? topics : undefined)
     : null;
+  onProgress?.onMemoryDecision?.(decision);
+
+  // Pool de candidatas já conhecidas (memória Supabase + existingSources
+  // do cliente). Deduplica por título.
+  const priorPool: UnderstoodSource[] = [];
+  const priorSeen = new Set<string>();
+  const pushPrior = (src: ScientificSource | UnderstoodSource) => {
+    const title = (src.title || '').trim();
+    if (!title || priorSeen.has(title)) return;
+    priorSeen.add(title);
+    priorPool.push(src as UnderstoodSource);
+  };
+  if (decision) {
+    for (const src of decision.sourcesToReuse) pushPrior(src);
+  }
+  if (existingSources) {
+    for (const src of existingSources) pushPrior(src);
+  }
 
   // ── ≥75% de cobertura: reutiliza sem pesquisar fontes novas ──
-  if (decision && decision.action === 'reuse' && decision.sourcesToReuse.length > 0) {
-    const understood = await understandSources(query, decision.sourcesToReuse);
+  if (
+    decision &&
+    decision.action === 'reuse' &&
+    priorPool.length > 0
+  ) {
+    const understood = await understandSources(
+      query,
+      priorPool,
+      sharedQueryEmbedding,
+    );
     const relevant = filterAndRankRelevant(understood);
 
     return {
@@ -75,22 +131,51 @@ export async function searchSources(
   }
 
   // ── 45%-75% (complementary) ou <45% (new_search): pesquisa fontes novas ──
-  const isComplementary = decision?.action === 'complementary';
-  const topicsToSearch = decision?.action === 'complementary' || decision?.action === 'new_search'
-    ? decision.topicsNeedingSearch
-    : undefined;
+  const topicsToSearch =
+    decision?.action === 'complementary' || decision?.action === 'new_search'
+      ? decision.topicsNeedingSearch
+      : undefined;
 
-  // Fontes reutilizadas (já reentendidas com a query atual) para contraponto.
-  const reusedUnderstood = isComplementary && decision
-    ? filterAndRankRelevant(await understandSources(query, decision.sourcesToReuse))
-    : [];
+  // Re-entendimento completo das candidatas prévias (decisão do produto:
+  // nunca reaproveitar vetor salvo sem passar pelo motor com a query atual).
+  if (priorPool.length > 0) {
+    onProgress?.onProcessingStart?.(
+      priorPool.length,
+      `Reutilizando ${priorPool.length} fontes da memória...`,
+    );
+  }
+  const reusedUnderstood =
+    priorPool.length > 0
+      ? filterAndRankRelevant(
+          await understandSources(query, priorPool, sharedQueryEmbedding)
+        )
+      : [];
 
-  const result = await searchAllSources(query, topicsToSearch, searchOptions);
+  // Scrapers sempre rodam neste ponto (o early-return de `reuse` com pool
+  // cheio já saiu acima) — complementary garante contraponto, new_search
+  // busca do zero.
+  const result: ScrapedResult = await searchAllSourcesWithProgress(
+    query,
+    topicsToSearch,
+    searchOptions,
+    onProgress,
+  );
 
-  const understood = await understandSources(query, result.sources);
+  onProgress?.onProcessingStart?.(
+    result.sources.length,
+    'Processando relevância semântica...',
+  );
+
+  const understood = await understandSources(
+    query,
+    result.sources,
+    sharedQueryEmbedding,
+  );
   const relevantNew = filterAndRankRelevant(understood);
+  onProgress?.onProcessingComplete?.(understood.length, relevantNew.length);
 
-  // Indexa tudo (relevantes + fora-de-tópico-mas-dominio; resto descartado dentro).
+  // Indexa as fontes novas entendidas nesta busca (as reutilizadas já
+  // indexadas em buscas anteriores).
   let indexingStats = null;
   if (isSupabaseConfigured() && understood.length > 0) {
     const stats = await indexSources(understood, topics).catch(err => {

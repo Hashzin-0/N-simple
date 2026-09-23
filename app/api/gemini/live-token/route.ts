@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { NextResponse } from 'next/server';
+import { LIVE_MODEL_ID } from '@/lib/liveConfig';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +34,7 @@ export async function POST() {
 
     return NextResponse.json({
       token: token.name,
-      model: 'models/gemini-3.1-flash-live-preview',
+      model: LIVE_MODEL_ID,
       voice: 'Puck',
       wsBaseUrl: 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained',
     });

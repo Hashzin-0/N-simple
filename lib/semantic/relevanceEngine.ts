@@ -82,28 +82,31 @@ function angleQuality(pct: number): 'Excepcional' | 'Muito Alta' | 'Alta' | 'Mod
 /**
  * ETAPA 1: Retrieval — gera embedding da query e retorna fontes ranqueadas
  * por similaridade de cosseno. Não aplica cross-encoder (isser para o rerank).
+ *
+ * As candidatas são embedadas em lote (batch API): N textos = ceil(N/50)
+ * requests no orçamento RPM, em vez de N requests individuais.
  */
 export async function retrieve(
   query: string,
   sources: ScientificSource[],
   topK: number = RETRIEVAL_TOP_K,
+  queryEmbedding?: number[],
 ): Promise<{ source: ScientificSource; score: number; queryEmbedding: number[] }[]> {
-  const queryEmbedding = await embedText(query, 'RETRIEVAL_QUERY');
+  const emb = queryEmbedding ?? (await embedText(query, 'RETRIEVAL_QUERY'));
 
-  const scored = sources.map((source) => {
-    const text = [source.title, source.abstract, (source.keywords || []).join(' ')]
+  const texts = sources.map((source) =>
+    [source.title, source.abstract, (source.keywords || []).join(' ')]
       .filter(Boolean)
-      .join(' ');
-    const sourceEmbedding = embedText(text, 'RETRIEVAL_DOCUMENT');
-    return sourceEmbedding.then((emb) => ({
-      source,
-      score: cosineSimilarity(queryEmbedding, emb),
-      queryEmbedding,
-    }));
-  });
+      .join(' '),
+  );
+  const sourceEmbeddings = await embedTexts(texts, 'RETRIEVAL_DOCUMENT');
 
-  const results = await Promise.all(scored);
-  return results
+  return sources
+    .map((source, i) => ({
+      source,
+      score: cosineSimilarity(emb, sourceEmbeddings[i]),
+      queryEmbedding: emb,
+    }))
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
 }
@@ -155,7 +158,9 @@ async function understandOne(
   const rawChunks = chunkText(analysisText);
   const chunkTexts = rawChunks.length > 0 ? rawChunks : [source.title];
 
-  const chunkEmbeddings = await embedTexts(chunkTexts);
+  // Mesmo taskType do queryEmbedding (RETRIEVAL_*) — alinhado ao espaço
+  // vetorial do retrieve/consulta (Gemini exige mesmo task family).
+  const chunkEmbeddings = await embedTexts(chunkTexts, 'RETRIEVAL_DOCUMENT');
   const chunkScores = chunkEmbeddings.map((emb) => cosineSimilarity(emb, queryEmbedding));
 
   const orderedIdx = chunkScores
@@ -219,18 +224,22 @@ async function understandOne(
  */
 export async function understandSources(
   query: string,
-  sources: ScientificSource[]
+  sources: ScientificSource[],
+  sharedQueryEmbedding?: number[],
 ): Promise<UnderstoodSource[]> {
   if (sources.length === 0) return [];
 
-  // Etapa 1: Retrieval (Gemini Embedding)
-  const retrieved = await retrieve(query, sources, RETRIEVAL_TOP_K);
+  // Etapa 1: Retrieval (Gemini Embedding, em lote)
+  const retrieved = await retrieve(query, sources, RETRIEVAL_TOP_K, sharedQueryEmbedding);
 
   // Etapa 2: Reranking (Cross-Encoder ONNX)
   const reranked = await rerank(query, retrieved, RERANK_TOP_K);
 
   // Etapa 3: Entender cada fonte final
-  const queryEmbedding = reranked[0]?.queryEmbedding ?? await embedText(query, 'RETRIEVAL_QUERY');
+  const queryEmbedding =
+    sharedQueryEmbedding ??
+    reranked[0]?.queryEmbedding ??
+    (await embedText(query, 'RETRIEVAL_QUERY'));
   const results: UnderstoodSource[] = new Array(reranked.length);
   let cursor = 0;
 

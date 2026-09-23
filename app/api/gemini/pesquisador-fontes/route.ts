@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
-import { SCRAPERS, SCRAPERS_INTERNAL, SCRAPER_CONCURRENCY, SearchOptions } from '@/lib/scrapers';
+import { SCRAPERS, SearchOptions } from '@/lib/scrapers';
 import { searchSources } from '@/lib/research';
-import { ScientificSource } from '@/components/PesquisadorAgro/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,62 +41,63 @@ export async function POST(req: NextRequest) {
             })),
           });
 
-          logMemory('before scrapers (stream)');
+          logMemory('before searchSources (stream)');
 
-          const { understandSources, filterAndRankRelevant } = await import('@/lib/semantic/relevanceEngine');
+          try {
+            // Orquestrador unificado: memória (decideReuse) → reuso →
+            // scrapers → understandSources → indexSources (1x só).
+            // Substitui o caminho antigo que scrapava+embedava tudo sem memória
+            // e forçava o client a re-entender de novo em /api/evidence/index.
+            const result = await searchSources({
+              query: cleanQuery,
+              searchOptions,
+              onProgress: {
+                onScrapersStart: (scrapers) =>
+                  sendEvent('scrapers_config', { scrapers }),
+                onScraperStart: (name, maxResults) =>
+                  sendEvent('scraper_start', { name, maxResults }),
+                onScraperComplete: (name, results) =>
+                  sendEvent('scraper_complete', { name, results, count: results.length }),
+                onScraperError: (name, error) =>
+                  sendEvent('scraper_error', { name, error }),
+                onProcessingStart: (totalSources, message) =>
+                  sendEvent('processing_start', { totalSources, message }),
+                onProcessingComplete: (processedCount, relevantCount) =>
+                  sendEvent('processing_complete', { processedCount, relevantCount }),
+                onMemoryDecision: (decision) => {
+                  if (decision) {
+                    sendEvent('memory_decision', {
+                      action: decision.action,
+                      coverage: decision.coverageScore,
+                      reuseScore: decision.reuseScore,
+                    });
+                  }
+                },
+              },
+            });
 
-          // ── Fase 1: Executar scrapers com worker pool, enviar resultados brutos ──
-          const rawResultsMap = new Map<string, ScientificSource[]>();
-          const scraperErrors: string[] = [];
-          let cursor = 0;
+            logMemory('after searchSources (stream)');
 
-          async function scraperWorker() {
-            while (cursor < SCRAPERS_INTERNAL.length) {
-              const i = cursor++;
-              const scraper = SCRAPERS_INTERNAL[i];
-              const maxResults = searchOptions.maxPerSource?.[scraper.name] ?? scraper.max;
-              sendEvent('scraper_start', { name: scraper.name, maxResults });
-
-              try {
-                const rawResults = await scraper.fn(cleanQuery, maxResults, searchOptions.language);
-                rawResultsMap.set(scraper.name, rawResults);
-                sendEvent('scraper_complete', { name: scraper.name, results: rawResults, count: rawResults.length });
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : String(err);
-                scraperErrors.push(`${scraper.name}: ${msg}`);
-                sendEvent('scraper_error', { name: scraper.name, error: msg });
-                rawResultsMap.set(scraper.name, []);
-              }
-            }
+            sendEvent('complete', {
+              totalFound: result.sources.length,
+              sources: result.sources,
+              errors: result.errors,
+              reuseStats: result.memoryDecision
+                ? {
+                    action: result.memoryDecision.action,
+                    coverage: result.memoryDecision.coverageScore,
+                    reused: result.reusedSources.length,
+                    newFound: result.newSources.length,
+                  }
+                : null,
+              indexingStats: result.indexingStats,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            sendEvent('error', { message: msg });
+          } finally {
+            controller.close();
           }
-
-          const workerCount = Math.min(SCRAPER_CONCURRENCY, SCRAPERS_INTERNAL.length);
-          await Promise.all(Array.from({ length: workerCount }, () => scraperWorker()));
-
-          logMemory('after scrapers (stream)');
-
-          // ── Fase 2: UnderstandSources uma única vez em todos os resultados combinados ──
-          const allRawResults: ScientificSource[] = [];
-          for (const results of rawResultsMap.values()) {
-            allRawResults.push(...results);
-          }
-
-          sendEvent('processing_start', { totalSources: allRawResults.length, message: 'Processando relevância semântica...' });
-          logMemory('before understandSources (stream)');
-
-          const understood = await understandSources(cleanQuery, allRawResults);
-          const relevant = filterAndRankRelevant(understood);
-
-          logMemory('after understandSources (stream)');
-          sendEvent('processing_complete', { processedCount: understood.length, relevantCount: relevant.length });
-
-          sendEvent('complete', {
-            totalFound: relevant.length,
-            sources: relevant,
-            errors: scraperErrors,
-          });
-
-          controller.close();
         },
       });
 
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
+          Connection: 'keep-alive',
         },
       });
     }
