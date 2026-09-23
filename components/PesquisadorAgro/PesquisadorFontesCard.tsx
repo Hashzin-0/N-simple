@@ -127,6 +127,17 @@ export default function PesquisadorFontesCard({
   const [dynamicSources, setDynamicSources] = useState<ScientificSource[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [scraperProgress, setScraperProgress] = useState<Record<string, { status: 'pending' | 'loading' | 'complete' | 'error'; count?: number; message?: string }>>({});
+  /**
+   * Fontes com análise semântica concluída (badge azul) + progresso
+   * global de verificação (contador de % para o usuário).
+   */
+  const [verifiedIds, setVerifiedIds] = useState<Set<string>>(new Set());
+  const [verifyProgress, setVerifyProgress] = useState<{
+    verifiedCount: number;
+    totalSources: number;
+    persistedCount: number;
+    percentage: number;
+  } | null>(null);
   const [searchOptions, setSearchOptions] = useState<{ maxPerSource?: Record<string, number>; language?: 'pt-br' | 'pt-br-en' }>({ language: 'pt-br' });
   const [showScraperConfig, setShowScraperConfig] = useState(false);
   const [resolvedImages, setResolvedImages] = useState<Record<string, string>>({});
@@ -311,6 +322,8 @@ export default function PesquisadorFontesCard({
     setSearchingLive(true);
     setDynamicSources([]);
     setScraperProgress({});
+    setVerifiedIds(new Set());
+    setVerifyProgress(null);
 
     try {
       const res = await fetch('/api/gemini/pesquisador-fontes', {
@@ -363,7 +376,49 @@ export default function PesquisadorFontesCard({
               } else if (event === 'processing_start') {
                 setScraperProgress(prev => ({
                   ...prev,
-                  _processing: { status: 'loading', message: data.message }
+                  _processing: {
+                    status: 'loading',
+                    message: data.message,
+                    count: typeof data.totalSources === 'number' ? data.totalSources : undefined,
+                  }
+                }));
+                if (typeof data.totalSources === 'number' && data.totalSources > 0) {
+                  setVerifyProgress({
+                    verifiedCount: 0,
+                    totalSources: data.totalSources,
+                    persistedCount: 0,
+                    percentage: 0,
+                  });
+                }
+              } else if (event === 'processing_progress') {
+                // Fonte verificada (analisada/salva) — badge azul + contador %
+                if (data?.sourceId) {
+                  const id = String(data.sourceId);
+                  setVerifiedIds(prev => {
+                    if (prev.has(id)) return prev;
+                    const next = new Set(prev);
+                    next.add(id);
+                    return next;
+                  });
+                }
+                if (typeof data?.percentage === 'number' || typeof data?.verifiedCount === 'number') {
+                  setVerifyProgress({
+                    verifiedCount: data.verifiedCount ?? 0,
+                    totalSources: data.totalSources ?? 0,
+                    persistedCount: data.persistedCount ?? 0,
+                    percentage: Math.max(0, Math.min(100, data.percentage ?? 0)),
+                  });
+                }
+                setScraperProgress(prev => ({
+                  ...prev,
+                  _processing: {
+                    status: 'loading',
+                    message:
+                      `Verificadas ${data.verifiedCount ?? 0}/${data.totalSources ?? '?'}` +
+                      ` (${data.percentage ?? 0}%)` +
+                      (data.persistedCount ? ` • salvas: ${data.persistedCount}` : ''),
+                    count: data.totalSources,
+                  }
                 }));
               } else if (event === 'processing_complete') {
                 setScraperProgress(prev => {
@@ -371,8 +426,39 @@ export default function PesquisadorFontesCard({
                   delete next._processing;
                   return next;
                 });
+                if (typeof data?.processedCount === 'number') {
+                  setVerifyProgress(prev => prev
+                    ? {
+                        ...prev,
+                        verifiedCount: data.processedCount,
+                        percentage: prev.totalSources > 0
+                          ? Math.round((data.processedCount / prev.totalSources) * 100)
+                          : prev.percentage,
+                      }
+                    : prev
+                  );
+                }
               } else if (event === 'complete' && data.sources) {
                 setDynamicSources(data.sources);
+                // No fim, marca todas as fontes com score semântico como verificadas
+                const verified = new Set<string>();
+                for (const s of data.sources as ScientificSource[]) {
+                  if (s.id && typeof s.semanticScore === 'number') {
+                    verified.add(s.id);
+                  }
+                }
+                setVerifiedIds(verified);
+                setVerifyProgress(prev => ({
+                  verifiedCount: verified.size,
+                  totalSources: prev?.totalSources || data.sources.length,
+                  persistedCount: data.indexingStats?.indexed ?? prev?.persistedCount ?? 0,
+                  percentage:
+                    prev && prev.totalSources > 0
+                      ? Math.round((verified.size / prev.totalSources) * 100)
+                      : data.sources.length > 0
+                        ? Math.round((verified.size / data.sources.length) * 100)
+                        : 0,
+                }));
                 if (data.indexingStats) {
                   console.info('[PesquisadorFontes] indexingStats:', data.indexingStats);
                 }
@@ -673,7 +759,24 @@ export default function PesquisadorFontesCard({
             <div className="space-y-2">
               <span className="text-[11px] font-semibold text-[#8C897E] dark:text-[#9EA399]">
                 Progresso da busca:
+                {verifyProgress && verifyProgress.totalSources > 0 && (
+                  <span className="ml-2 font-mono text-blue-600 dark:text-blue-400">
+                    {verifyProgress.verifiedCount}/{verifyProgress.totalSources} verificadas (
+                    {verifyProgress.percentage}%)
+                    {verifyProgress.persistedCount > 0
+                      ? ` • ${verifyProgress.persistedCount} salvas`
+                      : ''}
+                  </span>
+                )}
               </span>
+              {verifyProgress && verifyProgress.totalSources > 0 && (
+                <div className="h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                    style={{ width: `${verifyProgress.percentage}%` }}
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {Object.entries(scraperProgress).map(([name, status]) => (
                   <div
@@ -699,6 +802,16 @@ export default function PesquisadorFontesCard({
                     {name === '_processing' && status.message && (
                       <span className="ml-1 opacity-75">— {status.message}</span>
                     )}
+                    {name === '_processing' && verifyProgress && verifyProgress.percentage > 0 && (
+                      <span className="ml-2 inline-flex items-center gap-1 font-semibold">
+                        <span className="bg-blue-600 text-white dark:bg-blue-400 dark:text-blue-950 px-1.5 py-0.2 rounded-full">
+                          {verifyProgress.percentage}%
+                        </span>
+                        <span className="opacity-80">
+                          {verifyProgress.verifiedCount}/{verifyProgress.totalSources}
+                        </span>
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -714,7 +827,14 @@ export default function PesquisadorFontesCard({
             <BookOpen className="h-4 w-4 text-[#2E6F40] dark:text-[#9CB386]" />
             <span>Fontes localizadas para &ldquo;{searchTerm || 'Agropecuária'}&rdquo;:</span>
             <span className="text-xs font-normal text-[#8C897E] dark:text-[#9EA399]">
-              ({filteredSources.length} fontes ordenadas por relevância combinada)
+              ({filteredSources.length} fontes ordenadas por relevância combinada
+              {verifyProgress && verifyProgress.verifiedCount > 0
+                ? ` • ${verifyProgress.verifiedCount} verificadas (${verifyProgress.percentage}%)`
+                : ''}
+              {verifyProgress && verifyProgress.persistedCount > 0
+                ? ` • ${verifyProgress.persistedCount} salvas`
+                : ''}
+              )
             </span>
           </p>
 
@@ -757,6 +877,9 @@ export default function PesquisadorFontesCard({
               const isCopied = copiedId === source.id;
               const isYouTube = source.sourceName === 'YouTube' || source.sourceType === 'video_tecnico';
               const trig = source.trigonometricSimilarity;
+              const isVerified =
+                verifiedIds.has(source.id) ||
+                (typeof source.semanticScore === 'number' && source.semanticScore > 0);
 
               return (
                 <div
@@ -767,16 +890,22 @@ export default function PesquisadorFontesCard({
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                     <div className="space-y-1.5 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        {/* Repository Badge */}
+                        {/* Repository Badge — azul quando verificada pela análise semântica */}
                         <span
                           className={`text-[10px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
-                            isYouTube
+                            isVerified
+                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60'
+                              : isYouTube
                               ? 'bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400'
                               : 'bg-[#2E6F40]/10 text-[#2E6F40] dark:bg-[#9CB386]/15 dark:text-[#9CB386]'
                           }`}
+                          title={isVerified ? 'Verificada pela análise semântica' : undefined}
                         >
                           {isYouTube && <Video className="h-3 w-3" />}
                           {source.sourceName}
+                          {isVerified && (
+                            <span className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-blue-500" />
+                          )}
                         </span>
 
                         {/* Source Type Badge */}

@@ -8,10 +8,23 @@ let browserInstance: Awaited<ReturnType<typeof puppeteerExtra.launch>> | null = 
 let launchPromise: Promise<typeof browserInstance> | null = null;
 
 export function isBrowserAvailable(): boolean {
+  if (stealthEnvDisabled()) return false;
   return !chromiumUnavailable;
 }
 
+/**
+ * Em Vercel (ou com DISABLE_STEALTH=1) o Chromium serverless não deve
+ * subir: o RSS do browser derruba a função (SIGKILL/OOM) e o binário
+ * não é o alvo de deploy da plataforma.
+ */
+function stealthEnvDisabled(): boolean {
+  if (process.env.DISABLE_STEALTH === '1') return true;
+  if (process.env.VERCEL && !process.env.ENABLE_STEALTH) return true;
+  return false;
+}
+
 async function getBrowser() {
+  if (stealthEnvDisabled()) return null;
   if (chromiumUnavailable) return null;
 
   if (browserInstance) {
@@ -115,7 +128,11 @@ export async function stealthFetch(
 
 export async function closeBrowser() {
   if (browserInstance) {
-    await browserInstance.close();
+    try {
+      await browserInstance.close();
+    } catch {
+      // browser já morto / processo encerrando
+    }
     browserInstance = null;
   }
 }

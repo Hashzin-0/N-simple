@@ -73,10 +73,12 @@ function extractCandidatePhrases(text: string): string[] {
   // Mantém só candidatas com repetição mínima (evita ruído de termos únicos)
   // ou bigramas/trigramas plausíveis (frases compostas costumam aparecer só 1x
   // mesmo sendo o assunto central, então damos uma chance a elas também).
+  // Teto de 24: cada candidata vira 1 embedding — 80×768 floats/fonte
+  // contribuía para OOM em lotes grandes de análise semântica.
   return [...candidates.entries()]
     .filter(([phrase, count]) => count >= 2 || phrase.includes(' '))
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 80)
+    .slice(0, 24)
     .map(([phrase]) => phrase);
 }
 
@@ -100,7 +102,7 @@ export async function extractSemanticCategories(
   fullText: string,
   docEmbedding: number[]
 ): Promise<SemanticCategory[]> {
-  const candidates = extractCandidatePhrases(fullText);
+  const candidates = extractCandidatePhrases(fullText).slice(0, MAX_CATEGORIES_PER_SOURCE * 3);
   if (candidates.length === 0) return [];
 
   // Mesmo taskType dos chunks/docEmbedding (RETRIEVAL_DOCUMENT) para o

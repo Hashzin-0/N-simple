@@ -6,6 +6,7 @@ import { useTheme } from '@/components/ThemeProvider';
 import { CheckCircle, XCircle, Trophy, ArrowRight, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import LibrasVideoCard from './LibrasVideoCard';
+import { normalizeText, includesWholeWord } from '@/lib/libras-search-utils';
 import type { LibrasModule, LibrasWord, LibrasVideoResult, LibrasQuizQuestion } from '@/lib/libras-types';
 import type { useLibrasProgress } from '@/hooks/useLibrasProgress';
 
@@ -79,13 +80,25 @@ export default React.memo(function LibrasQuiz({
     const correctVideos = videoCache[currentQuestion.id];
     if (correctVideos.length === 0) return [];
 
-    const correct = correctVideos[0]; // First result is most relevant
+    // Só aceita vídeo cujo título realmente contenha a palavra do quiz
+    // (não bater por substring de outro termo) ou contexto de Libras.
+    const targetWord = normalizeText(currentQuestion.word);
+    const correct =
+      correctVideos.find(
+        (v) =>
+          includesWholeWord(v.title, targetWord) &&
+          (normalizeText(v.title).includes('libras') ||
+            normalizeText(v.title).includes('sinal'))
+      ) ||
+      correctVideos.find((v) => includesWholeWord(v.title, targetWord)) ||
+      null;
+    if (!correct) return [];
 
     // Get wrong videos from other words
     const wrongPool: LibrasVideoResult[] = [];
-    for (const word of quizWords) {
-      if (word.id !== currentQuestion.id && videoCache[word.id]) {
-        wrongPool.push(...videoCache[word.id].slice(0, 2));
+    for (const other of quizWords) {
+      if (other.id !== currentQuestion.id && videoCache[other.id]) {
+        wrongPool.push(...videoCache[other.id].slice(0, 2));
       }
     }
 

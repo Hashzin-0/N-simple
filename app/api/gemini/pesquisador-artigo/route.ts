@@ -3,6 +3,7 @@ import { fetchUserDocuments } from '@/lib/userDocuments';
 import { buildPrompt, ArticleMode } from '@/lib/prompts';
 import { generateWithFallback } from '@/lib/llm-providers';
 import { searchSources, formatSourcesByTopic, formatUserDocsSection } from '@/lib/research';
+import { closeBrowser } from '@/lib/stealthBrowser';
 
 export const dynamic = 'force-dynamic';
 
@@ -189,5 +190,7 @@ ${customTopics.map((top, idx) => `3.${idx + 1} ${top}`).join('\n')}
       { error: errorMessage, theme: themeInput || '' },
       { status: 500 }
     );
+  } finally {
+    await closeBrowser().catch(() => {});
   }
 }

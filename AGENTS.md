@@ -66,9 +66,32 @@ Rules:
 
 - `vercel.json` → `functions["app/api/tutor/research/route.ts"].maxDuration = 300` (mirrors route `export const maxDuration = 300`). Without this entry, the platform default (~60s) kills the request with `FUNCTION_INVOCATION_FAILED`.
 - `lib/tutor/researchQuestions.ts` enforces a soft budget (`HEAVY_BUDGET_MS` for scrapers, `HARD_STOP_MS` for LLM, `MAX_LLM_EXTRACTS = 2`) and returns partial results + `errors` instead of hanging.
-- Tutor path calls `searchSources({ light: true, priorDecision, maxTopicsForSearch: 2, searchOptions.maxPerSource })` so it does not run full `understandSources`/`indexSources` or topic×scraper fan-out.
+- Tutor path calls `searchSources({ light: true, priorDecision, maxTopicsForSearch: 2, searchOptions.maxPerSource })` so it does not run full `understandSources` (retrieval/rerank/full-text) or topic×scraper fan-out. Light mode **still persists** scraped sources via `persistPartialBatch` (metadata only, `shouldPersist: true`) so research progress is not lost.
 
 When changing this route or `searchSources`, keep those three constraints (vercel.json entry, time budget, light mode) in sync.
+
+## Semantic analysis persistence (incremental)
+
+Full (non-light) `searchSources` persists **as it analyzes** — not only at the end:
+
+1. Scrapers finish → `onProcessingStart(totalFound)`.
+2. `understandSources(..., { onSourceComplete })` → each top-K source is written with `indexSources`/`persistPartialBatch` immediately.
+3. If the engine throws, a second light pass runs (`understandOneLight` fallback); on total failure, raw sources are wrapped and persisted anyway.
+4. Out-of-top-K sources are classified in batches of 25 and persisted incrementally.
+5. Final `persistSearchOutcome` is an idempotent upsert + `search_queries` log.
+
+Progress events: SSE `processing_progress` → client `verifiedIds` (blue badges) + `%` counter. `onSourceVerified` lives on `SourceSearchProgress`.
+
+### Memory / SIGKILL (Vercel)
+
+- Stealth/Chromium: **disabled when `process.env.VERCEL`** unless `ENABLE_STEALTH=1`; also honor `DISABLE_STEALTH=1`. Lazy `import()` in `fullTextFetcher` (no static puppeteer in the module graph).
+- Always `closeBrowser()` in route `finally` blocks (pesquisador-fontes/artigo, redacao-pesquisa, evidence/*).
+- HTML/PDF full-text: hard byte caps before parse (`MAX_RAW_HTML_BYTES` / `MAX_RAW_PDF_BYTES` in `fullTextFetcher.ts`).
+- `SCRAPER_CONCURRENCY` defaults to **2 on Vercel**, 3 elsewhere.
+- Category extractor embeds ≤24 candidates (was 80) to cut embedding memory.
+- `classifyOutOfTopKForPersistence` batches embeddings (40 per batch).
+
+If function still SIGKILLs: raise **Function Memory** in Vercel Dashboard (Fluid Compute does not read `memory` from `vercel.json`).
 
 ## Architecture
 

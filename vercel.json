@@ -23,6 +23,12 @@
     },
     "app/api/tutor/evaluate/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/evidence/index/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/evidence/search/route.ts": {
+      "maxDuration": 60
     }
   },
   "headers": [

@@ -57,6 +57,20 @@ export interface SourceSearchProgress {
   onMemoryDecision?: (decision: ReuseDecision | null) => void;
   onProcessingStart?: (totalSources: number, message: string) => void;
   onProcessingComplete?: (processedCount: number, relevantCount: number) => void;
+  /**
+   * Progresso incremental da análise semântica + persistência.
+   * Emitido a cada fonte processada (e salva ou tentada) para o cliente
+   * mostrar badge azul e contador de verificadas.
+   */
+  onSourceVerified?: (update: {
+    sourceId?: string;
+    title?: string;
+    verifiedCount: number;
+    totalSources: number;
+    persistedCount: number;
+    percentage: number;
+    status: 'analyzed' | 'persisted' | 'error';
+  }) => void;
 }
 
 export interface SourceSearchResult {
@@ -107,13 +121,25 @@ async function persistSearchOutcome(
   decision: ReuseDecision | null,
   sourcesFound: number,
 ): Promise<SourceSearchResult['indexingStats']> {
-  if (!isSupabaseConfigured() || sourcesToIndex.length === 0) {
+  if (!isSupabaseConfigured()) {
+    console.warn(
+      '[ResearchService] Supabase não configurado — fontes NÃO serão salvas. ' +
+        'Defina SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY.'
+    );
+    return null;
+  }
+  if (sourcesToIndex.length === 0) {
+    console.warn('[ResearchService] persistSearchOutcome: lista de fontes vazia — nada a indexar.');
     return null;
   }
 
   let stats: SourceSearchResult['indexingStats'] = null;
   try {
     stats = await indexSources(sourcesToIndex, topics);
+    console.info(
+      `[ResearchService] Indexação: indexed=${stats?.indexed} archived=${stats?.archivedOffTopic} ` +
+        `discarded=${stats?.discardedOutOfDomain} errors=${stats?.errors}`
+    );
   } catch (err) {
     console.warn('[ResearchService] Falha ao indexar:', err);
   }
@@ -131,6 +157,24 @@ async function persistSearchOutcome(
   }
 
   return stats;
+}
+
+/**
+ * Persiste um lote parcial de fontes já analisadas (incremental).
+ * Não registra search_queries (só no final). Retorna stats agregadas.
+ */
+async function persistPartialBatch(
+  topics: string[],
+  batch: UnderstoodSource[],
+): Promise<{ indexed: number; errors: number } | null> {
+  if (!isSupabaseConfigured() || batch.length === 0) return null;
+  try {
+    const stats = await indexSources(batch, topics);
+    return { indexed: stats.indexed + stats.archivedOffTopic, errors: stats.errors };
+  } catch (err) {
+    console.warn('[ResearchService] Falha ao indexar lote parcial:', err);
+    return { indexed: 0, errors: batch.length };
+  }
 }
 
 /**
@@ -228,6 +272,32 @@ export async function searchSources(
       priorPool,
       sharedQueryEmbedding,
       domain,
+      {
+        onSourceComplete: async (src, meta) => {
+          if (src.shouldPersist) {
+            const partial = await persistPartialBatch(topics, [src]);
+            onProgress?.onSourceVerified?.({
+              sourceId: src.id,
+              title: src.title,
+              verifiedCount: meta.index + 1,
+              totalSources: meta.total,
+              persistedCount: partial?.indexed ?? 0,
+              percentage: Math.round(((meta.index + 1) / Math.max(1, meta.total)) * 100),
+              status: partial && partial.errors === 0 && partial.indexed > 0 ? 'persisted' : 'analyzed',
+            });
+          } else {
+            onProgress?.onSourceVerified?.({
+              sourceId: src.id,
+              title: src.title,
+              verifiedCount: meta.index + 1,
+              totalSources: meta.total,
+              persistedCount: 0,
+              percentage: Math.round(((meta.index + 1) / Math.max(1, meta.total)) * 100),
+              status: 'analyzed',
+            });
+          }
+        },
+      },
     );
     const relevant = filterAndRankRelevant(understood);
 
@@ -297,28 +367,129 @@ export async function searchSources(
       .filter((s) => !seenTitles.has(s.title))
       .slice(0, 30)
       .map(toLightUnderstood);
+
+    // Caminho light do Tutor: ainda persiste o que os scrapers acharam
+    // (formatado/documentado), para não perder o progresso da pesquisa.
+    // shouldPersist=true força gravação mesmo sem score semântico cheio.
+    const lightToPersist = lightNew.map((s) => ({ ...s, shouldPersist: true }));
+    const lightStats = await persistPartialBatch(topics, lightToPersist);
+
     return {
       sources: [...reusedUnderstood, ...lightNew],
       reusedSources: reusedUnderstood,
       newSources: lightNew,
       memoryDecision: decision,
       topics,
-      indexingStats: null,
+      indexingStats: lightStats
+        ? {
+            indexed: lightStats.indexed,
+            archivedOffTopic: 0,
+            discardedOutOfDomain: 0,
+            errors: lightStats.errors,
+          }
+        : null,
       errors: result.errors,
     };
   }
 
+  const totalToAnalyze = result.sources.length;
   onProgress?.onProcessingStart?.(
-    result.sources.length,
+    totalToAnalyze,
     'Processando relevância semântica...',
   );
 
-  const understood = await understandSources(
-    query,
-    result.sources,
-    sharedQueryEmbedding,
-    domain,
-  );
+  // Persistência INCREMENTAL: cada fonte entendida pelo motor é gravada
+  // assim que pronta (via onSourceComplete). Se o processo morrer no
+  // meio (SIGKILL/OOM), o que já passou já está no banco.
+  //
+  // Contador global: o understandSources só emite para o top-K do rerank
+  // (RERANK_TOP_K), mas o usuário espera ver o progresso sobre o total
+  // de fontes dos scrapers (ex.: 430). O classifyOutOfTopK continua o
+  // restante — ambos incrementam `verifiedCount`.
+  let verifiedCount = 0;
+  let persistedCount = 0;
+  const emitVerified = (
+    src: UnderstoodSource,
+    status: 'analyzed' | 'persisted' | 'error',
+  ) => {
+    verifiedCount += 1;
+    const pct = Math.min(
+      100,
+      Math.round((verifiedCount / Math.max(1, totalToAnalyze)) * 100)
+    );
+    onProgress?.onSourceVerified?.({
+      sourceId: src.id,
+      title: src.title,
+      verifiedCount,
+      totalSources: totalToAnalyze,
+      persistedCount,
+      percentage: pct,
+      status,
+    });
+  };
+
+  let understood: UnderstoodSource[] = [];
+  try {
+    understood = await understandSources(
+      query,
+      result.sources,
+      sharedQueryEmbedding,
+      domain,
+      {
+        onSourceComplete: async (src) => {
+          if (src.shouldPersist) {
+            const partial = await persistPartialBatch(topics, [src]);
+            if (partial && partial.indexed > 0) {
+              persistedCount += partial.indexed;
+              emitVerified(src, partial.errors > 0 ? 'error' : 'persisted');
+            } else {
+              emitVerified(src, partial ? 'error' : 'analyzed');
+            }
+          } else {
+            emitVerified(src, 'analyzed');
+          }
+        },
+      },
+    );
+  } catch (err) {
+    // Se o motor morrer no meio (quota, erro de embed, OOM parcial),
+    // tenta um segundo passe "leve" para não perder a corrida dos scrapers.
+    console.warn('[ResearchService] understandSources falhou, retry light:', err);
+    onProgress?.onProcessingStart?.(
+      result.sources.length,
+      'Análise semântica interrompida — retomando com modo leve...',
+    );
+    try {
+      understood = await understandSources(
+        query,
+        result.sources,
+        sharedQueryEmbedding,
+        domain,
+        {
+          onSourceComplete: async (src) => {
+            if (src.shouldPersist) {
+              const partial = await persistPartialBatch(topics, [src]);
+              if (partial) persistedCount += partial.indexed;
+            }
+            emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
+          },
+        },
+      );
+    } catch (retryErr) {
+      console.warn('[ResearchService] retry light também falhou:', retryErr);
+      // Fallback final: envolve as fontes cruas como light e persiste.
+      understood = result.sources.map(toLightUnderstood).map((s) => ({
+        ...s,
+        shouldPersist: true,
+      }));
+      const partial = await persistPartialBatch(topics, understood);
+      if (partial) persistedCount += partial.indexed;
+      for (const src of understood) {
+        emitVerified(src, 'persisted');
+      }
+    }
+  }
+
   const relevantNew = filterAndRankRelevant(understood);
   onProgress?.onProcessingComplete?.(understood.length, relevantNew.length);
 
@@ -333,12 +504,25 @@ export async function searchSources(
       understood,
       domain,
     );
+    // Persiste o restante em lotes (fora do top-K) — incremental também.
+    const OUT_BATCH = 25;
+    for (let i = 0; i < outOfTopK.length; i += OUT_BATCH) {
+      const slice = outOfTopK.slice(i, i + OUT_BATCH);
+      const partial = await persistPartialBatch(topics, slice);
+      if (partial) persistedCount += partial.indexed;
+      for (const src of slice) {
+        // Emite para TODAS as classificadas (inclusive fora de domínio)
+        // para o chegar a 100% quando a fila terminar.
+        emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
+      }
+    }
   } catch (err) {
     console.warn('[ResearchService] Falha ao classificar fontes fora do top-K:', err);
   }
 
   // Indexa novas entendidas + fora do top-K do domínio + reutilizadas que
-  // podem ter vindo só do localStorage do cliente.
+  // podem ter vindo só do localStorage do cliente. Upsert idempotente —
+  // fontes já salvas incrementalmente são atualizadas.
   const toIndex = [...understood, ...outOfTopK, ...reusedUnderstood];
   const indexingStats = await persistSearchOutcome(
     query,

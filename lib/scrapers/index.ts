@@ -54,7 +54,17 @@ export const SCRAPERS: ScraperMetadata[] = SCRAPERS_INTERNAL.map(({ name, max, m
   name, max, maxAllowed, description,
 }));
 
-export const SCRAPER_CONCURRENCY = Math.max(1, Number(process.env.SCRAPER_CONCURRENCY ?? 3));
+/**
+ * Concorrência de scrapers. Na Vercel o default é 2 para reduzir o pico
+ * de memória (RSS de HTML/PDF em paralelo contribui para SIGKILL).
+ */
+export const SCRAPER_CONCURRENCY = Math.max(
+  1,
+  Number(
+    process.env.SCRAPER_CONCURRENCY ??
+      (process.env.VERCEL ? 2 : 3)
+  )
+);
 
 interface ScraperTaskResult {
   name: string;

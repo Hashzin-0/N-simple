@@ -225,14 +225,115 @@ async function understandOne(
 }
 
 /**
+ * Fallback "semântico leve" quando o pipeline completo falha (OOM,
+ * timeout de full-text, cross-encoder, etc.). Usa só abstract/título,
+ * sem full-text nem ONNX — suficiente para classificar domínio e
+ * PERSISTIR a fonte em vez de descartá-la e perder o progresso do scraper.
+ */
+async function understandOneLight(
+  queryEmbedding: number[],
+  source: ScientificSource,
+  domain: DomainKey,
+): Promise<UnderstoodSource> {
+  const analysisText = buildAnalysisText(source, '', false);
+  const chunkTexts = chunkText(analysisText);
+  const safeChunks = chunkTexts.length > 0 ? chunkTexts : [source.title];
+
+  let chunkEmbeddings: number[][] = [];
+  try {
+    chunkEmbeddings = await embedTexts(safeChunks, 'RETRIEVAL_DOCUMENT');
+  } catch {
+    chunkEmbeddings = [];
+  }
+
+  const chunkScores = chunkEmbeddings.map((emb) => cosineSimilarity(emb, queryEmbedding));
+  const avgCos =
+    chunkScores.length > 0
+      ? chunkScores.reduce((a, b) => a + b, 0) / chunkScores.length
+      : 0;
+  const biEncoderPct = cosineToPercentage(avgCos);
+  // Sem cross-encoder: score só bi-encoder (0.7) + neutral 50 no peso 0.3.
+  const semanticScore =
+    Math.round((biEncoderPct * BI_ENCODER_WEIGHT + 50 * CROSS_ENCODER_WEIGHT) * 10) / 10;
+
+  let docEmbedding: number[] = [];
+  try {
+    docEmbedding = chunkEmbeddings.length > 0 ? centroid(chunkEmbeddings) : [];
+  } catch {
+    docEmbedding = [];
+  }
+
+  let domainScore = 0;
+  let inAgroDomain = false;
+  try {
+    if (docEmbedding.length > 0) {
+      const anchor = await getDomainAnchorEmbedding(domain);
+      domainScore = cosineToPercentage(cosineSimilarity(docEmbedding, anchor));
+      inAgroDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
+    }
+  } catch {
+    // sem embedding de domínio → assume candidata a domínio para não perder
+    inAgroDomain = true;
+    domainScore = AGRO_DOMAIN_RELEVANCE_THRESHOLD + 1;
+  }
+
+  const discarded = semanticScore <= SEMANTIC_DISCARD_THRESHOLD;
+  const bestExcerpt = (source.abstract || source.title || '').slice(0, 600);
+
+  return {
+    ...source,
+    semanticScore,
+    semanticCategories: [],
+    bestExcerpt,
+    discarded,
+    docEmbedding,
+    usedFullText: false,
+    domainScore,
+    inAgroDomain,
+    // Fallback técnico: persiste se for do domínio OU se o score passou —
+    // nunca descarta por falha de infraestrutura.
+    shouldPersist: !discarded || inAgroDomain,
+    chunks: safeChunks.map((text, i) => ({
+      text,
+      embedding: chunkEmbeddings[i] || [],
+      score: chunkScores[i] || 0,
+    })),
+    trigonometricSimilarity: {
+      cosTheta: Math.round(Math.max(0, avgCos) * 1000) / 1000,
+      angleDegrees:
+        Math.round(Math.acos(Math.max(-1, Math.min(1, avgCos))) * (180 / Math.PI) * 10) / 10,
+      percentage: Math.round(semanticScore),
+      alignmentQuality: angleQuality(semanticScore),
+    },
+  };
+}
+
+export interface UnderstandSourcesOptions {
+  /**
+   * Chamado após cada fonte terminar de ser entendida (sucesso ou
+   * fallback leve). Use para persistir incrementalmente e emitir
+   * progresso ao cliente — se o processo morrer no meio, o que já
+   * passou aqui já foi salvo.
+   */
+  onSourceComplete?: (
+    source: UnderstoodSource,
+    meta: { index: number; total: number }
+  ) => void | Promise<void>;
+}
+
+/**
  * Pipeline completo: retrieve → rerank → understand.
- * Mantém interface estável para o restante do sistema.
+ * Mantém interface estável para o restado do sistema.
+ *
+ * Com `options.onSourceComplete`, cada fonte do top-K é reportada
+ * assim que pronta (para indexação incremental no Supabase).
  */
 export async function understandSources(
   query: string,
   sources: ScientificSource[],
   sharedQueryEmbedding?: number[],
   domain: DomainKey = 'agro',
+  options?: UnderstandSourcesOptions,
 ): Promise<UnderstoodSource[]> {
   if (sources.length === 0) return [];
 
@@ -240,21 +341,37 @@ export async function understandSources(
   const retrieved = await retrieve(query, sources, RETRIEVAL_TOP_K, sharedQueryEmbedding);
 
   // Etapa 2: Reranking (Cross-Encoder ONNX)
-  const reranked = await rerank(query, retrieved, RERANK_TOP_K);
+  let reranked: Awaited<ReturnType<typeof rerank>> = [];
+  try {
+    reranked = await rerank(query, retrieved, RERANK_TOP_K);
+  } catch (err) {
+    console.warn('[SemanticEngine] Rerank falhou, seguindo só com retrieval:', err);
+    reranked = retrieved
+      .slice(0, RERANK_TOP_K)
+      .map((c) => ({
+        source: c.source,
+        retrievalScore: c.score,
+        rerankScore: c.score,
+        queryEmbedding: c.queryEmbedding,
+      }));
+  }
 
   // Etapa 3: Entender cada fonte final
   const queryEmbedding =
     sharedQueryEmbedding ??
     reranked[0]?.queryEmbedding ??
     (await embedText(query, 'RETRIEVAL_QUERY'));
-  const results: UnderstoodSource[] = new Array(reranked.length);
+  const total = reranked.length;
+  const results: UnderstoodSource[] = new Array(total);
   let cursor = 0;
+  let completed = 0;
 
   async function worker() {
-    while (cursor < reranked.length) {
+    while (cursor < total) {
       const i = cursor++;
+      let understood: UnderstoodSource;
       try {
-        results[i] = await understandOne(
+        understood = await understandOne(
           query,
           queryEmbedding,
           reranked[i].source,
@@ -262,26 +379,52 @@ export async function understandSources(
           domain,
         );
       } catch (err) {
-        console.warn('[SemanticEngine] Falha ao entender fonte, descartando:', reranked[i]?.source.title, err);
-        results[i] = {
-          ...reranked[i].source,
-          semanticScore: 0,
-          semanticCategories: [],
-          bestExcerpt: '',
-          discarded: true,
-          docEmbedding: [],
-          usedFullText: false,
-          domainScore: 0,
-          inAgroDomain: false,
-          shouldPersist: false,
-          chunks: [],
-        };
+        console.warn(
+          '[SemanticEngine] Pipeline completo falhou, fallback leve:',
+          reranked[i]?.source.title,
+          err,
+        );
+        try {
+          understood = await understandOneLight(
+            queryEmbedding,
+            reranked[i].source,
+            domain,
+          );
+        } catch (lightErr) {
+          console.warn('[SemanticEngine] Fallback leve também falhou:', lightErr);
+          understood = {
+            ...reranked[i].source,
+            semanticScore: 0,
+            semanticCategories: [],
+            bestExcerpt: (reranked[i].source.abstract || '').slice(0, 600),
+            discarded: true,
+            docEmbedding: [],
+            usedFullText: false,
+            domainScore: 0,
+            inAgroDomain: false,
+            // Não descarta por erro de infra: tenta salvar mesmo assim.
+            shouldPersist: true,
+            chunks: [],
+          };
+        }
+      }
+      results[i] = understood;
+      completed += 1;
+      if (options?.onSourceComplete) {
+        try {
+          await options.onSourceComplete(understood, { index: i, total });
+        } catch (cbErr) {
+          console.warn('[SemanticEngine] onSourceComplete falhou:', cbErr);
+        }
       }
     }
   }
 
-  const workerCount = Math.min(ENGINE_CONCURRENCY, reranked.length);
+  const workerCount = Math.min(ENGINE_CONCURRENCY, Math.max(1, total));
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  // complete foi usado só para o callback; evita lint de variável não lida
+  void completed;
 
   return results;
 }
@@ -291,6 +434,9 @@ export async function understandSources(
  * embedding do texto residual vs âncora de domínio. Salva apenas se
  * pertencerem ao domínio (ex.: agro) — mesmo com score de consulta baixo.
  * Fontes fora do domínio ficam com shouldPersist=false e nunca vão ao banco.
+ *
+ * Processa em lotes para não estourar a memória com centenas de vetores
+ * de uma vez (causa clássica de SIGKILL em funções longas).
  */
 export async function classifyOutOfTopKForPersistence(
   query: string,
@@ -307,36 +453,72 @@ export async function classifyOutOfTopKForPersistence(
   });
   if (remaining.length === 0) return [];
 
+  const CLASSIFY_BATCH = 40;
+  const out: UnderstoodSource[] = [];
+
   try {
-    const texts = remaining.map((s) =>
-      [s.title, s.abstract, (s.keywords || []).join(' ')].filter(Boolean).join(' ')
-    );
-    const docEmbeddings = await embedTexts(texts, 'RETRIEVAL_DOCUMENT');
     const anchor = await getDomainAnchorEmbedding(domain);
 
-    return remaining.map((s, i) => {
-      const docEmbedding = docEmbeddings[i] || [];
-      const domainScore =
-        docEmbedding.length > 0 ? cosineToPercentage(cosineSimilarity(docEmbedding, anchor)) : 0;
-      const inDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
-      return {
+    for (let i = 0; i < remaining.length; i += CLASSIFY_BATCH) {
+      const batch = remaining.slice(i, i + CLASSIFY_BATCH);
+      const texts = batch.map((s) =>
+        [s.title, s.abstract, (s.keywords || []).join(' ')].filter(Boolean).join(' ')
+      );
+
+      let docEmbeddings: number[][] = [];
+      try {
+        docEmbeddings = await embedTexts(texts, 'RETRIEVAL_DOCUMENT');
+      } catch (err) {
+        console.warn('[SemanticEngine] classify batch embed falhou:', err);
+        docEmbeddings = texts.map(() => []);
+      }
+
+      batch.forEach((s, j) => {
+        const docEmbedding = docEmbeddings[j] || [];
+        const domainScore =
+          docEmbedding.length > 0
+            ? cosineToPercentage(cosineSimilarity(docEmbedding, anchor))
+            : 0;
+        const inDomain =
+          docEmbedding.length === 0
+            ? true // sem embedding: mantém candidata (não perder progresso)
+            : domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
+        out.push({
+          ...s,
+          semanticScore: 0,
+          semanticCategories: [],
+          bestExcerpt: (s.abstract || '').slice(0, 600),
+          discarded: true,
+          docEmbedding,
+          usedFullText: false,
+          domainScore,
+          inAgroDomain: inDomain,
+          shouldPersist: inDomain,
+          chunks: [],
+        } satisfies UnderstoodSource);
+      });
+    }
+  } catch (err) {
+    console.warn('[SemanticEngine] classifyOutOfTopKForPersistence falhou:', err);
+    // Fallback: persiste o restante como candidatas de domínio.
+    for (const s of remaining) {
+      out.push({
         ...s,
         semanticScore: 0,
         semanticCategories: [],
         bestExcerpt: (s.abstract || '').slice(0, 600),
         discarded: true,
-        docEmbedding,
+        docEmbedding: [],
         usedFullText: false,
-        domainScore,
-        inAgroDomain: inDomain,
-        shouldPersist: inDomain,
+        domainScore: 0,
+        inAgroDomain: true,
+        shouldPersist: true,
         chunks: [],
-      } satisfies UnderstoodSource;
-    });
-  } catch (err) {
-    console.warn('[SemanticEngine] classifyOutOfTopKForPersistence falhou:', err);
-    return [];
+      } satisfies UnderstoodSource);
+    }
   }
+
+  return out;
 }
 
 /** Aplica a regra de descarte e ordena por relevância. */

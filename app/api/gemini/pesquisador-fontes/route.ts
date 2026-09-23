@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { SCRAPERS, SearchOptions } from '@/lib/scrapers';
 import { searchSources } from '@/lib/research';
+import { closeBrowser } from '@/lib/stealthBrowser';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,7 +30,11 @@ export async function POST(req: NextRequest) {
       const readable = new ReadableStream({
         async start(controller) {
           const sendEvent = (event: string, data: unknown) => {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`));
+            try {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ event, data })}\n\n`));
+            } catch {
+              // client desconectado
+            }
           };
 
           sendEvent('start', {
@@ -45,9 +50,8 @@ export async function POST(req: NextRequest) {
 
           try {
             // Orquestrador unificado: memória (decideReuse) → reuso →
-            // scrapers → understandSources → indexSources (1x só).
-            // Substitui o caminho antigo que scrapava+embedava tudo sem memória
-            // e forçava o client a re-entender de novo em /api/evidence/index.
+            // scrapers → understandSources (persistindo incrementalmente)
+            // → indexSources (upsert final idempotente).
             const result = await searchSources({
               query: cleanQuery,
               searchOptions,
@@ -64,6 +68,8 @@ export async function POST(req: NextRequest) {
                   sendEvent('processing_start', { totalSources, message }),
                 onProcessingComplete: (processedCount, relevantCount) =>
                   sendEvent('processing_complete', { processedCount, relevantCount }),
+                onSourceVerified: (update) =>
+                  sendEvent('processing_progress', update),
                 onMemoryDecision: (decision) => {
                   if (decision) {
                     sendEvent('memory_decision', {
@@ -96,7 +102,12 @@ export async function POST(req: NextRequest) {
             const msg = err instanceof Error ? err.message : String(err);
             sendEvent('error', { message: msg });
           } finally {
-            controller.close();
+            await closeBrowser().catch(() => {});
+            try {
+              controller.close();
+            } catch {
+              // já fechado
+            }
           }
         },
       });
@@ -112,27 +123,31 @@ export async function POST(req: NextRequest) {
 
     // Non-streaming path: usa o orquestrador unificado
     logMemory('before searchSources (non-stream)');
-    const result = await searchSources({
-      query: cleanQuery,
-      searchOptions,
-    });
-    logMemory('after searchSources (non-stream)');
+    try {
+      const result = await searchSources({
+        query: cleanQuery,
+        searchOptions,
+      });
+      logMemory('after searchSources (non-stream)');
 
-    return Response.json({
-      sources: result.sources,
-      query: cleanQuery,
-      totalFound: result.sources.length,
-      errors: result.errors,
-      sourcesUsed: [],
-      indexingStats: result.indexingStats,
-      memoryDecision: result.memoryDecision ? {
-        action: result.memoryDecision.action,
-        coverage: result.memoryDecision.coverageScore,
-        reuseScore: result.memoryDecision.reuseScore,
-        explorationNeed: result.memoryDecision.explorationNeed,
-        diversity: result.memoryDecision.diversityScore,
-      } : null,
-    });
+      return Response.json({
+        sources: result.sources,
+        query: cleanQuery,
+        totalFound: result.sources.length,
+        errors: result.errors,
+        sourcesUsed: [],
+        indexingStats: result.indexingStats,
+        memoryDecision: result.memoryDecision ? {
+          action: result.memoryDecision.action,
+          coverage: result.memoryDecision.coverageScore,
+          reuseScore: result.memoryDecision.reuseScore,
+          explorationNeed: result.memoryDecision.explorationNeed,
+          diversity: result.memoryDecision.diversityScore,
+        } : null,
+      });
+    } finally {
+      await closeBrowser().catch(() => {});
+    }
   } catch (error: unknown) {
     console.error('Error in pesquisador-fontes route:', error);
     return Response.json(

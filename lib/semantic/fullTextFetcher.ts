@@ -1,13 +1,39 @@
 import * as cheerio from 'cheerio';
 import PDFParser from 'pdf2json';
-import { isBrowserAvailable, stealthFetch } from '@/lib/stealthBrowser';
 import { FULL_TEXT_FETCH_TIMEOUT_MS, MAX_FULL_TEXT_CHARS } from './config';
 
 /**
  * Lê de verdade o conteúdo de cada fonte — não apenas título/resumo
  * trazidos pelo scraper de listagem. Isso é o que permite ao motor
  * "entender o assunto" em vez de confiar só em metadados curtos.
+ *
+ * O stealth/Chromium é importado de forma LAZY: um import estático
+ * puxa puppeteer para o graph da função e contribui para OOM/SIGKILL
+ * em serverless mesmo quando o browser nunca é usado.
  */
+
+/** Teto bruto de HTML/PDF em bytes antes de parsear (evita buffer gigante). */
+const MAX_RAW_HTML_BYTES = 2_500_000;
+const MAX_RAW_PDF_BYTES = 5_000_000;
+
+function stealthDisabled(): boolean {
+  if (process.env.DISABLE_STEALTH === '1') return true;
+  // Em Vercel o Chromium serverless não é o alvo e estoura a memória da função.
+  if (process.env.VERCEL && !process.env.ENABLE_STEALTH) return true;
+  return false;
+}
+
+async function loadStealth(): Promise<{
+  isBrowserAvailable: () => boolean;
+  stealthFetch: (url: string, opts?: { waitSelector?: string; timeoutMs?: number }) => Promise<{ html: string; ok: boolean; status: number }>;
+} | null> {
+  if (stealthDisabled()) return null;
+  try {
+    return await import('@/lib/stealthBrowser');
+  } catch {
+    return null;
+  }
+}
 
 interface FullTextResult {
   text: string;
@@ -98,6 +124,43 @@ function extractMainText($: cheerio.CheerioAPI): string {
   return normalizeWhitespace($('body').text() || '');
 }
 
+async function readCappedBody(response: Response, maxBytes: number): Promise<Buffer | string | null> {
+  const lengthHeader = Number(response.headers.get('content-length') || 0);
+  if (lengthHeader > maxBytes) return null;
+
+  if (typeof response.body?.getReader === 'function') {
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          // ignore
+        }
+        return null;
+      }
+      chunks.push(value);
+    }
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return Buffer.from(merged);
+  }
+
+  const text = await response.text();
+  if (text.length > maxBytes) return null;
+  return text;
+}
+
 async function fetchHtml(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, {
@@ -105,7 +168,9 @@ async function fetchHtml(url: string): Promise<string | null> {
       signal: AbortSignal.timeout(FULL_TEXT_FETCH_TIMEOUT_MS),
     });
     if (!response.ok) return null;
-    const html = await response.text();
+    const body = await readCappedBody(response, MAX_RAW_HTML_BYTES);
+    if (typeof body !== 'string' && !Buffer.isBuffer(body)) return null;
+    const html = typeof body === 'string' ? body : body.toString('utf8');
     if (html.length < 500) return null;
     return html;
   } catch {
@@ -114,11 +179,13 @@ async function fetchHtml(url: string): Promise<string | null> {
 }
 
 async function fetchHtmlViaStealth(url: string): Promise<string | null> {
-  if (!isBrowserAvailable()) return null;
+  if (stealthDisabled()) return null;
+  const stealth = await loadStealth();
+  if (!stealth?.isBrowserAvailable()) return null;
   try {
-    const result = await stealthFetch(url, { timeoutMs: FULL_TEXT_FETCH_TIMEOUT_MS });
+    const result = await stealth.stealthFetch(url, { timeoutMs: FULL_TEXT_FETCH_TIMEOUT_MS });
     if (!result.ok || result.html.length < 500) return null;
-    return result.html;
+    return result.html.slice(0, MAX_RAW_HTML_BYTES);
   } catch {
     return null;
   }
@@ -132,8 +199,9 @@ async function fetchPdfText(url: string): Promise<string | null> {
     });
     if (!response.ok) return null;
 
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const body = await readCappedBody(response, MAX_RAW_PDF_BYTES);
+    if (!Buffer.isBuffer(body) || body.length === 0) return null;
+    const buffer = body;
 
     const parser = new PDFParser(undefined, true);
     const text = await new Promise<string>((resolve, reject) => {

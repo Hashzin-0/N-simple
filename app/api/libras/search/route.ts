@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { LibrasVideoResult, LibrasSignGroup } from '@/lib/libras-types';
+import type { LibrasVideoResult, LibrasSignGroup, LibrasSenseOption } from '@/lib/libras-types';
+import { normalizeText, includesWholeWord } from '@/lib/libras-search-utils';
+import {
+  detectSenseForQuery,
+  type LibrasWordSense,
+} from '@/lib/libras-senses';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +13,45 @@ const YOUTUBE_CHANNELS_URL = 'https://www.googleapis.com/youtube/v3/channels';
 
 const DEFAULT_CHANNEL_HANDLES = '@angelagirardi,@academiadelibras,@netolibras';
 const MAX_SIGNS = 8;
+
+/** Sinais de que o vídeo é sobre Libras/sinais (não só o termo no título). */
+const SIGN_CONTEXT_KEYWORDS = [
+  'libras',
+  'sinal',
+  'sinais',
+  'significar',
+  'gestual',
+  'lingua brasileira',
+  'comunicacao visual',
+  'assinar',
+  'assinando',
+];
+
+/** Bloqueio de conteúdo impróprio (pt-BR) — filtro extra além do safeSearch. */
+const PROFANE_SUBSTRINGS = [
+  'tomar no cu',
+  'caralho',
+  'puta que pariu',
+  'filha da puta',
+  'vai se foder',
+  'foda-se',
+  'fodase',
+  'buceta',
+  'boceta',
+  'punheta',
+  'xoxota',
+  'piroca',
+  'arrombad',
+  'otaria',
+  'otario',
+  'merda',
+  'bosta',
+  'cacete',
+  'cuzao',
+  'vagabunda',
+];
+
+const PROFANE_WHOLE_WORDS = new Set(['cu', 'puta', 'puto', 'vadia']);
 
 interface YouTubeSearchItem {
   id: { videoId: string };
@@ -22,6 +66,20 @@ interface YouTubeSearchItem {
 
 function cleanText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+function isProfane(text: string): boolean {
+  const n = normalizeText(text);
+  if (PROFANE_SUBSTRINGS.some((p) => n.includes(normalizeText(p)))) return true;
+  for (const word of PROFANE_WHOLE_WORDS) {
+    if (includesWholeWord(n, word)) return true;
+  }
+  return false;
+}
+
+function hasSignContext(text: string): boolean {
+  const n = normalizeText(text);
+  return SIGN_CONTEXT_KEYWORDS.some((k) => n.includes(k));
 }
 
 function getPreferredHandles(): string[] {
@@ -47,6 +105,7 @@ async function searchYouTube(
     order: 'relevance',
     relevanceLanguage: 'pt',
     regionCode: 'BR',
+    safeSearch: 'strict',
   });
   if (channelId) params.set('channelId', channelId);
 
@@ -117,23 +176,98 @@ function deduplicateVideos(items: YouTubeSearchItem[]): YouTubeSearchItem[] {
   });
 }
 
-function rankVideos(items: YouTubeSearchItem[]): YouTubeSearchItem[] {
-  return items.sort((a, b) => {
-    const aTitle = a.snippet.title.toLowerCase();
-    const bTitle = b.snippet.title.toLowerCase();
+interface FilterContext {
+  matchTerms: string[];
+  preferredChannelIds: Set<string>;
+  requireSignContext: boolean;
+  sense?: LibrasWordSense | null;
+}
 
-    const aHasLibras = aTitle.includes('libras');
-    const bHasLibras = bTitle.includes('libras');
-    if (aHasLibras && !bHasLibras) return -1;
-    if (!aHasLibras && bHasLibras) return 1;
+/**
+ * Filtro de relevância:
+ * - rejeita conteúdo impróprio
+ * - exige o termo pedido como palavra inteira no título OU descrição
+ *   ("plantadeira" não casa em "plantadeiração"; termo fora de contexto é descartado)
+ * - exige contexto de Libras (libras/sinal/…) salvo em canais preferidos
+ * - com sentido ativo: boosting de contextKeywords e penalidade de avoidKeywords
+ */
+function filterByRelevance(
+  items: YouTubeSearchItem[],
+  ctx: FilterContext
+): YouTubeSearchItem[] {
+  return items.filter((item) => {
+    const title = normalizeText(item.snippet.title);
+    const desc = normalizeText(item.snippet.description || '');
 
-    const aHasSinal = aTitle.includes('sinal');
-    const bHasSinal = bTitle.includes('sinal');
-    if (aHasSinal && !bHasSinal) return -1;
-    if (!aHasSinal && bHasSinal) return 1;
+    if (isProfane(title) || isProfane(desc)) return false;
 
-    return 0;
+    const termMatch = ctx.matchTerms.some(
+      (t) => includesWholeWord(title, t) || includesWholeWord(desc, t)
+    );
+    if (!termMatch) return false;
+
+    const preferred = ctx.preferredChannelIds.has(item.snippet.channelId);
+    if (ctx.requireSignContext && !preferred) {
+      if (!hasSignContext(title) && !hasSignContext(desc)) return false;
+    }
+
+    if (ctx.sense) {
+      const avoidHit = ctx.sense.avoidKeywords.some(
+        (k) => includesWholeWord(title, k) || includesWholeWord(desc, k)
+      );
+      if (avoidHit) return false;
+    }
+
+    return true;
   });
+}
+
+function scoreVideo(item: YouTubeSearchItem, matchTerms: string[], sense?: LibrasWordSense | null): number {
+  const title = normalizeText(item.snippet.title);
+  const desc = normalizeText(item.snippet.description || '');
+  let score = 0;
+
+  for (const term of matchTerms) {
+    if (includesWholeWord(title, term)) score += 10;
+    if (includesWholeWord(desc, term)) score += 4;
+  }
+
+  if (title.includes('libras')) score += 6;
+  if (desc.includes('libras')) score += 3;
+  if (title.includes('sinal')) score += 6;
+  if (desc.includes('sinal')) score += 3;
+
+  // Termo perto de "sinal/libras" no título → vídeo didático de sinal
+  for (const term of matchTerms) {
+    const nearSign = new RegExp(
+      `(sinal|libras).{0,40}${term}|${term}.{0,40}(sinal|libras)`,
+      'i'
+    );
+    if (nearSign.test(title)) score += 8;
+  }
+
+  if (sense) {
+    for (const kw of sense.contextKeywords) {
+      if (includesWholeWord(title, kw)) score += 5;
+      if (includesWholeWord(desc, kw)) score += 2;
+    }
+    for (const kw of sense.avoidKeywords) {
+      if (includesWholeWord(title, kw)) score -= 8;
+      if (includesWholeWord(desc, kw)) return score - 20;
+    }
+  }
+
+  return score;
+}
+
+function rankVideos(
+  items: YouTubeSearchItem[],
+  matchTerms: string[],
+  sense?: LibrasWordSense | null
+): YouTubeSearchItem[] {
+  return [...items].sort(
+    (a, b) => scoreVideo(b, matchTerms, sense) - scoreVideo(a, matchTerms, sense)
+  );
 }
 
 function mapResults(
@@ -150,48 +284,99 @@ function mapResults(
   }));
 }
 
-/**
- * Search one term: preferred Libras channels first (channelId-scoped);
- * if none found there, fall back to the usual multi-query global search.
- */
-async function searchTerm(
-  term: string,
-  apiKey: string,
-  limit: number,
-  preferredChannelIds: string[]
-): Promise<LibrasVideoResult[]> {
-  const preferredSet = new Set(preferredChannelIds);
-
-  if (preferredChannelIds.length > 0) {
-    const perChannel = await Promise.all(
-      preferredChannelIds.map((channelId) =>
-        searchYouTube(`${term} em libras`, apiKey, 8, channelId)
-      )
-    );
-    const preferredItems = rankVideos(deduplicateVideos(perChannel.flat()));
-    if (preferredItems.length > 0) {
-      return mapResults(preferredItems.slice(0, limit), preferredSet);
-    }
-  }
-
-  // Global fallback — same multi-query strategy as before
-  const queries = [
+function buildQueries(term: string, sense?: LibrasWordSense | null): string[] {
+  if (sense) return sense.searchQueries;
+  return [
     `${term} em libras`,
     `sinal ${term} libras`,
     `${term} língua brasileira de sinais`,
     `${term} LIBRAS`,
   ];
-  const allResults = await Promise.all(
-    queries.map((q) => searchYouTube(q, apiKey, 10))
-  );
-  const ranked = rankVideos(deduplicateVideos(allResults.flat()));
-  return mapResults(ranked.slice(0, limit), preferredSet);
+}
+
+function collectMatchTerms(term: string, sense?: LibrasWordSense | null): string[] {
+  const base = [term];
+  if (sense) {
+    base.push(sense.word);
+    base.push(...sense.contextKeywords.slice(0, 4));
+  }
+  return Array.from(new Set(base.filter(Boolean)));
+}
+
+/**
+ * Search one term: preferred Libras channels first (channelId-scoped);
+ * if none found there, fall back to the usual multi-query global search.
+ * Results are filtered for term-in-title/description + Libras context.
+ */
+async function searchTerm(
+  term: string,
+  apiKey: string,
+  limit: number,
+  preferredChannelIds: string[],
+  sense?: LibrasWordSense | null
+): Promise<LibrasVideoResult[]> {
+  const preferredSet = new Set(preferredChannelIds);
+  const matchTerms = collectMatchTerms(term, sense);
+  const queries = buildQueries(term, sense);
+
+  const searchAll = async (scoped: boolean): Promise<YouTubeSearchItem[]> => {
+    if (scoped && preferredChannelIds.length > 0) {
+      const perChannel = await Promise.all(
+        preferredChannelIds.map((channelId) =>
+          Promise.all(
+            queries.slice(0, 2).map((q) => searchYouTube(q, apiKey, 8, channelId))
+          )
+        )
+      );
+      return perChannel.flat(2);
+    }
+    const allResults = await Promise.all(
+      queries.map((q) => searchYouTube(q, apiKey, 10))
+    );
+    return allResults.flat();
+  };
+
+  const applyPipeline = (
+    items: YouTubeSearchItem[],
+    requireSignContext: boolean
+  ): LibrasVideoResult[] => {
+    const filtered = filterByRelevance(deduplicateVideos(items), {
+      matchTerms,
+      preferredChannelIds: preferredSet,
+      requireSignContext,
+      sense,
+    });
+    const ranked = rankVideos(filtered, matchTerms, sense);
+    return mapResults(ranked.slice(0, limit), preferredSet);
+  };
+
+  // Pass 1: preferred channels (sign context not required for trusted channels)
+  if (preferredChannelIds.length > 0) {
+    const preferredItems = await searchAll(true);
+    const strict = applyPipeline(preferredItems, false);
+    if (strict.length > 0) return strict;
+  }
+
+  // Pass 2: global — strict (term + Libras context)
+  const globalItems = await searchAll(false);
+  const strict = applyPipeline(globalItems, true);
+  if (strict.length > 0) return strict;
+
+  // Pass 3: fallback — term match only (sem exigir contexto Libras no título)
+  return applyPipeline(globalItems, false);
 }
 
 // Simple in-memory cache (1 min TTL)
 const cache = new Map<
   string,
-  { phrase: LibrasVideoResult[]; signGroups: LibrasSignGroup[]; timestamp: number }
+  {
+    phrase: LibrasVideoResult[];
+    signGroups: LibrasSignGroup[];
+    senseOptions: LibrasSenseOption[];
+    selectedSenseId: string | null;
+    ambiguousSense: boolean;
+    timestamp: number;
+  }
 >();
 const CACHE_TTL = 60_000;
 
@@ -204,11 +389,21 @@ function parseSigns(raw: string | null): string[] {
     .slice(0, MAX_SIGNS);
 }
 
+function toSenseOptions(options: LibrasWordSense[]): LibrasSenseOption[] {
+  return options.map((s) => ({
+    id: s.id,
+    label: s.label,
+    description: s.description,
+    word: s.word,
+  }));
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
   const limit = Math.min(parseInt(searchParams.get('limit') || '3', 10), 10);
   const signs = parseSigns(searchParams.get('signs'));
+  const explicitSenseId = searchParams.get('sense');
 
   if (!query || query.trim().length === 0) {
     return NextResponse.json({ error: 'Query parameter "q" is required' }, { status: 400 });
@@ -222,7 +417,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const cacheKey = `${query}:${limit}:${signs.join('|')}`;
+  const cacheKey = `${query}:${limit}:${signs.join('|')}:${explicitSenseId || ''}`;
   const cached = cache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return NextResponse.json({
@@ -233,28 +428,45 @@ export async function GET(request: NextRequest) {
         cached.phrase.length +
         cached.signGroups.reduce((n, g) => n + g.results.length, 0),
       query,
+      senseOptions: cached.senseOptions,
+      selectedSenseId: cached.selectedSenseId,
+      ambiguousSense: cached.ambiguousSense,
     });
   }
 
   try {
     const preferredChannelIds = await resolvePreferredChannelIds(apiKey);
+    const detection = detectSenseForQuery(query.trim(), explicitSenseId);
+    const sense = detection.auto;
+    const senseOptions = toSenseOptions(detection.options);
+    // Ambíguo quando há opções e nenhuma foi escolhida/deduzida
+    const ambiguousSense = !explicitSenseId && !sense && detection.options.length > 1;
 
+    // Ambíguo sem sentido explícito → busca genérica + devolve opções
+    // (UI mostra chips; usuário pode refinar com ?sense=id)
     const phraseResults = await searchTerm(
       query.trim(),
       apiKey,
       limit,
-      preferredChannelIds
+      preferredChannelIds,
+      sense
     );
 
-    // One search per sign (parallel across signs; preferred channels first)
     const signGroups: LibrasSignGroup[] = await Promise.all(
       signs.map(async (sign) => ({
         sign,
-        results: await searchTerm(sign, apiKey, limit, preferredChannelIds),
+        results: await searchTerm(sign, apiKey, limit, preferredChannelIds, sense),
       }))
     );
 
-    cache.set(cacheKey, { phrase: phraseResults, signGroups, timestamp: Date.now() });
+    cache.set(cacheKey, {
+      phrase: phraseResults,
+      signGroups,
+      senseOptions,
+      selectedSenseId: sense?.id ?? null,
+      ambiguousSense,
+      timestamp: Date.now(),
+    });
 
     for (const [key, value] of cache.entries()) {
       if (Date.now() - value.timestamp > CACHE_TTL) {
@@ -269,6 +481,9 @@ export async function GET(request: NextRequest) {
       totalFound:
         phraseResults.length + signGroups.reduce((n, g) => n + g.results.length, 0),
       query,
+      senseOptions,
+      selectedSenseId: sense?.id ?? null,
+      ambiguousSense,
     });
   } catch (error) {
     console.error('[LibrasSearch] Error:', error);

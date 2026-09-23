@@ -3,6 +3,7 @@ import { indexSources, logSearchQuery } from '@/lib/evidenceIndex';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { understandSources, UnderstoodSource } from '@/lib/semantic/relevanceEngine';
+import { closeBrowser } from '@/lib/stealthBrowser';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,5 +87,7 @@ export async function POST(req: NextRequest) {
       { error: 'Falha ao indexar fontes na memória de evidências.' },
       { status: 500 }
     );
+  } finally {
+    await closeBrowser().catch(() => {});
   }
 }

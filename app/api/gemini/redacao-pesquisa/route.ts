@@ -4,6 +4,7 @@ import { extractRepertorio } from '@/lib/redacao/extractRepertorio';
 import { generateExpressions } from '@/lib/redacao/generateExpressions';
 import type { RedacaoResearchContext } from '@/components/PesquisadorRedacao/types';
 import { PROMPT_VERSION } from '@/lib/prompts-redacao';
+import { closeBrowser } from '@/lib/stealthBrowser';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest) {
           const msg = err instanceof Error ? err.message : String(err);
           sendEvent('error', { message: msg });
         } finally {
+          await closeBrowser().catch(() => {});
           controller.close();
         }
       },

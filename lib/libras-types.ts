@@ -12,12 +12,22 @@ export interface LibrasSignGroup {
   results: LibrasVideoResult[];
 }
 
+export interface LibrasSenseOption {
+  id: string;
+  label: string;
+  description: string;
+  word: string;
+}
+
 export interface LibrasSearchResponse {
   results: LibrasVideoResult[];
   phraseResults?: LibrasVideoResult[];
   signGroups?: LibrasSignGroup[];
   totalFound: number;
   query: string;
+  senseOptions?: LibrasSenseOption[];
+  selectedSenseId?: string | null;
+  ambiguousSense?: boolean;
 }
 
 export type LibrasCategory =

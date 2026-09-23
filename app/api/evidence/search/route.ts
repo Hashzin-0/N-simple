@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { decideReuse } from '@/lib/reuseDecision';
 import { extractTopics } from '@/lib/topicExtractor';
 import { understandSources, filterAndRankRelevant } from '@/lib/semantic/relevanceEngine';
+import { closeBrowser } from '@/lib/stealthBrowser';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,5 +48,7 @@ export async function POST(req: NextRequest) {
       { error: 'Falha ao consultar memória de evidências.' },
       { status: 500 }
     );
+  } finally {
+    await closeBrowser().catch(() => {});
   }
 }
