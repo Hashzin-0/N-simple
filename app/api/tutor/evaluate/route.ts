@@ -11,6 +11,9 @@ interface EvaluateRequestBody {
   explicacao?: string | null;
   contextoFontes?: string;
   dificuldade?: string;
+  modo?: 'sessao' | 'socratico' | 'revisar_erros' | 'rapida' | 'conversar';
+  tentativa?: number;
+  pistaAnterior?: string | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -33,6 +36,9 @@ export async function POST(req: NextRequest) {
       explicacao: body.explicacao ?? null,
       contextoFontes: body.contextoFontes,
       dificuldade: body.dificuldade,
+      modo: body.modo ?? 'sessao',
+      tentativa: body.tentativa,
+      pistaAnterior: body.pistaAnterior ?? null,
     });
 
     return Response.json({ avaliacao });

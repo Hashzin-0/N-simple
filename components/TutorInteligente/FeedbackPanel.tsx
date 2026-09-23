@@ -5,6 +5,7 @@ import type { AvaliacaoResultado, DimensaoAvaliacao, StatusGeral } from '@/lib/t
 
 interface FeedbackPanelProps {
   avaliacao: AvaliacaoResultado;
+  hideReveal?: boolean;
 }
 
 const STATUS_STYLE: Record<string, { dot: string; label: string; text: string }> = {
@@ -68,7 +69,7 @@ function DimensaoRow({ title, dim }: { title: string; dim: DimensaoAvaliacao }) 
   );
 }
 
-export default function FeedbackPanel({ avaliacao }: FeedbackPanelProps) {
+export default function FeedbackPanel({ avaliacao, hideReveal }: FeedbackPanelProps) {
   const geral = GERAL_META[avaliacao.statusGeral] || GERAL_META.parcial;
   const f = avaliacao.dimensoes.formulacao;
 
@@ -146,7 +147,7 @@ export default function FeedbackPanel({ avaliacao }: FeedbackPanelProps) {
         </div>
       )}
 
-      {(f.depois || f.dica) && (
+      {!hideReveal && (f.depois || f.dica) && (
         <div className="rounded-xl p-3 bg-[#F3F1EC] dark:bg-[#2C3328] border border-[#E5E2D9] dark:border-[#3A4235] space-y-2">
           <p className="text-[10px] font-bold uppercase tracking-wider text-[#5A5A40] dark:text-[#9CB386]">
             💬 Como melhorar sua resposta
@@ -173,6 +174,15 @@ export default function FeedbackPanel({ avaliacao }: FeedbackPanelProps) {
           {f.depois && f.dica && (
             <p className="text-[11px] text-[#8C897E] dark:text-[#9EA399]">{f.dica}</p>
           )}
+        </div>
+      )}
+
+      {avaliacao.pista && (
+        <div className="rounded-xl p-3 bg-[#D4A373]/10 border border-[#D4A373]/25 space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#C19262] dark:text-[#E0A96D]">
+            💡 Próxima pista
+          </p>
+          <p className="text-xs text-[#242A20] dark:text-[#F3F1EC]">{avaliacao.pista}</p>
         </div>
       )}
 

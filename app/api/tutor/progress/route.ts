@@ -89,11 +89,33 @@ export async function POST(request: NextRequest) {
       evaluation: evaluation as unknown as Record<string, unknown>,
       status_geral: evaluation.statusGeral,
       dificuldade: attempt.dificuldade ?? null,
+      modo: attempt.modo ?? null,
     });
 
     if (attemptError) {
       console.error('[TutorProgress] attempt insert error:', attemptError);
       return NextResponse.json({ saved: false, source: 'error' }, { status: 500 });
+    }
+
+    // 1b. Se dominou, resolve tentativas anteriores de erro da mesma questão/tópico
+    if (evaluation.statusGeral === 'dominou') {
+      try {
+        let resolveQuery = supabase!
+          .from('tutor_attempts')
+          .update({ resolved: true })
+          .eq('user_id', userId)
+          .eq('status_geral', 'revisar')
+          .eq('topic', attempt.topic)
+          .or('resolved.is.null,resolved.eq.false');
+        if (attempt.questionId) {
+          resolveQuery = resolveQuery.or(
+            `question_id.eq.${attempt.questionId},and(question_id.is.null)`
+          );
+        }
+        await resolveQuery;
+      } catch (err) {
+        console.warn('[TutorProgress] resolve queue failed:', err);
+      }
     }
 
     // 2. Atualiza progresso agregado por tópico (upsert + mastery exponencial)

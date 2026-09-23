@@ -3,16 +3,21 @@ import type {
   QuestionDificuldade,
   SessionAnswerRecord,
   SessionTema,
+  TutorModo,
   TutorProgressEntry,
   TutorQuestion,
   TutorSessionState,
 } from './types';
+import { TUTOR_META_POR_MODO } from './types';
 
 export const DEFAULT_SESSION_META = 8;
 
 const DIFICULDADE_ORDER: QuestionDificuldade[] = ['basica', 'aplicacao', 'detalhamento'];
 
-export function createSessionState(meta = DEFAULT_SESSION_META): TutorSessionState {
+export function createSessionState(
+  meta = DEFAULT_SESSION_META,
+  modo: TutorModo = 'sessao'
+): TutorSessionState {
   return {
     status: 'idle',
     tema: null,
@@ -22,14 +27,28 @@ export function createSessionState(meta = DEFAULT_SESSION_META): TutorSessionSta
     contextFontes: '',
     errorMessage: null,
     meta,
+    modo,
+    socratic: { tentativa: 1, hintsUsed: 0, revealed: false },
   };
 }
 
-export function startSession(state: TutorSessionState, tema: SessionTema): TutorSessionState {
+export function metaForModo(modo: TutorModo, fallback = DEFAULT_SESSION_META): number {
+  const m = TUTOR_META_POR_MODO[modo];
+  return m ?? fallback;
+}
+
+export function startSession(
+  state: TutorSessionState,
+  tema: SessionTema,
+  modo: TutorModo = state.modo
+): TutorSessionState {
+  const meta = metaForModo(modo, state.meta);
   return {
-    ...createSessionState(state.meta),
-    status: 'loading',
+    ...createSessionState(meta, modo),
+    status: modo === 'conversar' ? 'conversando' : 'loading',
     tema,
+    meta,
+    modo,
   };
 }
 
@@ -52,6 +71,10 @@ export function setCurrentQuestion(
       ? state.askedIds
       : [...state.askedIds, question.id],
     errorMessage: null,
+    socratic:
+      state.modo === 'socratico'
+        ? { tentativa: 1, hintsUsed: state.socratic.hintsUsed, revealed: false }
+        : state.socratic,
   };
 }
 
@@ -67,6 +90,35 @@ export function setEvaluating(state: TutorSessionState): TutorSessionState {
   return { ...state, status: 'evaluating', errorMessage: null };
 }
 
+export function beginSocraticAttempt(state: TutorSessionState): TutorSessionState {
+  if (state.modo !== 'socratico') return state;
+  return {
+    ...state,
+    socratic: {
+      ...state.socratic,
+      tentativa: Math.min(state.socratic.tentativa + 1, 3),
+    },
+  };
+}
+
+export function revealSocraticAnswer(state: TutorSessionState): TutorSessionState {
+  return {
+    ...state,
+    socratic: { ...state.socratic, revealed: true },
+  };
+}
+
+export function registerSocraticHint(state: TutorSessionState): TutorSessionState {
+  return {
+    ...state,
+    socratic: { ...state.socratic, hintsUsed: state.socratic.hintsUsed + 1 },
+  };
+}
+
+/**
+ * Registra a resposta final (conta para meta). No socrático, chamado só
+ * após dominou, 3ª tentativa, "não sei" ou revealed.
+ */
 export function recordAnswer(
   state: TutorSessionState,
   answerText: string,
@@ -90,6 +142,7 @@ export function recordAnswer(
     ...state,
     status: done ? 'done' : 'feedback',
     history,
+    socratic: { tentativa: 1, hintsUsed: state.socratic.hintsUsed, revealed: false },
   };
 }
 
@@ -166,14 +219,22 @@ export function buildNextQuery(
 /**
  * Filtra e ordena candidatas: prioriza foco de fraqueza, dificuldade alvo
  * e evita repetição (excludeIds já vem do caller, mas garante aqui).
+ * Em revisar_erros, não exclui askedIds se allowRepeat for true (fila).
  */
 export function pickNextQuestion(
   candidates: TutorQuestion[],
   state: TutorSessionState,
-  opts: { dificuldade?: QuestionDificuldade; preferWeakness?: boolean; weaknessTerms?: string[] }
+  opts: {
+    dificuldade?: QuestionDificuldade;
+    preferWeakness?: boolean;
+    weaknessTerms?: string[];
+    allowRepeat?: boolean;
+  }
 ): TutorQuestion | null {
   const asked = new Set(state.askedIds);
-  const fresh = candidates.filter((q) => !asked.has(q.id));
+  const fresh = opts.allowRepeat
+    ? candidates
+    : candidates.filter((q) => !asked.has(q.id));
   if (fresh.length === 0) return null;
 
   const weaknessTerms = (opts.weaknessTerms || [])
@@ -223,5 +284,7 @@ export function sessionSummary(state: TutorSessionState, progress?: TutorProgres
     mastery: progress?.masteryEstimate ?? null,
     weaknesses: progress?.weaknesses ?? [],
     strengths: progress?.strengths ?? [],
+    modo: state.modo,
+    socratic: state.socratic,
   };
 }

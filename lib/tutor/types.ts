@@ -1,10 +1,28 @@
 export type QuestionDificuldade = 'basica' | 'aplicacao' | 'detalhamento';
 
-export type QuestionOrigem = 'pesquisada' | 'gerada';
+export type QuestionOrigem = 'pesquisada' | 'gerada' | 'artigo';
 
 export type StatusGeral = 'dominou' | 'parcial' | 'revisar';
 
 export type DimensaoStatus = 'correto' | 'parcial' | 'errado' | 'nao_avaliado';
+
+export type TutorModo = 'sessao' | 'socratico' | 'revisar_erros' | 'rapida' | 'conversar';
+
+export const TUTOR_MODOS: TutorModo[] = ['sessao', 'socratico', 'revisar_erros', 'rapida', 'conversar'];
+
+export const TUTOR_META_POR_MODO: Record<TutorModo, number | null> = {
+  sessao: 8,
+  socratico: 8,
+  revisar_erros: 8,
+  rapida: 3,
+  conversar: null,
+};
+
+export interface SocraticState {
+  tentativa: number;
+  hintsUsed: number;
+  revealed: boolean;
+}
 
 export interface TutorQuestion {
   id: string;
@@ -48,6 +66,7 @@ export interface AvaliacaoResultado {
   omissoes: string[];
   errosConceituais: string[];
   feedbackOral: string;
+  pista?: string | null;
 }
 
 export interface SessionTema {
@@ -55,7 +74,15 @@ export interface SessionTema {
   subtema?: string;
 }
 
-export type SessionStatus = 'idle' | 'loading' | 'question' | 'evaluating' | 'feedback' | 'done' | 'error';
+export type SessionStatus =
+  | 'idle'
+  | 'loading'
+  | 'question'
+  | 'evaluating'
+  | 'feedback'
+  | 'done'
+  | 'error'
+  | 'conversando';
 
 export interface SessionAnswerRecord {
   questionId: string;
@@ -74,6 +101,8 @@ export interface TutorSessionState {
   contextFontes: string;
   errorMessage: string | null;
   meta: number;
+  modo: TutorModo;
+  socratic: SocraticState;
 }
 
 export interface TutorProgressEntry {
@@ -94,6 +123,7 @@ export interface TutorAttemptPayload {
   answerText: string;
   evaluation: AvaliacaoResultado;
   dificuldade?: QuestionDificuldade;
+  modo?: TutorModo;
 }
 
 export interface ResearchQuestionsRequest {
@@ -109,6 +139,27 @@ export interface ResearchQuestionsResponse {
   reusedCount: number;
   researchedCount: number;
   generatedCount: number;
+  artigoCount?: number;
   errors: string[];
+  message?: string;
+}
+
+export interface TutorErrorAttempt {
+  id: string;
+  questionId: string | null;
+  assunto: string | null;
+  subassunto: string | null;
+  topic: string | null;
+  answerText: string;
+  statusGeral: StatusGeral;
+  dificuldade: QuestionDificuldade | null;
+  createdAt: string;
+}
+
+export interface TutorErrorsResponse {
+  ok: boolean;
+  attempts: TutorErrorAttempt[];
+  questions: TutorQuestion[];
+  source: 'supabase' | 'empty' | 'supabase_unavailable' | 'error';
   message?: string;
 }

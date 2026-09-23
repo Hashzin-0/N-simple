@@ -1,4 +1,4 @@
-export const TUTOR_PROMPT_VERSION = '1.0.0';
+export const TUTOR_PROMPT_VERSION = '1.1.0';
 
 export interface EvaluateAnswerArgs {
   enunciado: string;
@@ -7,12 +7,16 @@ export interface EvaluateAnswerArgs {
   explicacao?: string | null;
   contextoFontes?: string;
   dificuldade?: string;
+  modo?: 'sessao' | 'socratico' | 'revisar_erros' | 'rapida' | 'conversar';
+  tentativa?: number;
+  pistaAnterior?: string | null;
 }
 
 /**
  * Prompt de avaliação semântica e conceitual da resposta oral/escrita do aluno.
  * Não compara por igualdade de texto nem por percentual de similaridade.
  * Retorna 4 dimensões + status geral + feedback para melhoria da formulação.
+ * No modo socrático, emite pista e não revela o gabarito até a 3ª tentativa.
  */
 export function buildEvaluatePrompt(args: EvaluateAnswerArgs): string {
   const gabarito = args.gabarito?.trim()
@@ -23,9 +27,28 @@ export function buildEvaluatePrompt(args: EvaluateAnswerArgs): string {
     ? args.contextoFontes.trim()
     : 'Nenhuma fonte adicional disponível. Use seu conhecimento agronômico padrão.';
   const dificuldade = args.dificuldade || 'desconhecida';
+  const modo = args.modo || 'sessao';
+  const tentativa = Math.min(Math.max(args.tentativa ?? 1, 1), 3);
+  const pistaAnterior = args.pistaAnterior?.trim() || 'Nenhuma.';
+
+  const modoBloco =
+    modo === 'socratico'
+      ? `MODO DE AVALIAÇÃO: SOCRÁTICO (tentativa ${tentativa} de 3)
+PISTA ANTERIOR FORNECIDA:
+${pistaAnterior}
+
+REGRAS SOCRÁTICAS:
+- Não entregue o gabarito na resposta. Avalie o progresso do aluno em relação à tentativa.
+- Se statusGeral !== "dominou" E tentativa < 3: preencha "pista" com uma pergunta-guia ou dica curta (máx 1 frase) que faça o aluno chegar sozinho ao próximo passo. Não copie o gabarito.
+- Se tentativa === 3 ou statusGeral === "dominou": preencha "pista" com null e pode usar feedbackOral para fechar o conceito.
+- Recompenense conceitos parciais corretos em "conceitosCorretos".`
+      : `MODO DE AVALIAÇÃO: ${modo.toUpperCase()}
+Preencha "pista" com null (ou uma dica opcional se achar útil).`;
 
   return `Você é um tutor oral de agronomia (revisão para provas, ENEM, vestibulares e disciplinas de Agronegócio).
 Avalie a resposta do aluno de forma SEMÂNTICA e CONCEITUAL — nunca por igualdade de texto nem por similaridade percentual crua.
+
+${modoBloco}
 
 DIFICULDADE DA QUESTÃO: ${dificuldade}
 
@@ -69,6 +92,7 @@ REGRAS:
 6. "formulacao.depois" deve ser uma reescrita profissional da ideia central do aluno.
 7. Use o contexto de fontes quando houver; se contradisser o gabarito, prefira o gabarito+fontes e mencione a fonte.
 8. Se a resposta for vazia, muito curta ou irrelevante: statusGeral="revisar", conteudo="errado".
+9. No modo socrático, "pista" é obrigatória quando tentativa < 3 e statusGeral !== "dominou"; caso contrário null.
 
 Retorne APENAS JSON no formato:
 {
@@ -82,7 +106,8 @@ Retorne APENAS JSON no formato:
   "conceitosCorretos": ["string"],
   "omissoes": ["string"],
   "errosConceituais": ["string"],
-  "feedbackOral": "string"
+  "feedbackOral": "string",
+  "pista": "string | null"
 }`;
 }
 
@@ -90,12 +115,12 @@ export interface ExtractQuestionsArgs {
   tema: string;
   subtema?: string;
   fontesContext: string;
-  origemPadrao?: 'pesquisada' | 'gerada';
+  origemPadrao?: 'pesquisada' | 'gerada' | 'artigo';
 }
 
 /**
  * Prompt de extração de questões estruturadas a partir de fontes acadêmicas
- * (ENEM, vestibulares, universidades, materiais de Agronegócio).
+ * (ENEM, vestibulares, universidades, materiais de Agronegócio) ou artigos.
  */
 export function buildExtractQuestionsPrompt(args: ExtractQuestionsArgs): string {
   const assunto = args.subtema ? `${args.tema} — ${args.subtema}` : args.tema;
@@ -105,7 +130,7 @@ export function buildExtractQuestionsPrompt(args: ExtractQuestionsArgs): string 
 
 TEMA: ${assunto}
 
-FONTES ACADÊMICAS PESQUISADAS:
+FONTES / CONTEÚDO DE REFERÊNCIA:
 ${args.fontesContext}
 
 ---
@@ -125,7 +150,7 @@ Para cada questão, defina:
 - tipo_prova: ex: "ENEM", "vestibular", "avaliação universitária", "concurso educacional"; senão "questão didática"
 - fonte: nome curto da fonte de onde veio o conteúdo
 - fonte_url: URL da fonte se disponível; senão null
-- origem: "${origem}" se extraída de fonte real com dados identificáveis; "gerada" se você elaborou a partir do conteúdo
+- origem: "${origem}" se extraída de fonte real/artigo; "gerada" se você elaborou livremente
 - dificuldade: "basica" | "aplicacao" | "detalhamento"
 
 REGRAS:
@@ -133,7 +158,7 @@ REGRAS:
 2. Pelo menos 2 questões devem ser de aplicação prática (contexto de campo/fazenda).
 3. Não invente instituição/ano — se não estiver nas fontes, use null.
 4. Questões de múltipla escolha devem ter 4 ou 5 alternativas plausíveis, com apenas uma correta.
-5. Prefira questões cujo conteúdo apareça nas fontes (origem "pesquisada").
+5. Prefira questões cujo conteúdo apareça nas fontes (origem conforme definida acima).
 6. Seja fiel à ciência agronômica brasileira (Embrapa, normas técnicas, terminologia pt-BR).
 
 Retorne APENAS JSON válido:
@@ -152,7 +177,7 @@ Retorne APENAS JSON válido:
       "tipo_prova": "string | null",
       "fonte": "string | null",
       "fonte_url": "string | null",
-      "origem": "pesquisada" | "gerada",
+      "origem": "pesquisada" | "gerada" | "artigo",
       "dificuldade": "basica" | "aplicacao" | "detalhamento"
     }
   ]

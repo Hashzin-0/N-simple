@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { AudioStreamer } from '@/lib/audioStreamer';
+import { useCallback, useEffect, useRef } from 'react';
 import { smoothScrollToSection, PageSection } from '@/lib/pageAutomator';
 import { ABNTReference } from '@/lib/abnt/types';
-import { LIVE_MODEL_ID } from '@/lib/liveConfig';
+import { useLiveSession, type ExecuteToolFn } from '@/lib/liveSession';
 
 export interface LiveAgentState {
   isConnected: boolean;
@@ -45,72 +44,217 @@ export interface SimulatorContext {
   onSetBibliographyReference: (ref: ABNTReference) => void;
 }
 
+const GLOBAL_SYSTEM_INSTRUCTION = `Você é o Engenheiro Agrônomo e Especialista em Nutrição de Milho Assistente por Voz do aplicativo 'Agronômica N-Pro'.
+Sua voz oficial é 'Puck'.
+Você fala em português do Brasil com naturalidade, clareza, simpatia e precisão técnica.
+
+Suas capacidades:
+1. Você tem acesso em tempo real à DATA e HORA local do usuário através da ferramenta 'getUserLocalDateTime'. Quando o usuário perguntar sobre data, que dia é hoje, época de plantio ou safra, use essa ferramenta.
+2. Você tem acesso completo a TODAS as variáveis e cálculos agronômicos da tela pela ferramenta 'getCurrentSimulatorState'.
+3. Você pode preencher e alterar parâmetros no simulador como se fosse o usuário (produtividade alvo, matéria orgânica do solo, crédito de N da soja, eficiência e parcelamento em base, V4-V6 e V8-V10).
+4. Você também pode acessar a Calculadora ITR (Imposto Territorial Rural) com parâmetros de VTN, área total, área tributável, área aproveitável e área utilizada.
+5. Você também pode acessar o Formatter de Referências ABNT com dados de tipo, autor, título, ano, editor e URL.
+6. IMPORTANTE: Sempre que você alterar um valor no simulador (usando 'setYieldGoal', 'setSoilParameters', 'setFertilizerParceling', 'setITRParameters' ou 'setABNTReference'), o site rolará automaticamente para mostrar a alteração. Logo em seguida, quando você falar sobre os resultados da dose total e parcelamento, a tela rolará para a seção de resultados.
+5. Você pode rolar a tela manualmente com 'scrollToSection' ('parametros', 'resultados', 'parcelamento', 'adubos', 'presets').
+
+Fórmulas do simulador de Adubação Nitrogenada:
+- Extração Total (kg N/ha) = Produtividade (sc/ha) × Exigência (ex: 1.35 kg N/sc)
+- Necessidade Líquida (kg N/ha) = Extração Total - MOS (kg N/ha) - Crédito Soja (kg N/ha)
+- Dose Total Recomendada com perdas (kg N/ha) = Necessidade Líquida ÷ (Eficiência ÷ 100)
+- Parcelamento: Base (30-40 kg N/ha) na semeadura; Cobertura 1 em V4-V6 (50-60%); Cobertura 2 em V8-V10 (20-30%).
+- 1 saca de Ureia (50 kg) contém 22.5 kg de N elementar (45% N).
+
+Fórmulas da Calculadora de Estimativa de Produtividade de Milho:
+- Estande (população) = contagem de plantas por metro ÷ espaçamento entre linhas (em metros) × 10.000
+- Quantidade de grãos = fileiras × grãos/fileira
+- PMG (em gramas por 1000 grãos) = valor da questão ÷ 1000 (para obter peso unitário em gramas)
+- Produtividade Bruta (kg/ha) = estande × espigas × Quantidade de grãos × PMG ÷ 1000
+- Produtividade Bruta (sc/ha) = kg/ha ÷ 60
+- Produtividade Líquida (sc/ha) = sc/ha bruta × (1 - porcentagem de perda em decimal, ex: 0,85 para 15% de perda)
+Use a ferramenta 'calculateCornYield' para calcular e rolar automaticamente até a calculadora de produtividade!
+
+Sempre responda de forma concisa e direta, pois se trata de uma conversa falada em tempo real.`;
+
+const GLOBAL_TOOLS = [
+  {
+    functionDeclarations: [
+      {
+        name: 'calculateCornYield',
+        description: 'Calcula a estimativa de produtividade de milho baseada em estande (população), grãos por espiga, PMG e quebra (perdas), e rola a tela até a calculadora.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            plantasPorMetro: {
+              type: 'NUMBER',
+              description: 'Contagem de plantas por metro linear (ex: 4.0)',
+            },
+            espacamentoLinhas: {
+              type: 'NUMBER',
+              description: 'Espaçamento entre linhas em metros (ex: 0.50 para 50 cm)',
+            },
+            fileiras: {
+              type: 'NUMBER',
+              description: 'Número de fileiras por espiga (ex: 16)',
+            },
+            graosPorFileira: {
+              type: 'NUMBER',
+              description: 'Quantidade de grãos por fileira (ex: 35)',
+            },
+            espigas: {
+              type: 'NUMBER',
+              description: 'Espigas por fileira ou espigas por planta (ex: 1.0)',
+            },
+            pmg: {
+              type: 'NUMBER',
+              description: 'Peso de Mil Grãos dado na questão (ex: 300 para 300g)',
+            },
+            quebraPercentual: {
+              type: 'NUMBER',
+              description: 'Porcentagem de quebra ou perda (em decimal como 0.05 ou percentual como 5)',
+            },
+          },
+        },
+      },
+      {
+        name: 'getUserLocalDateTime',
+        description: 'Obtém a data e hora local atual do usuário, dia da semana, ano e fuso horário.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {},
+        },
+      },
+      {
+        name: 'getCurrentSimulatorState',
+        description: 'Retorna todos os valores e respostas dos cálculos atuais da calculadora de adubação nitrogenada.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {},
+        },
+      },
+      {
+        name: 'setYieldGoal',
+        description: 'Ajusta a meta de produtividade de milho em sacas por hectare (sc/ha). Rola a tela até o formulário de produtividade.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            yieldGoal: {
+              type: 'NUMBER',
+              description: 'Produtividade desejada em sc/ha (ex: 140, 160, 180)',
+            },
+          },
+          required: ['yieldGoal'],
+        },
+      },
+      {
+        name: 'setSoilParameters',
+        description: 'Ajusta a contribuição de N do solo (MOS), crédito da cultura anterior (soja) e/ou a eficiência de aproveitamento.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            mosNContribution: {
+              type: 'NUMBER',
+              description: 'Nitrogênio fornecido pela matéria orgânica do solo (kg N/ha, ex: 30)',
+            },
+            soyNContribution: {
+              type: 'NUMBER',
+              description: 'Crédito de nitrogênio da soja em sucessão (kg N/ha, ex: 20)',
+            },
+            efficiencyPercent: {
+              type: 'NUMBER',
+              description: 'Eficiência de aproveitamento do fertilizante em porcentagem (ex: 80 para 80%)',
+            },
+          },
+        },
+      },
+      {
+        name: 'setFertilizerParceling',
+        description: 'Ajusta a dose de base (semeadura) e os percentuais de cobertura em V4-V6 e V8-V10.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            baseDose: {
+              type: 'NUMBER',
+              description: 'Dose aplicada na base de plantio em kg N/ha (ex: 30)',
+            },
+            v4v6Percent: {
+              type: 'NUMBER',
+              description: 'Percentual aplicada no estádio V4-V6 (ex: 50)',
+            },
+            v8v10Percent: {
+              type: 'NUMBER',
+              description: 'Percentual aplicada no estádio V8-V10 (ex: 30)',
+            },
+          },
+        },
+      },
+      {
+        name: 'loadAgronomicPreset',
+        description: 'Carrega um cenário pré-configurado pronto.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            presetId: {
+              type: 'STRING',
+              description: 'Identificador do preset: "padrao", "alta_produtividade" ou "solo_arenoso"',
+            },
+          },
+          required: ['presetId'],
+        },
+      },
+      {
+        name: 'scrollToSection',
+        description: 'Rola suavemente a tela até uma seção específica para o usuário visualizar.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            section: {
+              type: 'STRING',
+              description: 'Seção de destino: "parametros", "resultados", "dose_total", "parcelamento", "presets"',
+            },
+            label: {
+              type: 'STRING',
+              description: 'Texto descritivo curto do que está sendo exibido',
+            },
+          },
+          required: ['section'],
+        },
+      },
+    ],
+  },
+];
+
+const GLOBAL_CONFIG = {
+  systemInstruction: GLOBAL_SYSTEM_INSTRUCTION,
+  tools: GLOBAL_TOOLS,
+  temperature: 0,
+  thinkingLevel: 'low' as const,
+  labels: {
+    obtainingToken: 'Obtendo credencial de voz...',
+    connecting: 'Conectando ao Gemini Live...',
+    configuring: 'Configurando assistente Puck...',
+    ready: 'Puck pronto • Pode falar',
+    listening: 'Ouvindo…',
+    thinking: 'Pensando…',
+  },
+  logPrefix: 'GeminiLive',
+};
+
 export function useGeminiLiveAgent(simContext: SimulatorContext) {
-  const [state, setState] = useState<LiveAgentState>({
-    isConnected: false,
-    isConnecting: false,
-    isMuted: false,
-    status: 'idle',
-    errorMessage: null,
-    lastUserTranscript: '',
-    lastAgentTranscript: '',
-    currentActionLabel: null,
-    userVolume: 0,
-    agentVolume: 0,
-  });
-
-  const wsRef = useRef<WebSocket | null>(null);
-  const streamerRef = useRef<AudioStreamer | null>(null);
   const simContextRef = useRef(simContext);
-  const isMutedRef = useRef(state.isMuted);
 
-  // Keep simulator context updated
   useEffect(() => {
     simContextRef.current = simContext;
   }, [simContext]);
 
-  useEffect(() => {
-    isMutedRef.current = state.isMuted;
-  }, [state.isMuted]);
-
-  const setStatus = useCallback((status: LiveAgentState['status']) => {
-    setState((prev) => ({ ...prev, status }));
-  }, []);
-
-  const setActionLabel = useCallback((label: string | null) => {
-    setState((prev) => ({ ...prev, currentActionLabel: label }));
-  }, []);
-
-  // Disconnect WebSocket and microphone
-  const disconnect = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-    if (streamerRef.current) {
-      streamerRef.current.dispose();
-      streamerRef.current = null;
-    }
-    setState((prev) => ({
-      ...prev,
-      isConnected: false,
-      isConnecting: false,
-      status: 'idle',
-      currentActionLabel: null,
-      userVolume: 0,
-      agentVolume: 0,
-    }));
-  }, []);
-
-  // Clean up on unmount
-  useEffect(() => {
-    return () => {
-      disconnect();
-    };
-  }, [disconnect]);
-
-  // Execute function calling tools locally on the web app
-  const handleExecuteTool = useCallback(async (name: string, args: Record<string, unknown>) => {
+  const executeTool: ExecuteToolFn = useCallback(async (name, args, setActionLabel) => {
     const ctx = simContextRef.current;
 
     switch (name) {
@@ -160,12 +304,9 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
         const goal = Number(args.yieldGoal);
         if (goal > 0) {
           setActionLabel(`Preenchendo Meta: ${goal} sc/ha`);
-          // 1. Scroll to parameters section
           smoothScrollToSection('parametros', `Ajustando Meta: ${goal} sc/ha`);
-          // 2. Update state
           ctx.onSetYieldGoal(goal);
 
-          // 3. Automatically schedule scroll to results after a brief pause
           setTimeout(() => {
             smoothScrollToSection('resultados', 'Exibindo Nova Dose Recomendada');
           }, 1800);
@@ -214,8 +355,6 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
           message: 'Doses de parcelamento atualizadas e exibidas na tela.',
         };
       }
-
-
 
       case 'setITRParameters': {
         const vtn = args.vtn !== undefined ? Number(args.vtn) : 0;
@@ -330,433 +469,23 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
       default:
         return { error: `Ferramenta ${name} não reconhecida.` };
     }
-  }, [setActionLabel]);
-
-  // Connect to Gemini Live API via Serverless Ephemeral Token
-  const connect = useCallback(async () => {
-    setState((prev) => {
-      if (prev.isConnected || prev.isConnecting) return prev;
-      return {
-        ...prev,
-        isConnecting: true,
-        status: 'connecting',
-        errorMessage: null,
-        currentActionLabel: 'Obtendo credencial de voz...',
-      };
-    });
-
-    try {
-      // 1. Fetch ephemeral token from our serverless Next.js API route
-      const tokenRes = await fetch('/api/gemini/live-token', {
-        method: 'POST',
-      });
-
-      if (!tokenRes.ok) {
-        const errorData = await tokenRes.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Falha ao solicitar conexão com o Gemini');
-      }
-
-      const { token, wsBaseUrl } = await tokenRes.json();
-      if (!token) {
-        throw new Error('Token de voz não retornado pelo servidor.');
-      }
-
-      setActionLabel('Conectando ao Gemini Live...');
-
-      // 2. Initialize Web Audio Streamer
-      const streamer = new AudioStreamer();
-      streamerRef.current = streamer;
-
-      // 3. Connect to Google Generative Language WebSocket
-      const fullWsUrl = `${wsBaseUrl}?access_token=${encodeURIComponent(token)}`;
-      const ws = new WebSocket(fullWsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setActionLabel('Configurando assistente Puck...');
-
-        // Build setup message with voice "Puck" and function declarations
-        const setupMsg = {
-          setup: {
-            model: LIVE_MODEL_ID,
-            generationConfig: {
-              responseModalities: ['AUDIO'],
-              temperature: 0,
-              thinkingConfig: {
-                thinkingLevel: 'low',
-              },
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: {
-                    voiceName: 'Puck',
-                  },
-                },
-              },
-            },
-            systemInstruction: {
-              parts: [
-                {
-                  text: `Você é o Engenheiro Agrônomo e Especialista em Nutrição de Milho Assistente por Voz do aplicativo 'Agronômica N-Pro'.
-Sua voz oficial é 'Puck'.
-Você fala em português do Brasil com naturalidade, clareza, simpatia e precisão técnica.
-
-Suas capacidades:
-1. Você tem acesso em tempo real à DATA e HORA local do usuário através da ferramenta 'getUserLocalDateTime'. Quando o usuário perguntar sobre data, que dia é hoje, época de plantio ou safra, use essa ferramenta.
-2. Você tem acesso completo a TODAS as variáveis e cálculos agronômicos da tela pela ferramenta 'getCurrentSimulatorState'.
-3. Você pode preencher e alterar parâmetros no simulador como se fosse o usuário (produtividade alvo, matéria orgânica do solo, crédito de N da soja, eficiência e parcelamento em base, V4-V6 e V8-V10).
-4. Você também pode acessar a Calculadora ITR (Imposto Territorial Rural) com parâmetros de VTN, área total, área tributável, área aproveitável e área utilizada.
-5. Você também pode acessar o Formatter de Referências ABNT com dados de tipo, autor, título, ano, editor e URL.
-6. IMPORTANTE: Sempre que você alterar um valor no simulador (usando 'setYieldGoal', 'setSoilParameters', 'setFertilizerParceling', 'setITRParameters' ou 'setABNTReference'), o site rolará automaticamente para mostrar a alteração. Logo em seguida, quando você falar sobre os resultados da dose total e parcelamento, a tela rolará para a seção de resultados.
-5. Você pode rolar a tela manualmente com 'scrollToSection' ('parametros', 'resultados', 'parcelamento', 'adubos', 'presets').
-
-Fórmulas do simulador de Adubação Nitrogenada:
-- Extração Total (kg N/ha) = Produtividade (sc/ha) × Exigência (ex: 1.35 kg N/sc)
-- Necessidade Líquida (kg N/ha) = Extração Total - MOS (kg N/ha) - Crédito Soja (kg N/ha)
-- Dose Total Recomendada com perdas (kg N/ha) = Necessidade Líquida ÷ (Eficiência ÷ 100)
-- Parcelamento: Base (30-40 kg N/ha) na semeadura; Cobertura 1 em V4-V6 (50-60%); Cobertura 2 em V8-V10 (20-30%).
-- 1 saca de Ureia (50 kg) contém 22.5 kg de N elementar (45% N).
-
-Fórmulas da Calculadora de Estimativa de Produtividade de Milho:
-- Estande (população) = contagem de plantas por metro ÷ espaçamento entre linhas (em metros) × 10.000
-- Quantidade de grãos = fileiras × grãos/fileira
-- PMG (em gramas por 1000 grãos) = valor da questão ÷ 1000 (para obter peso unitário em gramas)
-- Produtividade Bruta (kg/ha) = estande × espigas × Quantidade de grãos × PMG ÷ 1000
-- Produtividade Bruta (sc/ha) = kg/ha ÷ 60
-- Produtividade Líquida (sc/ha) = sc/ha bruta × (1 - porcentagem de perda em decimal, ex: 0,85 para 15% de perda)
-Use a ferramenta 'calculateCornYield' para calcular e rolar automaticamente até a calculadora de produtividade!
-
-Sempre responda de forma concisa e direta, pois se trata de uma conversa falada em tempo real.`,
-                },
-              ],
-            },
-            tools: [
-              {
-                functionDeclarations: [
-                  {
-                    name: 'calculateCornYield',
-                    description: 'Calcula a estimativa de produtividade de milho baseada em estande (população), grãos por espiga, PMG e quebra (perdas), e rola a tela até a calculadora.',
-                    behavior: 'NON_BLOCKING',
-                    parameters: {
-                      type: 'OBJECT',
-                      properties: {
-                        plantasPorMetro: {
-                          type: 'NUMBER',
-                          description: 'Contagem de plantas por metro linear (ex: 4.0)',
-                        },
-                        espacamentoLinhas: {
-                          type: 'NUMBER',
-                          description: 'Espaçamento entre linhas em metros (ex: 0.50 para 50 cm)',
-                        },
-                        fileiras: {
-                          type: 'NUMBER',
-                          description: 'Número de fileiras por espiga (ex: 16)',
-                        },
-                        graosPorFileira: {
-                          type: 'NUMBER',
-                          description: 'Quantidade de grãos por fileira (ex: 35)',
-                        },
-                        espigas: {
-                          type: 'NUMBER',
-                          description: 'Espigas por fileira ou espigas por planta (ex: 1.0)',
-                        },
-                        pmg: {
-                          type: 'NUMBER',
-                          description: 'Peso de Mil Grãos dado na questão (ex: 300 para 300g)',
-                        },
-                        quebraPercentual: {
-                          type: 'NUMBER',
-                          description: 'Porcentagem de quebra ou perda (em decimal como 0.05 ou percentual como 5)',
-                        },
-                      },
-                    },
-                  },
-                  {
-                    name: 'getUserLocalDateTime',
-                    description: 'Obtém a data e hora local atual do usuário, dia da semana, ano e fuso horário.',
-                    behavior: 'NON_BLOCKING',
-                    parameters: {
-                      type: 'OBJECT',
-                      properties: {},
-                    },
-                  },
-                  {
-                    name: 'getCurrentSimulatorState',
-                    description: 'Retorna todos os valores e respostas dos cálculos atuais da calculadora de adubação nitrogenada.',
-                    behavior: 'NON_BLOCKING',
-                    parameters: {
-                      type: 'OBJECT',
-                      properties: {},
-                    },
-                  },
-                  {
-                    name: 'setYieldGoal',
-                    description: 'Ajusta a meta de produtividade de milho em sacas por hectare (sc/ha). Rola a tela até o formulário de produtividade.',
-                    behavior: 'NON_BLOCKING',
-                    parameters: {
-                      type: 'OBJECT',
-                      properties: {
-                        yieldGoal: {
-                          type: 'NUMBER',
-                          description: 'Produtividade desejada em sc/ha (ex: 140, 160, 180)',
-                        },
-                      },
-                      required: ['yieldGoal'],
-                    },
-                  },
-                  {
-                    name: 'setSoilParameters',
-                    description: 'Ajusta a contribuição de N do solo (MOS), crédito da cultura anterior (soja) e/ou a eficiência de aproveitamento.',
-                    behavior: 'NON_BLOCKING',
-                    parameters: {
-                      type: 'OBJECT',
-                      properties: {
-                        mosNContribution: {
-                          type: 'NUMBER',
-                          description: 'Nitrogênio fornecido pela matéria orgânica do solo (kg N/ha, ex: 30)',
-                        },
-                        soyNContribution: {
-                          type: 'NUMBER',
-                          description: 'Crédito de nitrogênio da soja em sucessão (kg N/ha, ex: 20)',
-                        },
-                        efficiencyPercent: {
-                          type: 'NUMBER',
-                          description: 'Eficiência de aproveitamento do fertilizante em porcentagem (ex: 80 para 80%)',
-                        },
-                      },
-                    },
-                  },
-                  {
-                    name: 'setFertilizerParceling',
-                    description: 'Ajusta a dose de base (semeadura) e os percentuais de cobertura em V4-V6 e V8-V10.',
-                    behavior: 'NON_BLOCKING',
-                    parameters: {
-                      type: 'OBJECT',
-                      properties: {
-                        baseDose: {
-                          type: 'NUMBER',
-                          description: 'Dose aplicada na base de plantio em kg N/ha (ex: 30)',
-                        },
-                        v4v6Percent: {
-                          type: 'NUMBER',
-                          description: 'Porcentagem aplicada no estádio V4-V6 (ex: 50)',
-                        },
-                        v8v10Percent: {
-                          type: 'NUMBER',
-                          description: 'Porcentagem aplicada no estádio V8-V10 (ex: 30)',
-                        },
-                      },
-                    },
-                  },
-                  {
-                    name: 'loadAgronomicPreset',
-                    description: 'Carrega um cenário pré-configurado pronto.',
-                    behavior: 'NON_BLOCKING',
-                    parameters: {
-                      type: 'OBJECT',
-                      properties: {
-                        presetId: {
-                          type: 'STRING',
-                          description: 'Identificador do preset: "padrao", "alta_produtividade" ou "solo_arenoso"',
-                        },
-                      },
-                      required: ['presetId'],
-                    },
-                  },
-                  {
-                    name: 'scrollToSection',
-                    description: 'Rola suavemente a tela até uma seção específica para o usuário visualizar.',
-                    behavior: 'NON_BLOCKING',
-                    parameters: {
-                      type: 'OBJECT',
-                      properties: {
-                        section: {
-                          type: 'STRING',
-                          description: 'Seção de destino: "parametros", "resultados", "dose_total", "parcelamento", "presets"',
-                        },
-                        label: {
-                          type: 'STRING',
-                          description: 'Texto descritivo curto do que está sendo exibido',
-                        },
-                      },
-                      required: ['section'],
-                    },
-                  },
-                ],
-              },
-            ],
-            realtimeInputConfig: {
-              automaticActivityDetection: {
-                disabled: false,
-                silenceDurationMs: 1500,
-                prefixPaddingMs: 400,
-                endOfSpeechSensitivity: 'END_SENSITIVITY_UNSPECIFIED',
-                startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
-              },
-              activityHandling: 'START_OF_ACTIVITY_INTERRUPTS',
-              turnCoverage: 'TURN_INCLUDES_ONLY_ACTIVITY',
-            },
-            sessionResumption: {
-              transparent: true,
-            },
-          },
-        };
-
-        ws.send(JSON.stringify(setupMsg));
-      };
-
-      ws.onmessage = async (event) => {
-        try {
-          const rawData = event.data instanceof Blob ? await event.data.text() : event.data;
-          if (typeof rawData !== 'string') return;
-          const msg = JSON.parse(rawData);
-
-          // 1. Setup Complete
-          if (msg.setupComplete) {
-            setState((prev) => ({
-              ...prev,
-              isConnected: true,
-              isConnecting: false,
-              status: 'listening',
-              currentActionLabel: 'Puck pronto • Pode falar',
-            }));
-
-            // Start recording user audio
-            await streamer.startRecording(
-              (base64Pcm) => {
-                if (ws.readyState === WebSocket.OPEN && !isMutedRef.current) {
-                  ws.send(
-                    JSON.stringify({
-                      realtimeInput: {
-                        audio: {
-                          mimeType: 'audio/pcm;rate=16000',
-                          data: base64Pcm,
-                        },
-                      },
-                    })
-                  );
-                }
-              },
-              (userVol) => {
-                setState((prev) => ({ ...prev, userVolume: userVol }));
-              },
-              (agentVol) => {
-                setState((prev) => ({ ...prev, agentVolume: agentVol }));
-              }
-            );
-          }
-
-          // 2. Audio chunks from Puck (Gemini Live output)
-          const parts = msg.serverContent?.modelTurn?.parts;
-          if (parts && parts.length > 0) {
-            for (const part of parts) {
-              if (part.inlineData?.data) {
-                setStatus('speaking');
-                await streamer.playPcmChunk(part.inlineData.data);
-              }
-              if (part.text) {
-                setState((prev) => ({ ...prev, lastAgentTranscript: part.text }));
-              }
-            }
-          }
-
-          // 3. User interrupted Puck
-          if (msg.serverContent?.interrupted) {
-            streamer.stopPlayback();
-            setStatus('listening');
-            setActionLabel('Ouvindo...');
-          }
-
-          // 4. Turn Complete
-          if (msg.serverContent?.turnComplete) {
-            if (!streamer.getIsPlaying()) {
-              setStatus('listening');
-            }
-          }
-
-          // 4b. Background reasoning / async task status (Extended Thinking)
-          const interactionStatus = msg.serverContent?.interactionStatus;
-          if (interactionStatus === 'IN_PROGRESS') {
-            setStatus('thinking');
-            setActionLabel('Pensando…');
-          } else if (interactionStatus === 'IDLE' && !streamer.getIsPlaying()) {
-            setStatus('listening');
-            setActionLabel('Ouvindo…');
-          }
-
-          // 5. Tool Call (Function Calling from Voice Agent)
-          if (msg.toolCall?.functionCalls) {
-            setStatus('thinking');
-            const functionResponses = [];
-
-            for (const call of msg.toolCall.functionCalls) {
-              const { name, args, id } = call;
-              const result = await handleExecuteTool(name, args || {});
-              functionResponses.push({
-                response: { output: result },
-                id,
-              });
-            }
-
-            // Send tool response back to Gemini Live
-            ws.send(
-              JSON.stringify({
-                toolResponse: {
-                  functionResponses,
-                },
-              })
-            );
-          }
-        } catch (err) {
-          console.error('Error handling WebSocket message:', err);
-        }
-      };
-
-      ws.onerror = (err) => {
-        console.error('Gemini Live WebSocket error:', err);
-        setState((prev) => ({
-          ...prev,
-          status: 'error',
-          errorMessage: 'Erro na conexão de voz com o Gemini.',
-        }));
-      };
-
-      ws.onclose = () => {
-        setState((prev) => ({
-          ...prev,
-          isConnected: false,
-          isConnecting: false,
-          status: 'idle',
-          currentActionLabel: null,
-          userVolume: 0,
-          agentVolume: 0,
-        }));
-        if (streamerRef.current) {
-          streamerRef.current.stopRecording();
-          streamerRef.current.stopPlayback();
-        }
-      };
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Falha ao iniciar conversa de voz';
-      setState((prev) => ({
-        ...prev,
-        isConnecting: false,
-        isConnected: false,
-        status: 'error',
-        errorMessage: msg,
-        currentActionLabel: null,
-      }));
-    }
-  }, [handleExecuteTool, setActionLabel, setStatus]);
-
-  // Toggle microphone mute
-  const toggleMute = useCallback(() => {
-    setState((prev) => ({ ...prev, isMuted: !prev.isMuted }));
   }, []);
+
+  const session = useLiveSession({
+    config: GLOBAL_CONFIG,
+    executeTool,
+  });
+
+  const state: LiveAgentState = {
+    ...session.state,
+    lastUserTranscript: '',
+  };
 
   return {
     state,
-    connect,
-    disconnect,
-    toggleMute,
+    connect: session.connect,
+    disconnect: session.disconnect,
+    toggleMute: session.toggleMute,
+    toggleConnection: session.toggleConnection,
   };
 }

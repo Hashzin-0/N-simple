@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  beginSocraticAttempt,
   buildNextQuery,
   createSessionState,
   finishSession,
+  metaForModo,
   nextQuestionPending,
   pickNextQuestion,
   recordAnswer,
+  registerSocraticHint,
+  revealSocraticAnswer,
   setCurrentQuestion,
   setEvaluating,
   setSessionContext,
@@ -19,6 +23,8 @@ import type {
   AvaliacaoResultado,
   ResearchQuestionsResponse,
   SessionTema,
+  TutorErrorsResponse,
+  TutorModo,
   TutorQuestion,
   TutorSessionState,
 } from '@/lib/tutor/types';
@@ -31,6 +37,7 @@ export function useTutorSession() {
   const [researchInfo, setResearchInfo] = useState<ResearchQuestionsResponse | null>(null);
   const [isResearching, setIsResearching] = useState(false);
   const [lastAvaliacao, setLastAvaliacao] = useState<AvaliacaoResultado | null>(null);
+  const [errorQueueCount, setErrorQueueCount] = useState(0);
   const lastAvaliacaoRef = useRef<AvaliacaoResultado | null>(null);
   const poolRef = useRef<TutorQuestion[]>([]);
   const stateRef = useRef(state);
@@ -39,6 +46,17 @@ export function useTutorSession() {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  const refreshErrorQueue = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/tutor/errors?userId=${encodeURIComponent(progress.deviceId)}&limit=1`);
+      if (!res.ok) return;
+      const data = (await res.json()) as TutorErrorsResponse;
+      setErrorQueueCount(data.attempts?.length ?? 0);
+    } catch {
+      // fila indisponível
+    }
+  }, [progress.deviceId]);
 
   const fetchContextFontes = useCallback(async (tema: SessionTema): Promise<string> => {
     const query = [tema.tema, tema.subtema].filter(Boolean).join(' ');
@@ -97,13 +115,30 @@ export function useTutorSession() {
     []
   );
 
+  const fetchErrorQueue = useCallback(
+    async (): Promise<TutorQuestion[]> => {
+      try {
+        const res = await fetch(
+          `/api/tutor/errors?userId=${encodeURIComponent(progress.deviceId)}&limit=8`
+        );
+        if (!res.ok) return [];
+        const data = (await res.json()) as TutorErrorsResponse;
+        setErrorQueueCount(data.attempts?.length ?? 0);
+        return data.questions || [];
+      } catch {
+        return [];
+      }
+    },
+    [progress.deviceId]
+  );
+
   const loadNextQuestion = useCallback(async (): Promise<TutorSessionState> => {
     let currentState = { ...stateRef.current };
     setState(setSessionLoading(currentState));
     currentState = { ...currentState, status: 'loading', errorMessage: null };
     stateRef.current = currentState;
 
-    if (!currentState.tema) return currentState;
+    if (!currentState.tema && currentState.modo !== 'conversar') return currentState;
 
     let pool = poolRef.current;
     const next = buildNextQuery(currentState, lastAvaliacaoRef.current || undefined);
@@ -113,10 +148,16 @@ export function useTutorSession() {
           ...(lastAvaliacaoRef.current.errosConceituais || []),
         ]
       : [];
+    const allowRepeat = currentState.modo === 'revisar_erros';
 
     if (pool.length === 0) {
       try {
-        pool = await research(currentState.tema);
+        if (allowRepeat) {
+          pool = await fetchErrorQueue();
+        }
+        if (pool.length === 0 && currentState.tema) {
+          pool = await research(currentState.tema);
+        }
         poolRef.current = pool;
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Falha ao carregar questões.';
@@ -130,6 +171,7 @@ export function useTutorSession() {
       dificuldade: next.dificuldade,
       preferWeakness: next.preferWeakness,
       weaknessTerms,
+      allowRepeat,
     });
 
     if (!candidate) {
@@ -139,7 +181,7 @@ export function useTutorSession() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             query: next.query,
-            assunto: currentState.tema.tema,
+            assunto: currentState.tema?.tema || 'agronomia',
             dificuldade: next.dificuldade,
             excludeIds: currentState.askedIds,
             limit: FOCUS_LIMIT,
@@ -152,6 +194,7 @@ export function useTutorSession() {
             dificuldade: next.dificuldade,
             preferWeakness: next.preferWeakness,
             weaknessTerms,
+            allowRepeat,
           });
         }
       } catch {
@@ -163,7 +206,9 @@ export function useTutorSession() {
       const done = {
         ...setSessionError(
           currentState,
-          'Não há mais questões para este tema. Pesquise novamente ou escolha outro tema.'
+          currentState.modo === 'revisar_erros'
+            ? 'Nenhum erro pendente para revisar. Resolva novas questões ou escolha outro modo.'
+            : 'Não há mais questões para este tema. Pesquise novamente ou escolha outro tema.'
         ),
         status: 'done' as const,
       };
@@ -174,32 +219,79 @@ export function useTutorSession() {
     const withQuestion = setCurrentQuestion(currentState, candidate);
     setState(withQuestion);
     return withQuestion;
-  }, [research]);
+  }, [research, fetchErrorQueue]);
 
   const beginSession = useCallback(
-    async (tema: SessionTema): Promise<{ success: boolean; question?: string; message: string }> => {
-      let nextState = startSession(stateRef.current, tema);
+    async (
+      tema: SessionTema,
+      modo: TutorModo = stateRef.current.modo || 'sessao'
+    ): Promise<{ success: boolean; question?: string; message: string }> => {
+      const meta = metaForModo(modo, stateRef.current.meta);
+      let nextState = startSession(
+        { ...stateRef.current, meta, modo },
+        tema,
+        modo
+      );
       setState(nextState);
       stateRef.current = nextState;
+      poolRef.current = [];
+      lastAvaliacaoRef.current = null;
+      setLastAvaliacao(null);
 
       try {
-        const [contextFontes, questions] = await Promise.all([
-          fetchContextFontes(tema),
-          research(tema),
-        ]);
+        if (modo === 'conversar') {
+          const contextFontes = await fetchContextFontes(tema);
+          nextState = { ...setSessionContext(nextState, contextFontes), status: 'conversando' };
+          setState(nextState);
+          stateRef.current = nextState;
+          return {
+            success: true,
+            message:
+              'Modo conversar ativo. Fale sobre o tema — se quiser questões, peça "me pergunte sobre isso".',
+          };
+        }
 
-        nextState = setSessionContext(nextState, contextFontes);
-        stateRef.current = nextState;
-        poolRef.current = questions;
+        if (modo === 'revisar_erros') {
+          const [contextFontes, queue] = await Promise.all([
+            fetchContextFontes(tema),
+            fetchErrorQueue(),
+          ]);
+          nextState = setSessionContext(nextState, contextFontes);
+          stateRef.current = nextState;
+          poolRef.current = queue;
 
-        if (questions.length === 0) {
-          const errored = setSessionError(
-            nextState,
-            'Nenhuma questão encontrada. Verifique o Supabase ou tente outro tema.'
-          );
-          setState(errored);
-          stateRef.current = errored;
-          return { success: false, message: errored.errorMessage || 'Sem questões.' };
+          if (queue.length === 0) {
+            // fallback: pesquisa normal
+            const questions = await research(tema);
+            poolRef.current = questions;
+            if (questions.length === 0) {
+              const errored = setSessionError(
+                nextState,
+                'Nenhum erro pendente e nenhuma questão encontrada.'
+              );
+              setState(errored);
+              stateRef.current = errored;
+              return { success: false, message: errored.errorMessage || 'Sem questões.' };
+            }
+          }
+        } else {
+          const [contextFontes, questions] = await Promise.all([
+            fetchContextFontes(tema),
+            research(tema),
+          ]);
+          nextState = setSessionContext(nextState, contextFontes);
+          stateRef.current = nextState;
+          poolRef.current = questions;
+
+          if (questions.length === 0) {
+            const errored = setSessionError(
+              nextState,
+              'Nenhuma questão encontrada. Verifique o Supabase ou tente outro tema.'
+            );
+            setState(errored);
+            stateRef.current = errored;
+            return { success: false, message: errored.errorMessage || 'Sem questões.' };
+          }
         }
 
         const finalState = await loadNextQuestion();
@@ -219,7 +311,7 @@ export function useTutorSession() {
         return { success: false, message: msg };
       }
     },
-    [fetchContextFontes, research, loadNextQuestion]
+    [fetchContextFontes, research, loadNextQuestion, fetchErrorQueue]
   );
 
   const submitAnswer = useCallback(
@@ -246,6 +338,9 @@ export function useTutorSession() {
             explicacao: question.explicacao,
             contextoFontes: currentState.contextFontes,
             dificuldade: question.dificuldade,
+            modo: currentState.modo,
+            tentativa: currentState.socratic.tentativa,
+            pistaAnterior: lastAvaliacaoRef.current?.pista ?? null,
           }),
         });
 
@@ -259,8 +354,29 @@ export function useTutorSession() {
         lastAvaliacaoRef.current = avaliacao;
         setLastAvaliacao(avaliacao);
 
+        const isSocratic = currentState.modo === 'socratico';
+        const tentativa = currentState.socratic.tentativa;
+        const canRetry = isSocratic && tentativa < 3 && avaliacao.statusGeral !== 'dominou';
+
+        if (canRetry) {
+          // Não conta para meta ainda: mantém status feedback com pista
+          const after = beginSocraticAttempt({
+            ...evaluating,
+            status: 'feedback',
+          });
+          setState(after);
+          stateRef.current = after;
+          // grava attempt intermediário apenas se 3ª falhar depois — evita mastery negativo cedo
+          return avaliacao;
+        }
+
         const topic = question.subassunto || question.assunto;
-        const after = recordAnswer(evaluating, trimmed, avaliacao);
+        const ready =
+          isSocratic && !avaliacao.statusGeral
+            ? evaluating
+            : evaluating;
+        const finalState = isSocratic ? revealSocraticAnswer(ready) : ready;
+        const after = recordAnswer(finalState, trimmed, avaliacao);
         setState(after);
         stateRef.current = after;
 
@@ -272,6 +388,7 @@ export function useTutorSession() {
           answerText: trimmed,
           evaluation: avaliacao,
           dificuldade: question.dificuldade,
+          modo: currentState.modo,
         });
 
         return avaliacao;
@@ -285,6 +402,106 @@ export function useTutorSession() {
     },
     [progress]
   );
+
+  /** Modo socrático: aluno pede dica ou "não sei". */
+  const requestHint = useCallback(async (): Promise<{
+    success: boolean;
+    pista?: string | null;
+    gabarito?: string | null;
+    message: string;
+  }> => {
+    const currentState = stateRef.current;
+    if (currentState.modo !== 'socratico' || !currentState.currentQuestion) {
+      return { success: false, message: 'Dica disponível só no modo socrático.' };
+    }
+
+    const q = currentState.currentQuestion;
+    const tentativa = currentState.socratic.tentativa;
+
+    if (tentativa >= 3 || currentState.socratic.revealed) {
+      const revealed = revealSocraticAnswer({
+        ...registerSocraticHint(currentState),
+        status: 'feedback',
+      });
+      setState(revealed);
+      stateRef.current = revealed;
+      return {
+        success: true,
+        pista: null,
+        gabarito: q.gabarito,
+        message: q.gabarito
+          ? `Resposta esperada: ${q.gabarito}. ${q.explicacao || ''}`
+          : q.explicacao || 'Sem gabarito fechado — veja a explicação.',
+      };
+    }
+
+    const hinted = registerSocraticHint(beginSocraticAttempt(currentState));
+    // usa pista da última avaliação se houver; senão pede via evaluate vazio? melhor: usa formulacao.dica
+    const pista =
+      lastAvaliacaoRef.current?.pista ||
+      lastAvaliacaoRef.current?.dimensoes.formulacao.dica ||
+      `Pense no conceito central de ${q.assunto}${q.subassunto ? ` — ${q.subassunto}` : ''}.`;
+
+    const withHint = { ...hinted, status: 'feedback' as const };
+    setState(withHint);
+    stateRef.current = withHint;
+    setLastAvaliacao((prev) =>
+      prev
+        ? { ...prev, pista }
+        : prev
+    );
+
+    return {
+      success: true,
+      pista,
+      gabarito: null,
+      message: pista,
+    };
+  }, []);
+
+  /** Força registro final (3ª tentativa / "não sei" com gabarito). */
+  const forceRecordCurrent = useCallback(async (): Promise<AvaliacaoResultado | null> => {
+    const currentState = stateRef.current;
+    if (!currentState.currentQuestion || !lastAvaliacaoRef.current) return null;
+    const revealed = revealSocraticAnswer(currentState);
+    const after = recordAnswer(
+      revealed,
+      '(sem nova resposta — revelado pelo tutor)',
+      lastAvaliacaoRef.current
+    );
+    setState(after);
+    stateRef.current = after;
+
+    void progress.recordAttempt({
+      questionId: currentState.currentQuestion.id,
+      assunto: currentState.currentQuestion.assunto,
+      subassunto: currentState.currentQuestion.subassunto,
+      topic:
+        currentState.currentQuestion.subassunto ||
+        currentState.currentQuestion.assunto ||
+        'geral',
+      answerText: '(revelado)',
+      evaluation: lastAvaliacaoRef.current,
+      dificuldade: currentState.currentQuestion.dificuldade,
+      modo: currentState.modo,
+    });
+    return lastAvaliacaoRef.current;
+  }, [progress]);
+
+  /** Volta para a caixa de resposta na mesma questão (retry socrático). */
+  const retryAttempt = useCallback(() => {
+    const current = stateRef.current;
+    if (current.modo !== 'socratico' || !current.currentQuestion) return;
+    const next = {
+      ...current,
+      status: 'question' as const,
+      errorMessage: null,
+    };
+    setState(next);
+    stateRef.current = next;
+    setLastAvaliacao(null);
+    lastAvaliacaoRef.current = null;
+  }, []);
 
   const advance = useCallback(async (): Promise<{ success: boolean; message: string }> => {
     const pending = nextQuestionPending(stateRef.current);
@@ -316,16 +533,27 @@ export function useTutorSession() {
     setLastAvaliacao(null);
     poolRef.current = [];
     setResearchInfo(null);
-    const fresh = createSessionState();
+    const modo = stateRef.current.modo;
+    const fresh = createSessionState(metaForModo(modo), modo);
     setState(fresh);
     stateRef.current = fresh;
-  }, []);
+    void refreshErrorQueue();
+  }, [refreshErrorQueue]);
 
-  const getQuestionText = useCallback((): { success: boolean; question?: string; message: string } => {
+  const getQuestionText = useCallback((): {
+    success: boolean;
+    question?: string;
+    message: string;
+  } => {
     const q = stateRef.current.currentQuestion;
     if (!q) return { success: false, message: 'Nenhuma questão ativa. Inicie uma sessão.' };
     return { success: true, question: q.enunciado, message: q.enunciado };
   }, []);
+
+  // Carrega contagem da fila de erros fora do effect (evita setState em effect)
+  const ensureErrorQueueCount = useCallback(() => {
+    void refreshErrorQueue();
+  }, [refreshErrorQueue]);
 
   const submitForVoice = useCallback(
     async (answerText: string) => {
@@ -336,12 +564,17 @@ export function useTutorSession() {
           message: stateRef.current.errorMessage || 'Não consegui avaliar a resposta.',
         };
       }
+      const s = stateRef.current.socratic;
       return {
         success: true as const,
         statusGeral: avaliacao.statusGeral,
         feedbackOral: avaliacao.feedbackOral,
         avaliacao,
-        message: `${avaliacao.statusGeral}. ${avaliacao.feedbackOral}`,
+        pista: avaliacao.pista ?? null,
+        tentativa: s.tentativa,
+        message: `${avaliacao.statusGeral}. ${avaliacao.feedbackOral}${
+          avaliacao.pista ? ` Pista: ${avaliacao.pista}` : ''
+        }`,
       };
     },
     [submitAnswer]
@@ -366,8 +599,11 @@ export function useTutorSession() {
       topic,
       topicProgress,
       weaknessCount: topicProgress?.weaknesses.length ?? 0,
+      modo: state.modo,
+      socratic: state.socratic,
+      errorQueueCount,
     };
-  }, [state, progress]);
+  }, [state, progress, errorQueueCount]);
 
   return {
     state,
@@ -376,12 +612,18 @@ export function useTutorSession() {
     isResearching,
     progress,
     lastAvaliacao,
+    errorQueueCount,
     beginSession,
     submitAnswer,
     submitForVoice,
+    requestHint,
+    forceRecordCurrent,
+    retryAttempt,
     advance,
     end,
     reset,
     getQuestionText,
+    refreshErrorQueue,
+    ensureErrorQueueCount,
   };
 }

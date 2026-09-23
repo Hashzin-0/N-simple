@@ -42,10 +42,16 @@ export default function QuestionCard({ question, questionNumber, total }: Questi
             className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
               question.origem === 'pesquisada'
                 ? 'bg-[#D4A373]/15 text-[#C19262]'
-                : 'bg-[#5A5A40]/10 text-[#5A5A40] dark:bg-[#9CB386]/10 dark:text-[#9CB386]'
+                : question.origem === 'artigo'
+                  ? 'bg-[#2E6F40]/15 text-[#2E6F40] dark:bg-[#86efac]/15 dark:text-[#86efac]'
+                  : 'bg-[#5A5A40]/10 text-[#5A5A40] dark:bg-[#9CB386]/10 dark:text-[#9CB386]'
             }`}
           >
-            {question.origem === 'pesquisada' ? 'Questão pesquisada' : 'Questão gerada'}
+            {question.origem === 'pesquisada'
+              ? 'Questão pesquisada'
+              : question.origem === 'artigo'
+                ? 'De artigo'
+                : 'Questão gerada'}
           </span>
         </div>
       </div>

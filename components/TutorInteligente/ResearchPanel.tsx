@@ -114,6 +114,11 @@ export default function ResearchPanel({ tema }: ResearchPanelProps) {
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#5A5A40]/10 text-[#5A5A40] dark:bg-[#9CB386]/10 dark:text-[#9CB386]">
                   {result.researchedCount} pesquisadas
                 </span>
+                {(result.artigoCount ?? 0) > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#2E6F40]/15 text-[#2E6F40] dark:bg-[#86efac]/15 dark:text-[#86efac]">
+                    {result.artigoCount} de artigos
+                  </span>
+                )}
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F3F1EC] dark:bg-[#2C3328] text-[#8C897E] dark:text-[#9EA399]">
                   {result.generatedCount} geradas
                 </span>

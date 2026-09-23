@@ -42,6 +42,7 @@ Embeddings / research (optional, see `.env.example`):
 | `supabase/schema.sql` | **Baseline** already applied on production. Do not edit it to add new features — re-running a modified baseline can conflict with live objects. |
 | `supabase/migration-*.sql` | **Incremental, idempotent** migrations. New schema changes go here only (`ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`, `CREATE OR REPLACE`, `DROP POLICY IF EXISTS`). Safe to re-run. |
 | `supabase/tutor-schema.sql` | Additive schema for Tutor Inteligente (separate feature). |
+| `supabase/migration-tutor-plano2.sql` | Tutor Plano 2: `questions.origem` + `'artigo'`, `tutor_attempts.modo`/`resolved`, partial index for error queue. |
 | `supabase/migration-semantic-engine.sql` | Adds `sources.embedding` + semantic columns, `source_chunks`, `source_categories`, RPC `match_sources_by_embedding`, RLS for new tables. Required by `lib/semantic/**`, `lib/evidenceIndex.ts`, `lib/reuseDecision.ts`. |
 
 Rules:
@@ -56,8 +57,8 @@ Rules:
 - **API Route**: `app/api/gemini/live-token/route.ts` — creates ephemeral tokens for Gemini Live WebSocket
 - **Components**: `components/` — shared UI building blocks (3D visualizers, toggles, HUD, modals) with 11 top-level components
 - **Components Metrics**: `components/metrics/` — modularized result cards and sections (see Modularization below)
-- **Hooks**: `hooks/useGeminiLiveAgent.ts` — manages Gemini Live WebSocket connection and voice agent state (700+ lines)
-- **Lib**: `lib/audioStreamer.ts` (audio capture/playback), `lib/pageAutomator.ts` (UI automation for voice agent), `lib/storage.ts` (localStorage-based scenario DB), `lib/types.ts` (shared TypeScript interfaces), `lib/calculations.ts` (pure calculation functions)
+- **Hooks**: `hooks/useGeminiLiveAgent.ts` + `hooks/useTutorLiveAgent.ts` — thin wrappers over shared `lib/liveSession.ts` (Gemini Live WebSocket + voice); Tutor modes live in `hooks/useTutorSession.ts`
+- **Lib**: `lib/audioStreamer.ts` (audio capture/playback), `lib/liveSession.ts` (shared Live WS/audio core), `lib/liveConfig.ts` (`LIVE_MODEL_ID`, `LIVE_VOICE_NAME`), `lib/pageAutomator.ts` (UI automation for voice agent), `lib/storage.ts` (localStorage-based scenario DB), `lib/types.ts` (shared TypeScript interfaces), `lib/calculations.ts` (pure calculation functions), `lib/tutor/**` (Tutor session, cascade research, evaluate, prompts)
 - **Storage**: localStorage with `useSyncExternalStore` for hydration safety; 3 default seed scenarios
 - **Language**: App UI is in Portuguese (pt-BR)
 

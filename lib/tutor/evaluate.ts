@@ -75,6 +75,7 @@ function normalizeAvaliacao(raw: unknown): AvaliacaoResultado | null {
     omissoes: asStringArray(obj.omissoes),
     errosConceituais: asStringArray(obj.errosConceituais),
     feedbackOral: String(obj.feedbackOral ?? '').trim() || 'Avaliação concluída.',
+    pista: obj.pista == null || obj.pista === '' ? null : String(obj.pista).trim(),
   };
 }
 
