@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
       totalFound: result.sources.length,
       errors: result.errors,
       sourcesUsed: [],
+      indexingStats: result.indexingStats,
       memoryDecision: result.memoryDecision ? {
         action: result.memoryDecision.action,
         coverage: result.memoryDecision.coverageScore,

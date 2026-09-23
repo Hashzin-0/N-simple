@@ -27,10 +27,13 @@ Core env vars (see `.env.example`):
 - `GEMINI_API_KEY` — injected by AI Studio at runtime from user secrets
 - `APP_URL` — injected by AI Studio with Cloud Run service URL
 - `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` — server-side Supabase; passed to the client via `AuthProvider` props from `app/layout.tsx` (**do not use `NEXT_PUBLIC_*`** — deployment constraint)
+- `YOUTUBE_API_KEY` — YouTube Data API v3 (server-side; Libras search + research scraper)
+- `LIBRAS_CHANNEL_HANDLES` — optional, comma-separated `@handles` prioritized for Libras sign search (default `@angelagirardi,@academiadelibras,@netolibras`); preferred channels first, then global fallback
 
-Google login (optional, for GIS button; fallback is Supabase OAuth redirect):
+Google login (optional; One Tap + footer fallback → Supabase OAuth redirect if no client id):
 - `GOOGLE_CLIENT_ID` — Web OAuth client ID (or leave empty)
 - `SUPABASE_MANAGEMENT_TOKEN` — Supabase PAT; lets the server read `external_google_client_id` from Management API (`lib/authConfig.ts`)
+- UI: `components/auth/GoogleSignInIsland.tsx` tries `google.accounts.id.prompt()` (One Tap) when signed out; if not displayed, shows the fixed footer bar with GIS `continue_with` / OAuth button. `AuthProvider` supplies session, `user.id` cloud gate, and island height for the voice HUD.
 
 Do not hardcode or commit secrets. The `.env` file is gitignored.
 
@@ -49,6 +52,7 @@ Embeddings / research (optional, see `.env.example`):
 | `supabase/tutor-schema.sql` | Additive schema for Tutor Inteligente (separate feature). |
 | `supabase/migration-tutor-plano2.sql` | Tutor Plano 2: `questions.origem` + `'artigo'`, `tutor_attempts.modo`/`resolved`, partial index for error queue. |
 | `supabase/migration-semantic-engine.sql` | Adds `sources.embedding` + semantic columns, `source_chunks`, `source_categories`, RPC `match_sources_by_embedding`, RLS for new tables. Required by `lib/semantic/**`, `lib/evidenceIndex.ts`, `lib/reuseDecision.ts`. |
+| `supabase/migration-libras-progress.sql` | Mini-curso Libras: ensures `libras_progress` table + unique `(user_id,word_id)`, drops conflicting RLS policies, installs permissive `FOR ALL USING (true)` (fixes POST 42501 with publishable key). |
 
 Rules:
 1. Never rewrite an already-applied baseline file with new DDL — create the next `migration-*.sql` instead.
@@ -73,7 +77,7 @@ When changing this route or `searchSources`, keep those three constraints (verce
 - **Components**: `components/` — shared UI building blocks (3D visualizers, toggles, HUD, modals) with 11 top-level components
 - **Components Metrics**: `components/metrics/` — modularized result cards and sections (see Modularization below)
 - **Hooks**: `hooks/useGeminiLiveAgent.ts` + `hooks/useTutorLiveAgent.ts` — thin wrappers over shared `lib/liveSession.ts` (Gemini Live WebSocket + voice); Tutor modes live in `hooks/useTutorSession.ts`
-- **Lib**: `lib/audioStreamer.ts` (audio capture/playback), `lib/liveSession.ts` (shared Live WS/audio core), `lib/liveConfig.ts` (`LIVE_MODEL_ID`, `LIVE_VOICE_NAME`), `lib/pageAutomator.ts` (UI automation for voice agent), `lib/storage.ts` (localStorage-based scenario DB), `lib/types.ts` (shared TypeScript interfaces), `lib/calculations.ts` (pure calculation functions), `lib/tutor/**` (Tutor session, cascade research, evaluate, prompts)
+- **Lib**: `lib/audioStreamer.ts` (audio capture/playback), `lib/liveSession.ts` (shared Live WS/audio core), `lib/liveConfig.ts` (`LIVE_MODEL_ID`, `LIVE_VOICE_NAME`), `lib/pageAutomator.ts` (UI automation for voice agent), `lib/storage.ts` (localStorage-based scenario DB), `lib/types.ts` (shared TypeScript interfaces), `lib/calculations.ts` (pure calculation functions), `lib/tutor/**` (Tutor session, cascade research, evaluate, prompts), `lib/authConfig.ts` + `lib/supabaseBrowser.ts` (auth config / browser Supabase)
 - **Storage**: localStorage with `useSyncExternalStore` for hydration safety; 3 default seed scenarios
 - **Language**: App UI is in Portuguese (pt-BR)
 

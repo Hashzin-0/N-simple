@@ -1,9 +1,14 @@
 import { searchAllSourcesWithProgress, SearchOptions, ScrapedResult } from '@/lib/scrapers';
 import { decideReuse, ReuseDecision } from '@/lib/reuseDecision';
-import { indexSources } from '@/lib/evidenceIndex';
+import { indexSources, logSearchQuery } from '@/lib/evidenceIndex';
 import { extractTopics, TopicExtractorConfig } from '@/lib/topicExtractor';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { understandSources, filterAndRankRelevant, UnderstoodSource } from '@/lib/semantic/relevanceEngine';
+import {
+  understandSources,
+  filterAndRankRelevant,
+  classifyOutOfTopKForPersistence,
+  UnderstoodSource,
+} from '@/lib/semantic/relevanceEngine';
 import { embedText } from '@/lib/semantic/embeddings';
 import { DomainKey } from '@/lib/semantic/config';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
@@ -64,6 +69,7 @@ export interface SourceSearchResult {
     indexed: number;
     archivedOffTopic: number;
     discardedOutOfDomain: number;
+    errors: number;
   } | null;
   errors: string[];
 }
@@ -87,6 +93,44 @@ function toLightUnderstood(src: ScientificSource): UnderstoodSource {
     inAgroDomain: false,
     shouldPersist: false,
   };
+}
+
+/**
+ * Indexa no Supabase + registra a query. Usado em todos os caminhos full
+ * (reuse, complementary, new_search) para que fontes pesquisadas sempre
+ * sejam formatadas/classificadas e salvas quando shouldPersist.
+ */
+async function persistSearchOutcome(
+  query: string,
+  topics: string[],
+  sourcesToIndex: UnderstoodSource[],
+  decision: ReuseDecision | null,
+  sourcesFound: number,
+): Promise<SourceSearchResult['indexingStats']> {
+  if (!isSupabaseConfigured() || sourcesToIndex.length === 0) {
+    return null;
+  }
+
+  let stats: SourceSearchResult['indexingStats'] = null;
+  try {
+    stats = await indexSources(sourcesToIndex, topics);
+  } catch (err) {
+    console.warn('[ResearchService] Falha ao indexar:', err);
+  }
+
+  try {
+    await logSearchQuery(
+      query,
+      topics,
+      sourcesFound,
+      decision?.action ?? 'new_search',
+      decision?.coverageScore ?? 0,
+    );
+  } catch (err) {
+    console.warn('[ResearchService] Falha ao registrar search_queries:', err);
+  }
+
+  return stats;
 }
 
 /**
@@ -114,7 +158,7 @@ export async function searchSources(
     query,
     customTopics,
     searchOptions = {},
-    domain: _domain,
+    domain = 'agro',
     topicExtractorConfig,
     existingSources,
     onProgress,
@@ -183,8 +227,19 @@ export async function searchSources(
       query,
       priorPool,
       sharedQueryEmbedding,
+      domain,
     );
     const relevant = filterAndRankRelevant(understood);
+
+    // Fontes vindas só do localStorage (existingSources) podem não estar no
+    // banco — indexa as que passam no filtro de domínio/relevância.
+    const indexingStats = await persistSearchOutcome(
+      query,
+      topics,
+      understood,
+      decision,
+      priorPool.length,
+    );
 
     return {
       sources: relevant,
@@ -192,7 +247,7 @@ export async function searchSources(
       newSources: [],
       memoryDecision: decision,
       topics,
-      indexingStats: null,
+      indexingStats,
       errors: [],
     };
   }
@@ -219,7 +274,7 @@ export async function searchSources(
         `Reutilizando ${priorPool.length} fontes da memória...`,
       );
       reusedUnderstood = filterAndRankRelevant(
-        await understandSources(query, priorPool, sharedQueryEmbedding)
+        await understandSources(query, priorPool, sharedQueryEmbedding, domain)
       );
     }
   }
@@ -262,20 +317,36 @@ export async function searchSources(
     query,
     result.sources,
     sharedQueryEmbedding,
+    domain,
   );
   const relevantNew = filterAndRankRelevant(understood);
   onProgress?.onProcessingComplete?.(understood.length, relevantNew.length);
 
-  // Indexa as fontes novas entendidas nesta busca (as reutilizadas já
-  // indexadas em buscas anteriores).
-  let indexingStats = null;
-  if (isSupabaseConfigured() && understood.length > 0) {
-    const stats = await indexSources(understood, topics).catch(err => {
-      console.warn('[ResearchService] Falha ao indexar:', err);
-      return null;
-    });
-    indexingStats = stats;
+  // Fontes fora do top-K do rerank: classifica só por domínio (ex.: agro)
+  // e persiste se pertencerem ao domínio — descarta as não correspondidas
+  // que não têm relação com agronegócio/agropecuária.
+  let outOfTopK: UnderstoodSource[] = [];
+  try {
+    outOfTopK = await classifyOutOfTopKForPersistence(
+      query,
+      result.sources,
+      understood,
+      domain,
+    );
+  } catch (err) {
+    console.warn('[ResearchService] Falha ao classificar fontes fora do top-K:', err);
   }
+
+  // Indexa novas entendidas + fora do top-K do domínio + reutilizadas que
+  // podem ter vindo só do localStorage do cliente.
+  const toIndex = [...understood, ...outOfTopK, ...reusedUnderstood];
+  const indexingStats = await persistSearchOutcome(
+    query,
+    topics,
+    toIndex,
+    decision,
+    result.sources.length + priorPool.length,
+  );
 
   // Combina contraponto (reutilizadas) + novas, sem duplicar por título.
   const seenTitles = new Set(reusedUnderstood.map(s => s.title));

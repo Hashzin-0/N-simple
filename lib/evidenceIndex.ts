@@ -67,17 +67,24 @@ export async function indexSource(
 ): Promise<IndexedSource | null> {
   if (!isSupabaseConfigured()) return null;
 
-  if (!source.shouldPersist) {
+  // shouldPersist === false explícito → fora do domínio agro e irrelevante.
+  // undefined (fonte crua do cliente) ainda é indexada após classificação.
+  if (source.shouldPersist === false) {
     return null;
   }
+  if (!source.title?.trim()) return null;
 
   const key = sourceKeyFromTitle(source.title);
 
-  const { data: existingSource } = await supabase!
+  const { data: existingSource, error: selectError } = await supabase!
     .from('sources')
     .select('id, source_key')
     .eq('source_key', key)
-    .single();
+    .maybeSingle();
+
+  if (selectError) {
+    console.error('[EvidenceIndex] Erro ao consultar source:', selectError);
+  }
 
   let sourceId: string;
 
@@ -98,19 +105,23 @@ export async function indexSource(
     desvantagens: source.desvantagens || [],
     caracteristicas: source.caracteristicas || [],
     embedding: source.docEmbedding && source.docEmbedding.length > 0 ? source.docEmbedding : null,
-    semantic_score: source.semanticScore,
-    used_full_text: source.usedFullText,
+    semantic_score: source.semanticScore ?? 0,
+    used_full_text: source.usedFullText ?? false,
     best_excerpt: source.bestExcerpt || null,
-    domain_score: source.domainScore,
-    in_agro_domain: source.inAgroDomain,
+    domain_score: source.domainScore ?? 0,
+    in_agro_domain: source.inAgroDomain ?? false,
   };
 
   if (existingSource) {
     sourceId = existingSource.id;
-    await supabase!
+    const { error: updateError } = await supabase!
       .from('sources')
       .update({ ...sharedFields, last_verified: new Date().toISOString() })
       .eq('id', sourceId);
+    if (updateError) {
+      console.error('[EvidenceIndex] Erro ao atualizar source:', updateError);
+      return null;
+    }
   } else {
     const { data: inserted, error } = await supabase!
       .from('sources')
@@ -126,9 +137,15 @@ export async function indexSource(
   }
 
   // Substitui os chunks e categorias (índice de reuso rápido) desta fonte.
-  await supabase!.from('source_chunks').delete().eq('source_id', sourceId);
+  const { error: delChunksError } = await supabase!
+    .from('source_chunks')
+    .delete()
+    .eq('source_id', sourceId);
+  if (delChunksError) {
+    console.error('[EvidenceIndex] Erro ao limpar chunks:', delChunksError);
+  }
   if (source.chunks.length > 0) {
-    await supabase!.from('source_chunks').insert(
+    const { error: chunksError } = await supabase!.from('source_chunks').insert(
       source.chunks.map((chunk, idx) => ({
         source_id: sourceId,
         chunk_index: idx,
@@ -136,17 +153,29 @@ export async function indexSource(
         embedding: chunk.embedding,
       }))
     );
+    if (chunksError) {
+      console.error('[EvidenceIndex] Erro ao inserir chunks:', chunksError);
+    }
   }
 
-  await supabase!.from('source_categories').delete().eq('source_id', sourceId);
+  const { error: delCatsError } = await supabase!
+    .from('source_categories')
+    .delete()
+    .eq('source_id', sourceId);
+  if (delCatsError) {
+    console.error('[EvidenceIndex] Erro ao limpar categorias:', delCatsError);
+  }
   if (source.semanticCategories.length > 0) {
-    await supabase!.from('source_categories').insert(
+    const { error: catsError } = await supabase!.from('source_categories').insert(
       source.semanticCategories.map((cat) => ({
         source_id: sourceId,
         label: cat.label,
         score: cat.score,
       }))
     );
+    if (catsError) {
+      console.error('[EvidenceIndex] Erro ao inserir categorias:', catsError);
+    }
   }
 
   // Força de evidência por tópico da busca (via embedding pré-calculado).
@@ -158,7 +187,7 @@ export async function indexSource(
     const evidenceStrength = emb ? computeEvidenceStrength(source, emb) : 0;
     const hasEvidence = evidenceStrength * 100 > SEMANTIC_DISCARD_THRESHOLD;
 
-    await supabase!
+    const { error: topicError } = await supabase!
       .from('source_topics')
       .upsert(
         {
@@ -170,6 +199,9 @@ export async function indexSource(
         },
         { onConflict: 'source_id,topic_normalized' }
       );
+    if (topicError) {
+      console.error('[EvidenceIndex] Erro ao upsert source_topics:', topicError);
+    }
   }
 
   return { id: sourceId, source_key: key };
@@ -200,7 +232,7 @@ export async function indexSources(
     const batch = sources.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async (src) => {
-        if (!src.shouldPersist) return 'discardedOutOfDomain' as const;
+        if (src.shouldPersist === false) return 'discardedOutOfDomain' as const;
         const result = await indexSource(src, topics, topicEmbeddings);
         if (!result) return 'error' as const;
         return src.discarded ? ('archivedOffTopic' as const) : ('indexed' as const);
@@ -214,6 +246,7 @@ export async function indexSources(
         else errors++;
       } else {
         errors++;
+        console.error('[EvidenceIndex] Falha ao indexar fonte:', result.reason);
       }
     }
   }
@@ -228,20 +261,27 @@ export async function incrementReuseCount(sourceId: string): Promise<void> {
   if (!isSupabaseConfigured()) return;
 
   try {
-    const { data } = await supabase!
+    const { data, error: selectError } = await supabase!
       .from('sources')
       .select('reuse_count')
       .eq('id', sourceId)
-      .single();
+      .maybeSingle();
+    if (selectError) {
+      console.error('[EvidenceIndex] Erro ao ler reuse_count:', selectError);
+      return;
+    }
 
     if (data) {
-      await supabase!
+      const { error: updateError } = await supabase!
         .from('sources')
         .update({ reuse_count: (data.reuse_count || 0) + 1 })
         .eq('id', sourceId);
+      if (updateError) {
+        console.error('[EvidenceIndex] Erro ao incrementar reuse_count:', updateError);
+      }
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    console.error('[EvidenceIndex] incrementReuseCount falhou:', err);
   }
 }
 
@@ -257,7 +297,7 @@ export async function logSearchQuery(
 ): Promise<void> {
   if (!isSupabaseConfigured()) return;
 
-  await supabase!
+  const { error } = await supabase!
     .from('search_queries')
     .insert({
       query_text: query,
@@ -267,4 +307,7 @@ export async function logSearchQuery(
       decision,
       coverage_score: coverageScore,
     });
+  if (error) {
+    console.error('[EvidenceIndex] Erro ao registrar search_queries:', error);
+  }
 }

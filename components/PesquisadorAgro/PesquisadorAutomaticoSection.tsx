@@ -25,6 +25,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { ScientificArticleABNT, ScientificSource } from './types';
+import { useEvidenceMemory } from '@/hooks/useEvidenceMemory';
 
 
 const DEFAULT_RESEARCH_TOPICS: string[] = [
@@ -65,6 +66,7 @@ export default function PesquisadorAutomaticoSection({
   const [reuseStats, setReuseStats] = useState<{ reused: number; newSearched: number } | null>(null);
   const [articleMode, setArticleMode] = useState<'padrao' | 'aprofundado'>('padrao');
   const printableAreaRef = useRef<HTMLDivElement>(null);
+  const { saveSources } = useEvidenceMemory();
 
   const toggleTopicSources = (topicNumber: string) => {
     setCollapsedTopics((prev) => ({
@@ -202,6 +204,8 @@ export default function PesquisadorAutomaticoSection({
       let buffer = '';
       let fullText = '';
       let reuseStatsFromStream: { reused: number; newSearched: number } | null = null;
+      let doneSources: ScientificSource[] | null = null;
+      let indexingStatsFromStream: unknown = null;
 
       setLoadingStep('Gerando artigo com IA (streaming)...');
 
@@ -235,6 +239,12 @@ export default function PesquisadorAutomaticoSection({
               if (data.reuseStats) {
                 reuseStatsFromStream = data.reuseStats;
               }
+              if (Array.isArray(data.sources) && data.sources.length > 0) {
+                doneSources = data.sources as ScientificSource[];
+              }
+              if (data.indexingStats) {
+                indexingStatsFromStream = data.indexingStats;
+              }
             } else if (event === 'error') {
               throw new Error(data.message || 'Erro no streaming');
             }
@@ -247,6 +257,12 @@ export default function PesquisadorAutomaticoSection({
 
       if (reuseStatsFromStream) {
         setReuseStats(reuseStatsFromStream);
+      }
+      if (indexingStatsFromStream) {
+        console.info('[PesquisadorAutomatico] indexingStats:', indexingStatsFromStream);
+      }
+      if (doneSources && doneSources.length > 0) {
+        saveSources(themeToUse, doneSources);
       }
 
       if (fullText) {
@@ -269,7 +285,7 @@ export default function PesquisadorAutomaticoSection({
       setLoading(false);
       setLoadingStep('');
     }
-  }, [themeInput, userLinksInput, topics, onThemeChange, existingSources, existingTheme, minSourcesPerTopic, usePreviouslySearched, articleMode]);
+  }, [themeInput, userLinksInput, topics, onThemeChange, existingSources, existingTheme, minSourcesPerTopic, usePreviouslySearched, articleMode, saveSources]);
 
   const handleCopyABNT = () => {
     if (!article) return;

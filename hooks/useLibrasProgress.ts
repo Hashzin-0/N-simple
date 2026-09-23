@@ -4,6 +4,7 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import type { LibrasModuleProgress } from '@/lib/libras-types';
 import { ALL_MODULES } from '@/lib/libras-course-data';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { mergeLibrasMap } from '@/lib/progressMerge';
 
 const STORAGE_KEY = 'libras_progress_v1';
 const PROGRESS_EVENT = 'libras_progress_update';
@@ -70,9 +71,15 @@ function syncToServer(
       userId: cloudUserId,
       entries: [{ word_id: wordId, learned, quiz_score: quizScore, module_id: moduleId }],
     }),
-  }).catch(() => {
-    // Supabase unavailable, ignore
-  });
+  })
+    .then(async (r) => {
+      if (!r.ok) {
+        console.warn('[LibrasProgress] POST nuvem falhou:', r.status);
+      }
+    })
+    .catch((err) => {
+      console.warn('[LibrasProgress] Rede ao sincronizar:', err);
+    });
 }
 
 // --- Hook ---
@@ -85,24 +92,22 @@ export function useLibrasProgress() {
   useEffect(() => {
     if (authLoading || !cloudUserId) return;
     fetch(`/api/libras/progress?userId=${encodeURIComponent(cloudUserId)}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) {
+          console.warn('[LibrasProgress] GET nuvem falhou:', r.status);
+          return null;
+        }
+        return r.json();
+      })
       .then((data) => {
-        if (data.source === 'supabase' && Array.isArray(data.entries)) {
-          const merged = { ...getSnapshot() };
-          for (const entry of data.entries) {
-            const existing = merged[entry.word_id];
-            if (!existing || entry.quiz_score > existing.quizScore) {
-              merged[entry.word_id] = {
-                learned: entry.learned,
-                quizScore: entry.quiz_score,
-              };
-            }
-          }
+        if (data?.source === 'supabase' && Array.isArray(data.entries)) {
+          // learned = OR; quiz_score = max — nunca perde o mais avançado.
+          const merged = mergeLibrasMap(getSnapshot(), data.entries);
           saveToLocalStorage(merged);
         }
       })
-      .catch(() => {
-        // Supabase unavailable, use local only
+      .catch((err) => {
+        console.warn('[LibrasProgress] Rede ao carregar nuvem:', err);
       });
   }, [authLoading, cloudUserId]);
 

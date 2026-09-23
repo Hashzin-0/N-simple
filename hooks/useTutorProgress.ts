@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import type { AvaliacaoResultado, TutorAttemptPayload, TutorProgressEntry } from '@/lib/tutor/types';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { mergeTutorMaps, type TutorProgressMap as MergedMap } from '@/lib/progressMerge';
 
 const STORAGE_KEY = 'tutor_progress_v1';
 const DEVICE_KEY = 'tutor_device_id';
@@ -109,14 +110,9 @@ function applyLocalUpdate(topic: string, avaliacao: AvaliacaoResultado): LocalPr
 }
 
 function mergeServerEntries(serverEntries: TutorProgressEntry[]): LocalProgressMap {
-  const merged = { ...getSnapshot() };
-  for (const entry of serverEntries) {
-    const local = merged[entry.topic];
-    if (!local || entry.attempts > local.attempts) {
-      merged[entry.topic] = entry;
-    }
-  }
-  return merged;
+  // Nuvem × local: mantém o mais avançado por tópico (attempts/mastery)
+  // e une strengths/weaknesses — nunca substitui o objeto inteiro às cegas.
+  return mergeTutorMaps(getSnapshot(), serverEntries) as MergedMap;
 }
 
 export function useTutorProgress() {
@@ -127,15 +123,22 @@ export function useTutorProgress() {
   useEffect(() => {
     if (authLoading || !cloudUserId) return;
     fetch(`/api/tutor/progress?userId=${encodeURIComponent(cloudUserId)}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) {
+          console.warn('[TutorProgress] GET nuvem falhou:', r.status);
+          return null;
+        }
+        return r.json();
+      })
       .then((data) => {
-        if (data.source === 'supabase' && Array.isArray(data.entries)) {
+        if (data?.source === 'supabase' && Array.isArray(data.entries)) {
           const merged = mergeServerEntries(data.entries as TutorProgressEntry[]);
           saveToLocal(merged);
         }
       })
-      .catch(() => {
+      .catch((err) => {
         // Supabase indisponível — usa apenas localStorage
+        console.warn('[TutorProgress] Rede ao carregar nuvem:', err);
       });
   }, [authLoading, cloudUserId]);
 
@@ -148,7 +151,7 @@ export function useTutorProgress() {
       if (!cloudUserId) return;
 
       try {
-        await fetch('/api/tutor/progress', {
+        const res = await fetch('/api/tutor/progress', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -156,8 +159,13 @@ export function useTutorProgress() {
             attempt: { ...attempt, userId: cloudUserId },
           }),
         });
-      } catch {
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          console.warn('[TutorProgress] Falha ao sincronizar nuvem:', res.status, body);
+        }
+      } catch (err) {
         // Supabase indisponível — local já foi salvo
+        console.warn('[TutorProgress] Erro de rede ao sincronizar nuvem:', err);
       }
     },
     [cloudUserId]

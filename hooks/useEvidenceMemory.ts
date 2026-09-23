@@ -147,6 +147,7 @@ export function useEvidenceMemory(): UseEvidenceMemoryReturn {
           const data = await response.json();
           return data;
         }
+        console.warn('[useEvidenceMemory] Indexação HTTP:', response.status);
       } catch (error) {
         console.warn('[useEvidenceMemory] Indexação Supabase falhou:', error);
       }
@@ -156,7 +157,8 @@ export function useEvidenceMemory(): UseEvidenceMemoryReturn {
       fallback.saveSources(query, sources);
     }
 
-    return { indexed: sources.length, errors: 0, total: sources.length };
+    // API indisponível: fontes vão só para o localStorage; reporta erro real.
+    return { indexed: 0, errors: sources.length, total: sources.length };
   }, [isAvailable, fallback]);
 
   return {

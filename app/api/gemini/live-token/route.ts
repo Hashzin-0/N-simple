@@ -17,7 +17,7 @@ export async function POST() {
     const ai = new GoogleGenAI({
       apiKey,
       httpOptions: {
-        apiVersion: 'v1alpha',
+        apiVersion: 'v1beta',
         headers: {
           'User-Agent': 'aistudio-build',
         },
@@ -27,9 +27,9 @@ export async function POST() {
     const now = Date.now();
     const token = await ai.authTokens.create({
       config: {
-        uses: 50,
+        uses: 1,
         expireTime: new Date(now + 30 * 60 * 1000).toISOString(),
-        newSessionExpireTime: new Date(now + 5 * 60 * 1000).toISOString(),
+        newSessionExpireTime: new Date(now + 1 * 60 * 1000).toISOString(),
       },
     });
 
@@ -38,7 +38,7 @@ export async function POST() {
       model: LIVE_MODEL_ID,
       voice: LIVE_VOICE_NAME,
       wsBaseUrl:
-        'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained',
+        'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained',
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Falha ao criar token efêmero';

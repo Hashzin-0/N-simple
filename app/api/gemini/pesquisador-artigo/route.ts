@@ -159,6 +159,8 @@ ${customTopics.map((top, idx) => `3.${idx + 1} ${top}`).join('\n')}
           sendEvent('done', {
             fullLength: fullText.length,
             reuseStats: reuseStats || null,
+            indexingStats: searchResult.indexingStats || null,
+            sources: searchResult.sources,
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

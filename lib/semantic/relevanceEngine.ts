@@ -12,6 +12,8 @@ import {
   ENGINE_CONCURRENCY,
   AGRO_DOMAIN_RELEVANCE_THRESHOLD,
   AGRO_DOMAIN_DESCRIPTOR,
+  DOMAIN_DESCRIPTORS,
+  DomainKey,
   RETRIEVAL_TOP_K,
   RERANK_TOP_K,
 } from './config';
@@ -46,13 +48,16 @@ export interface UnderstoodSource extends ScientificSource {
   shouldPersist: boolean;
 }
 
-// Embedding do descritor de domínio agro — calculado uma única vez.
-let domainAnchorEmbeddingPromise: Promise<number[]> | null = null;
-function getDomainAnchorEmbedding(): Promise<number[]> {
-  if (!domainAnchorEmbeddingPromise) {
-    domainAnchorEmbeddingPromise = embedText(AGRO_DOMAIN_DESCRIPTOR, 'RETRIEVAL_DOCUMENT');
+// Embeddings do descritor de domínio — cache por DomainKey (padrão: agro).
+const domainAnchorPromises = new Map<string, Promise<number[]>>();
+function getDomainAnchorEmbedding(domain: DomainKey = 'agro'): Promise<number[]> {
+  const descriptor = DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR;
+  let promise = domainAnchorPromises.get(domain);
+  if (!promise) {
+    promise = embedText(descriptor, 'RETRIEVAL_DOCUMENT');
+    domainAnchorPromises.set(domain, promise);
   }
-  return domainAnchorEmbeddingPromise;
+  return promise;
 }
 
 function centroid(vectors: number[][]): number[] {
@@ -151,6 +156,7 @@ async function understandOne(
   queryEmbedding: number[],
   source: ScientificSource,
   retrievalScore: number,
+  domain: DomainKey = 'agro',
 ): Promise<UnderstoodSource> {
   const { text: fullText, ok: hasFullText } = await fetchFullText(source.directUrl);
   const analysisText = buildAnalysisText(source, fullText, hasFullText);
@@ -185,7 +191,7 @@ async function understandOne(
 
   const discarded = semanticScore <= SEMANTIC_DISCARD_THRESHOLD;
 
-  const domainAnchor = await getDomainAnchorEmbedding();
+  const domainAnchor = await getDomainAnchorEmbedding(domain);
   const domainCos = cosineSimilarity(docEmbedding, domainAnchor);
   const domainScore = cosineToPercentage(domainCos);
   const inAgroDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
@@ -226,6 +232,7 @@ export async function understandSources(
   query: string,
   sources: ScientificSource[],
   sharedQueryEmbedding?: number[],
+  domain: DomainKey = 'agro',
 ): Promise<UnderstoodSource[]> {
   if (sources.length === 0) return [];
 
@@ -252,6 +259,7 @@ export async function understandSources(
           queryEmbedding,
           reranked[i].source,
           reranked[i].retrievalScore,
+          domain,
         );
       } catch (err) {
         console.warn('[SemanticEngine] Falha ao entender fonte, descartando:', reranked[i]?.source.title, err);
@@ -276,6 +284,59 @@ export async function understandSources(
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
   return results;
+}
+
+/**
+ * Classifica fontes que ficaram FORA do top-K do rerank para persistência:
+ * embedding do texto residual vs âncora de domínio. Salva apenas se
+ * pertencerem ao domínio (ex.: agro) — mesmo com score de consulta baixo.
+ * Fontes fora do domínio ficam com shouldPersist=false e nunca vão ao banco.
+ */
+export async function classifyOutOfTopKForPersistence(
+  query: string,
+  sources: ScientificSource[],
+  understood: UnderstoodSource[],
+  domain: DomainKey = 'agro',
+): Promise<UnderstoodSource[]> {
+  if (sources.length === 0) return [];
+
+  const seen = new Set(understood.map((s) => (s.title || '').trim().toLowerCase()));
+  const remaining = sources.filter((s) => {
+    const t = (s.title || '').trim().toLowerCase();
+    return t && !seen.has(t);
+  });
+  if (remaining.length === 0) return [];
+
+  try {
+    const texts = remaining.map((s) =>
+      [s.title, s.abstract, (s.keywords || []).join(' ')].filter(Boolean).join(' ')
+    );
+    const docEmbeddings = await embedTexts(texts, 'RETRIEVAL_DOCUMENT');
+    const anchor = await getDomainAnchorEmbedding(domain);
+
+    return remaining.map((s, i) => {
+      const docEmbedding = docEmbeddings[i] || [];
+      const domainScore =
+        docEmbedding.length > 0 ? cosineToPercentage(cosineSimilarity(docEmbedding, anchor)) : 0;
+      const inDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
+      return {
+        ...s,
+        semanticScore: 0,
+        semanticCategories: [],
+        bestExcerpt: (s.abstract || '').slice(0, 600),
+        discarded: true,
+        docEmbedding,
+        usedFullText: false,
+        domainScore,
+        inAgroDomain: inDomain,
+        shouldPersist: inDomain,
+        chunks: [],
+      } satisfies UnderstoodSource;
+    });
+  } catch (err) {
+    console.warn('[SemanticEngine] classifyOutOfTopKForPersistence falhou:', err);
+    return [];
+  }
 }
 
 /** Aplica a regra de descarte e ordena por relevância. */

@@ -71,7 +71,7 @@ export default function SaveProgressToggle({ id }: { id?: string }) {
       {wantsCloud && islandVisible && (
         <p className="text-[10px] text-[#2E6F40] dark:text-[#9CB386] flex items-center gap-1">
           <Loader2 className="size-3 animate-spin" />
-          Ilha de login aberta no rodapé → conclua o login com Google.
+          One Tap ou botão no rodapé → conclua o login com Google.
         </p>
       )}
     </div>

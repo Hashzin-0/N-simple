@@ -56,14 +56,36 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const upserts = entries.map((entry) => ({
-      user_id: userId,
-      word_id: entry.word_id,
-      learned: entry.learned,
-      quiz_score: entry.quiz_score,
-      module_id: entry.module_id,
-      updated_at: new Date().toISOString(),
-    }));
+    const wordIds = entries.map((e) => e.word_id).filter(Boolean);
+    const { data: existingRows, error: selectError } = await supabase!
+      .from('libras_progress')
+      .select('word_id, learned, quiz_score, module_id')
+      .eq('user_id', userId)
+      .in('word_id', wordIds);
+
+    if (selectError) {
+      console.error('[LibrasProgress] POST select error:', selectError);
+    }
+
+    const existingByWord = new Map(
+      (existingRows || []).map((row) => [row.word_id as string, row])
+    );
+
+    // Nunca rebaixa: learned = OR, quiz_score = max(novo, existente).
+    const upserts = entries.map((entry) => {
+      const prev = existingByWord.get(entry.word_id);
+      return {
+        user_id: userId,
+        word_id: entry.word_id,
+        learned: Boolean(entry.learned) || Boolean(prev?.learned),
+        quiz_score: Math.max(
+          Number(entry.quiz_score) || 0,
+          Number(prev?.quiz_score) || 0
+        ),
+        module_id: entry.module_id || prev?.module_id || null,
+        updated_at: new Date().toISOString(),
+      };
+    });
 
     const { error } = await supabase!
       .from('libras_progress')

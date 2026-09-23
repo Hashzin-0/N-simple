@@ -4,7 +4,8 @@ import React, { useState, useCallback } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import { Search, Loader2, AlertCircle } from 'lucide-react';
 import LibrasVideoCard from './LibrasVideoCard';
-import type { LibrasVideoResult } from '@/lib/libras-types';
+import { extractSignsFromText, stripSentenceEnding } from '@/lib/libras-search-utils';
+import type { LibrasVideoResult, LibrasSignGroup } from '@/lib/libras-types';
 
 interface LibrasSearchProps {
   initialQuery?: string;
@@ -20,6 +21,7 @@ export default React.memo(function LibrasSearch({
   const { isDark } = useTheme();
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<LibrasVideoResult[]>([]);
+  const [signGroups, setSignGroups] = useState<LibrasSignGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
@@ -33,21 +35,30 @@ export default React.memo(function LibrasSearch({
     setSearched(true);
 
     try {
-      const res = await fetch(
-        `/api/libras/search?q=${encodeURIComponent(trimmed)}&limit=${maxResults}`
-      );
+      const phrase = stripSentenceEnding(trimmed) || trimmed;
+      const signs = extractSignsFromText(trimmed);
+      const params = new URLSearchParams({ q: phrase, limit: String(maxResults) });
+      // Multi-word input → one video group per sign + the full phrase
+      if (signs.length > 1) params.set('signs', signs.join(','));
+
+      const res = await fetch(`/api/libras/search?${params.toString()}`);
       const data = await res.json();
 
       if (!res.ok) {
         setError(data.error || 'Erro ao buscar vídeos');
         setResults([]);
+        setSignGroups([]);
       } else {
-        setResults(data.results || []);
-        onResults?.(data.results || []);
+        const phraseResults: LibrasVideoResult[] = data.phraseResults || data.results || [];
+        const groups: LibrasSignGroup[] = data.signGroups || [];
+        setResults(phraseResults);
+        setSignGroups(groups);
+        onResults?.(phraseResults);
       }
     } catch {
       setError('Erro de conexão ao buscar vídeos');
       setResults([]);
+      setSignGroups([]);
     } finally {
       setLoading(false);
     }
@@ -62,6 +73,9 @@ export default React.memo(function LibrasSearch({
     },
     [handleSearch]
   );
+
+  const totalVideos =
+    results.length + signGroups.reduce((n, g) => n + g.results.length, 0);
 
   return (
     <div className="space-y-4">
@@ -127,21 +141,72 @@ export default React.memo(function LibrasSearch({
 
       {/* Results */}
       {searched && !loading && !error && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           <p
             className={`text-xs font-medium ${
               isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'
             }`}
           >
-            {results.length > 0
-              ? `${results.length} variação(ões) encontrada(s)`
+            {totalVideos > 0
+              ? `${totalVideos} vídeo(s) encontrado(s)`
               : 'Nenhum vídeo encontrado para este termo'}
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {results.map((video) => (
-              <LibrasVideoCard key={video.videoId} video={video} />
-            ))}
-          </div>
+
+          {results.length > 0 && (
+            <div>
+              {signGroups.length > 0 && (
+                <p
+                  className={`text-xs font-semibold mb-2 ${
+                    isDark ? 'text-[#9CB386]' : 'text-[#2E6F40]'
+                  }`}
+                >
+                  Frase completa
+                </p>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {results.map((video) => (
+                  <LibrasVideoCard key={video.videoId} video={video} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {signGroups.map((group) => (
+            <div key={group.sign}>
+              <p
+                className={`text-xs font-semibold mb-2 ${
+                  isDark ? 'text-[#9CB386]' : 'text-[#2E6F40]'
+                }`}
+              >
+                Sinal: {group.sign}
+              </p>
+              {group.results.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {group.results.map((video) => (
+                    <LibrasVideoCard key={video.videoId} video={video} />
+                  ))}
+                </div>
+              ) : (
+                <p
+                  className={`text-sm ${
+                    isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'
+                  }`}
+                >
+                  Nenhum vídeo encontrado para este sinal
+                </p>
+              )}
+            </div>
+          ))}
+
+          {totalVideos === 0 && (
+            <p
+              className={`text-sm ${
+                isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'
+              }`}
+            >
+              Nenhum vídeo encontrado para este termo
+            </p>
+          )}
         </div>
       )}
 

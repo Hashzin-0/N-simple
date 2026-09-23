@@ -6,7 +6,13 @@ import { CheckCircle, Circle, ChevronRight, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import LibrasSearch from './LibrasSearch';
 import LibrasVideoCard from './LibrasVideoCard';
-import type { LibrasModule, LibrasWord, LibrasVideoResult } from '@/lib/libras-types';
+import { stripSentenceEnding } from '@/lib/libras-search-utils';
+import type {
+  LibrasModule,
+  LibrasWord,
+  LibrasVideoResult,
+  LibrasSignGroup,
+} from '@/lib/libras-types';
 import type { useLibrasProgress } from '@/hooks/useLibrasProgress';
 
 interface LibrasModuleViewProps {
@@ -25,24 +31,32 @@ export default React.memo(function LibrasModuleView({
   const { isDark } = useTheme();
   const [selectedWord, setSelectedWord] = useState<LibrasWord | null>(null);
   const [wordVideos, setWordVideos] = useState<LibrasVideoResult[]>([]);
+  const [signGroups, setSignGroups] = useState<LibrasSignGroup[]>([]);
   const [loadingWord, setLoadingWord] = useState<string | null>(null);
 
   const moduleProgress = progress.getModuleProgress(module.id);
 
-  const handleWordClick = useCallback(async (word: LibrasWord) => {
-    setSelectedWord(word);
+  const handleWordClick = useCallback(async (word: LibrasWord & { breakdown?: string[] }) => {
+    setSelectedWord(word as LibrasWord);
     setWordVideos([]);
+    setSignGroups([]);
     setLoadingWord(word.id);
 
     try {
-      const query = word.searchQueries[0] || `${word.word} em libras`;
-      const res = await fetch(
-        `/api/libras/search?q=${encodeURIComponent(query)}&limit=3`
-      );
+      const baseQuery =
+        stripSentenceEnding(word.searchQueries[0] || `${word.word} em libras`) ||
+        `${word.word} em libras`;
+      const signs = word.breakdown?.length ? word.breakdown : [];
+      const params = new URLSearchParams({ q: baseQuery, limit: '3' });
+      if (signs.length > 0) params.set('signs', signs.join(','));
+
+      const res = await fetch(`/api/libras/search?${params.toString()}`);
       const data = await res.json();
-      setWordVideos(data.results || []);
+      setWordVideos(data.phraseResults || data.results || []);
+      setSignGroups(data.signGroups || []);
     } catch {
       setWordVideos([]);
+      setSignGroups([]);
     } finally {
       setLoadingWord(null);
     }
@@ -71,7 +85,7 @@ export default React.memo(function LibrasModuleView({
         word: p.phrase,
         emoji: '💬',
         category: module.id as LibrasWord['category'],
-        searchQueries: [p.phrase + ' em libras'],
+        searchQueries: [stripSentenceEnding(p.phrase) + ' em libras'],
         breakdown: p.breakdown,
       }));
     }
@@ -161,7 +175,7 @@ export default React.memo(function LibrasModuleView({
           return (
             <button
               key={item.id}
-              onClick={() => handleWordClick(item as LibrasWord)}
+              onClick={() => handleWordClick(item)}
               className={`relative p-3 rounded-xl border text-left transition-all ${
                 selectedWord?.id === item.id
                   ? isDark
@@ -258,20 +272,64 @@ export default React.memo(function LibrasModuleView({
               >
                 Buscando vídeos...
               </div>
-            ) : wordVideos.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {wordVideos.map((video) => (
-                  <LibrasVideoCard key={video.videoId} video={video} compact />
-                ))}
-              </div>
             ) : (
-              <p
-                className={`text-sm text-center py-4 ${
-                  isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'
-                }`}
-              >
-                Nenhum vídeo encontrado para este sinal
-              </p>
+              <div className="space-y-4">
+                {wordVideos.length > 0 && (
+                  <div>
+                    {signGroups.length > 0 && (
+                      <p
+                        className={`text-xs font-semibold mb-2 ${
+                          isDark ? 'text-[#9CB386]' : 'text-[#2E6F40]'
+                        }`}
+                      >
+                        Frase completa
+                      </p>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {wordVideos.map((video) => (
+                        <LibrasVideoCard key={video.videoId} video={video} compact />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {signGroups.map((group) => (
+                  <div key={group.sign}>
+                    <p
+                      className={`text-xs font-semibold mb-2 ${
+                        isDark ? 'text-[#9CB386]' : 'text-[#2E6F40]'
+                      }`}
+                    >
+                      Sinal: {group.sign}
+                    </p>
+                    {group.results.length > 0 ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {group.results.map((video) => (
+                          <LibrasVideoCard key={video.videoId} video={video} compact />
+                        ))}
+                      </div>
+                    ) : (
+                      <p
+                        className={`text-sm ${
+                          isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'
+                        }`}
+                      >
+                        Nenhum vídeo encontrado para este sinal
+                      </p>
+                    )}
+                  </div>
+                ))}
+
+                {wordVideos.length === 0 && signGroups.length === 0 && (
+                  <p
+                    className={`text-sm text-center py-4 ${
+                      isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'
+                    }`}
+                  >
+                    Nenhum vídeo encontrado para este sinal
+                  </p>
+                )}
+              </div>
             )}
           </motion.div>
         )}

@@ -4,10 +4,18 @@ export interface LibrasVideoResult {
   channel: string;
   thumbnail: string;
   url: string;
+  preferred?: boolean;
+}
+
+export interface LibrasSignGroup {
+  sign: string;
+  results: LibrasVideoResult[];
 }
 
 export interface LibrasSearchResponse {
   results: LibrasVideoResult[];
+  phraseResults?: LibrasVideoResult[];
+  signGroups?: LibrasSignGroup[];
   totalFound: number;
   query: string;
 }

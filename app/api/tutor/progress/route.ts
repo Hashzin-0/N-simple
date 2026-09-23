@@ -62,17 +62,88 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, attempt } = body as { userId: string; attempt: TutorAttemptPayload };
+    const { userId, attempt, mergeEntries } = body as {
+      userId: string;
+      attempt?: TutorAttemptPayload;
+      mergeEntries?: TutorProgressEntry[];
+    };
 
-    if (!userId || !attempt?.answerText || !attempt?.evaluation || !attempt?.topic) {
-      return NextResponse.json(
-        { error: 'userId, attempt.topic, attempt.answerText e attempt.evaluation são obrigatórios.' },
-        { status: 400 }
-      );
+    if (!userId) {
+      return NextResponse.json({ error: 'userId é obrigatório.' }, { status: 400 });
     }
 
     if (!isSupabaseConfigured()) {
       return NextResponse.json({ saved: false, source: 'supabase_unavailable' });
+    }
+
+    // ── Migração local → nuvem: mescla sem inflar attempts nem rebaixar mastery ──
+    if (Array.isArray(mergeEntries)) {
+      let merged = 0;
+      for (const entry of mergeEntries) {
+        if (!entry?.topic) continue;
+
+        const { data: existing } = await supabase!
+          .from('user_progress')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('topic', entry.topic)
+          .maybeSingle();
+
+        const localAttempts = entry.attempts || 0;
+        const localMastery = typeof entry.masteryEstimate === 'number' ? entry.masteryEstimate : 0;
+        const cloudAttempts = existing?.attempts || 0;
+        const cloudMastery =
+          typeof existing?.mastery_estimate === 'number' ? existing.mastery_estimate : 0;
+
+        let strengths = (existing?.strengths as string[]) || [];
+        let weaknesses = (existing?.weaknesses as string[]) || [];
+        for (const c of entry.strengths || []) {
+          strengths = upsertInArray(strengths, c);
+        }
+        for (const c of entry.weaknesses || []) {
+          weaknesses = upsertInArray(weaknesses, c);
+        }
+
+        const cloudLast = existing?.last_review ? new Date(existing.last_review).getTime() : 0;
+        const localLast = entry.lastReview ? new Date(entry.lastReview).getTime() : 0;
+
+        const { error: mergeError } = await supabase!.from('user_progress').upsert(
+          {
+            user_id: userId,
+            topic: entry.topic,
+            attempts: Math.max(cloudAttempts, localAttempts),
+            strengths,
+            weaknesses,
+            mastery_estimate: Math.round(Math.max(cloudMastery, localMastery) * 1000) / 1000,
+            last_review:
+              localLast >= cloudLast
+                ? entry.lastReview || new Date().toISOString()
+                : existing?.last_review || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,topic' }
+        );
+
+        if (mergeError) {
+          console.error('[TutorProgress] merge error:', entry.topic, mergeError);
+        } else {
+          merged++;
+        }
+      }
+
+      return NextResponse.json({
+        saved: merged > 0,
+        source: 'supabase',
+        merged,
+        total: mergeEntries.length,
+      });
+    }
+
+    if (!attempt?.answerText || !attempt?.evaluation || !attempt?.topic) {
+      return NextResponse.json(
+        { error: 'userId, attempt.topic, attempt.answerText e attempt.evaluation são obrigatórios.' },
+        { status: 400 }
+      );
     }
 
     const evaluation = attempt.evaluation as AvaliacaoResultado;
@@ -93,12 +164,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (attemptError) {
+      // Falha no log de tentativa não impede o progresso agregado — o
+      // upsert de user_progress roda mesmo assim (migração local→nuvem e
+      // registros parciais não podem perder mastery/attempts).
       console.error('[TutorProgress] attempt insert error:', attemptError);
-      return NextResponse.json({ saved: false, source: 'error' }, { status: 500 });
     }
 
     // 1b. Se dominou, resolve tentativas anteriores de erro da mesma questão/tópico
-    if (evaluation.statusGeral === 'dominou') {
+    if (!attemptError && evaluation.statusGeral === 'dominou') {
       try {
         let resolveQuery = supabase!
           .from('tutor_attempts')
@@ -172,6 +245,7 @@ export async function POST(request: NextRequest) {
       source: 'supabase',
       masteryEstimate: Math.round(nextMastery * 1000) / 1000,
       attempts: prevAttempts + 1,
+      attemptLogged: !attemptError,
     });
   } catch (error) {
     console.error('[TutorProgress] POST exception:', error);

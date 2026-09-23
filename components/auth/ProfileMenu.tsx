@@ -86,9 +86,14 @@ export default function ProfileMenu() {
             </div>
           </div>
 
-          <div className="px-4 py-2.5 flex items-center gap-2 text-[11px] text-[#2E6F40] dark:text-[#9CB386] bg-[#2E6F40]/5 dark:bg-[#9CB386]/10">
-            <Cloud className="size-3.5 shrink-0" />
-            Progresso do Tutor e Libras salvo na nuvem
+          <div className="px-4 py-2.5 flex flex-col gap-1 text-[11px] text-[#2E6F40] dark:text-[#9CB386] bg-[#2E6F40]/5 dark:bg-[#9CB386]/10">
+            <span className="flex items-center gap-2">
+              <Cloud className="size-3.5 shrink-0" />
+              Progresso do Tutor e Libras salvo na nuvem
+            </span>
+            <span className="text-[#8C897E] dark:text-[#9EA399] leading-snug">
+              Ao sair, o progresso fica só neste dispositivo e pode ser perdido.
+            </span>
           </div>
 
           <button

@@ -373,6 +373,19 @@ export default function PesquisadorFontesCard({
                 });
               } else if (event === 'complete' && data.sources) {
                 setDynamicSources(data.sources);
+                if (data.indexingStats) {
+                  console.info('[PesquisadorFontes] indexingStats:', data.indexingStats);
+                }
+                if (Array.isArray(data.errors) && data.errors.length > 0) {
+                  console.warn('[PesquisadorFontes] erros da pesquisa:', data.errors);
+                }
+              } else if (event === 'error') {
+                console.error('[PesquisadorFontes] erro no stream:', data?.message);
+                setScraperProgress(prev => {
+                  const next = { ...prev };
+                  delete next._processing;
+                  return next;
+                });
               }
             } catch {
               // ignore parse errors

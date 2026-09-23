@@ -12,6 +12,13 @@ import React, {
 import type { Session, User } from '@supabase/supabase-js';
 import { initBrowserSupabase, getBrowserSupabase } from '@/lib/supabaseBrowser';
 import type { PublicAuthConfig } from '@/lib/authConfig';
+import type { TutorProgressEntry } from '@/lib/tutor/types';
+import {
+  mergeTutorMaps,
+  mergeLibrasMap,
+  type TutorProgressMap,
+  type LibrasProgressMap,
+} from '@/lib/progressMerge';
 
 const DISMISS_KEY = 'npro_signin_island_dismissed';
 
@@ -95,84 +102,128 @@ export function AuthProvider({
     return () => subscription.unsubscribe();
   }, [configured, config.supabaseUrl, config.supabaseKey]);
 
-  // Merge uma vez por sessão: progresso local → nuvem com user.id
+  // Sync uma vez por sessão: local × nuvem → o mais avançado nos DOIS lados.
+  // 1) GET progresso da nuvem (usuário Auth já existe via Google)
+  // 2) Mescla com localStorage (max attempts/mastery; learned OR; score max)
+  // 3) Grava o merged de volta no local e envia para a nuvem (idempotente)
+  // 4) Nuvem vazia → empurra tudo do local. Nunca limpa o localStorage.
   useEffect(() => {
     if (!user?.id || mergedForUser.current === user.id) return;
     mergedForUser.current = user.id;
     let cancelled = false;
 
-    const pushAll = async () => {
+    const syncProgress = async () => {
+      const userId = user.id;
       try {
+        // ── Tutor: GET → merge → local + push ──
         const rawTutor = localStorage.getItem('tutor_progress_v1');
+        let localTutor: TutorProgressMap = {};
         if (rawTutor) {
-          const entries = JSON.parse(rawTutor) as Record<
-            string,
-            {
-              topic: string;
-              attempts: number;
-              strengths: string[];
-              weaknesses: string[];
-              masteryEstimate: number;
-              lastReview: string;
-            }
-          >;
-          for (const entry of Object.values(entries)) {
-            if (!entry?.topic) continue;
-            await fetch('/api/tutor/progress', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userId: user.id,
-                attempt: {
-                  userId: user.id,
-                  topic: entry.topic,
-                  answerText: '(progresso local migrado)',
-                  evaluation: {
-                    statusGeral:
-                      (entry.masteryEstimate ?? 0) >= 0.8
-                        ? 'dominou'
-                        : (entry.masteryEstimate ?? 0) >= 0.4
-                          ? 'parcial'
-                          : 'revisar',
-                    conceitosCorretos: entry.strengths || [],
-                    omissoes: entry.weaknesses || [],
-                    errosConceituais: [],
-                    pista: null,
-                  } as never,
-                  modo: null,
-                },
-              }),
-            }).catch(() => undefined);
+          try {
+            localTutor = JSON.parse(rawTutor) as TutorProgressMap;
+          } catch {
+            localTutor = {};
           }
         }
 
-        const rawLibras = localStorage.getItem('libras_progress_v1');
-        if (rawLibras) {
-          const map = JSON.parse(rawLibras) as Record<
-            string,
-            { learned: boolean; quizScore: number }
-          >;
-          const entries = Object.entries(map).map(([wordId, v]) => ({
-            word_id: wordId,
-            learned: Boolean(v.learned),
-            quiz_score: Number(v.quizScore) || 0,
-            module_id: 'migrated',
-          }));
-          if (entries.length) {
-            await fetch('/api/libras/progress', {
+        let cloudTutor: TutorProgressEntry[] = [];
+        try {
+          const res = await fetch(
+            `/api/tutor/progress?userId=${encodeURIComponent(userId)}`
+          );
+          if (res.ok) {
+            const body = await res.json();
+            if (body?.source === 'supabase' && Array.isArray(body.entries)) {
+              cloudTutor = body.entries as TutorProgressEntry[];
+            }
+          } else {
+            console.warn('[AuthProvider] GET tutor nuvem:', res.status);
+          }
+        } catch (err) {
+          console.warn('[AuthProvider] Rede GET tutor:', err);
+        }
+
+        const mergedTutor = mergeTutorMaps(localTutor, cloudTutor);
+        const tutorList = Object.values(mergedTutor).filter((e) => e?.topic);
+        if (tutorList.length > 0) {
+          try {
+            localStorage.setItem('tutor_progress_v1', JSON.stringify(mergedTutor));
+            window.dispatchEvent(new Event('tutor_progress_update'));
+          } catch {
+            /* quota — segue só com push */
+          }
+          if (!cancelled && tutorList.length > 0) {
+            const res = await fetch('/api/tutor/progress', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: user.id, entries }),
-            }).catch(() => undefined);
+              body: JSON.stringify({ userId, mergeEntries: tutorList }),
+            });
+            if (!res.ok) {
+              console.warn('[AuthProvider] Push tutor falhou:', res.status);
+            }
           }
         }
-      } catch {
-        /* merge best-effort */
+
+        // ── Libras: GET → merge → local + push ──
+        const rawLibras = localStorage.getItem('libras_progress_v1');
+        let localLibras: LibrasProgressMap = {};
+        if (rawLibras) {
+          try {
+            localLibras = JSON.parse(rawLibras) as LibrasProgressMap;
+          } catch {
+            localLibras = {};
+          }
+        }
+
+        let cloudLibras: Array<{ word_id: string; learned?: boolean; quiz_score?: number }> = [];
+        try {
+          const res = await fetch(
+            `/api/libras/progress?userId=${encodeURIComponent(userId)}`
+          );
+          if (res.ok) {
+            const body = await res.json();
+            if (body?.source === 'supabase' && Array.isArray(body.entries)) {
+              cloudLibras = body.entries;
+            }
+          } else {
+            console.warn('[AuthProvider] GET libras nuvem:', res.status);
+          }
+        } catch (err) {
+          console.warn('[AuthProvider] Rede GET libras:', err);
+        }
+
+        const mergedLibras = mergeLibrasMap(localLibras, cloudLibras);
+        const librasEntries = Object.entries(mergedLibras).map(([wordId, v]) => ({
+          word_id: wordId,
+          learned: Boolean(v.learned),
+          quiz_score: Number(v.quizScore) || 0,
+          module_id: 'migrated',
+        }));
+        if (librasEntries.length > 0) {
+          try {
+            localStorage.setItem('libras_progress_v1', JSON.stringify(mergedLibras));
+            window.dispatchEvent(new Event('libras_progress_update'));
+          } catch {
+            /* quota */
+          }
+          if (!cancelled) {
+            const res = await fetch('/api/libras/progress', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId, entries: librasEntries }),
+            });
+            if (!res.ok) {
+              console.warn('[AuthProvider] Push libras falhou:', res.status);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[AuthProvider] Sync local×nuvem incompleto:', err);
       }
-      if (cancelled) return;
+      // Local NÃO é limpo: fallback offline se a nuvem falhar.
     };
 
-    void pushAll();
+    void syncProgress();
     return () => {
       cancelled = true;
     };
