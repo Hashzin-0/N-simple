@@ -7,6 +7,7 @@ import LiveVoiceOrb3D from './LiveVoiceOrb3D';
 import AsciiSphere from './AsciiSphere';
 import { LiveAgentState } from '@/hooks/useGeminiLiveAgent';
 import { useAnimationLock } from '@/lib/useAnimationLock';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 interface VoiceAssistantHUDProps {
   agentState: LiveAgentState;
@@ -26,11 +27,13 @@ export default function VoiceAssistantHUD({
   onToggleMute,
 }: VoiceAssistantHUDProps) {
   const { withLock } = useAnimationLock(400);
+  const { islandVisible, islandHeight } = useAuth();
   const {
     isConnected,
     isConnecting,
     isMuted,
     status,
+    errorMessage,
     userVolume,
     agentVolume,
   } = agentState;
@@ -124,12 +127,22 @@ export default function VoiceAssistantHUD({
   }, [isConnecting, onConnect, withLock]);
 
   const orbSize = 120;
+  const bottomOffset = islandVisible && islandHeight > 0 ? islandHeight + 4 : 0;
 
   return (
     <div
       id="voice_assistant_hud_container"
-      className="fixed bottom-0 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none"
+      className="fixed left-1/2 -translate-x-1/2 z-50 flex flex-col items-center pointer-events-none transition-[bottom] duration-300 ease-out"
+      style={{ bottom: bottomOffset }}
     >
+      {status === 'error' && errorMessage && (
+        <div
+          className="pointer-events-auto mb-2 max-w-[min(90vw,24rem)] rounded-lg bg-red-600/95 px-3 py-2 text-center text-xs font-medium text-white shadow-lg"
+          role="alert"
+        >
+          {errorMessage}
+        </div>
+      )}
       <AnimatePresence mode="wait">
         {!isConnected ? (
           <motion.div

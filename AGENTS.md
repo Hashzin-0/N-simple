@@ -23,11 +23,16 @@ No test framework or test files exist. No CI workflows.
 
 ## Environment
 
-Two env vars (see `.env.example`):
+Core env vars (see `.env.example`):
 - `GEMINI_API_KEY` — injected by AI Studio at runtime from user secrets
 - `APP_URL` — injected by AI Studio with Cloud Run service URL
+- `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` — server-side Supabase; passed to the client via `AuthProvider` props from `app/layout.tsx` (**do not use `NEXT_PUBLIC_*`** — deployment constraint)
 
-Do not hardcode or commit these. The `.env` file is gitignored.
+Google login (optional, for GIS button; fallback is Supabase OAuth redirect):
+- `GOOGLE_CLIENT_ID` — Web OAuth client ID (or leave empty)
+- `SUPABASE_MANAGEMENT_TOKEN` — Supabase PAT; lets the server read `external_google_client_id` from Management API (`lib/authConfig.ts`)
+
+Do not hardcode or commit secrets. The `.env` file is gitignored.
 
 Embeddings / research (optional, see `.env.example`):
 - `GEMINI_API_KEYS` — comma-separated keys; rotation + per-key RPM budget
@@ -50,6 +55,16 @@ Rules:
 2. Migrations must be re-runnable (idempotent).
 3. Document each new migration in this table.
 4. After deploy, run the verification queries at the bottom of the migration file.
+
+## Tutor research timeout
+
+`POST /api/tutor/research` runs a long cascade (reuse → optional light scrapers → ≤2 LLM extracts). It **must** stay under the Vercel function budget:
+
+- `vercel.json` → `functions["app/api/tutor/research/route.ts"].maxDuration = 300` (mirrors route `export const maxDuration = 300`). Without this entry, the platform default (~60s) kills the request with `FUNCTION_INVOCATION_FAILED`.
+- `lib/tutor/researchQuestions.ts` enforces a soft budget (`HEAVY_BUDGET_MS` for scrapers, `HARD_STOP_MS` for LLM, `MAX_LLM_EXTRACTS = 2`) and returns partial results + `errors` instead of hanging.
+- Tutor path calls `searchSources({ light: true, priorDecision, maxTopicsForSearch: 2, searchOptions.maxPerSource })` so it does not run full `understandSources`/`indexSources` or topic×scraper fan-out.
+
+When changing this route or `searchSources`, keep those three constraints (vercel.json entry, time budget, light mode) in sync.
 
 ## Architecture
 

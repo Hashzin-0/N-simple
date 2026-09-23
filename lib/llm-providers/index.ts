@@ -5,6 +5,9 @@ import { tryOpenRouter } from './openrouter';
 export async function generateWithFallback(
   config: LLMProviderConfig
 ): Promise<LLMProviderResult> {
+  if (config.signal?.aborted) {
+    throw config.signal.reason ?? new Error('Aborted');
+  }
   const geminiResult = await tryGemini(config);
   if (geminiResult) {
     console.log(
@@ -13,6 +16,9 @@ export async function generateWithFallback(
     return geminiResult;
   }
 
+  if (config.signal?.aborted) {
+    throw config.signal.reason ?? new Error('Aborted');
+  }
   console.warn('[LLM] All Gemini keys failed, falling back to OpenRouter');
   const openRouterResult = await tryOpenRouter(config);
   if (openRouterResult) {

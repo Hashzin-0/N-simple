@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import type { AvaliacaoResultado, TutorAttemptPayload, TutorProgressEntry } from '@/lib/tutor/types';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 const STORAGE_KEY = 'tutor_progress_v1';
 const DEVICE_KEY = 'tutor_device_id';
@@ -120,10 +121,12 @@ function mergeServerEntries(serverEntries: TutorProgressEntry[]): LocalProgressM
 
 export function useTutorProgress() {
   const progress = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const { user, loading: authLoading } = useAuth();
+  const cloudUserId = user?.id ?? null;
 
   useEffect(() => {
-    const userId = getTutorDeviceId();
-    fetch(`/api/tutor/progress?userId=${encodeURIComponent(userId)}`)
+    if (authLoading || !cloudUserId) return;
+    fetch(`/api/tutor/progress?userId=${encodeURIComponent(cloudUserId)}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.source === 'supabase' && Array.isArray(data.entries)) {
@@ -134,26 +137,30 @@ export function useTutorProgress() {
       .catch(() => {
         // Supabase indisponível — usa apenas localStorage
       });
-  }, []);
+  }, [authLoading, cloudUserId]);
 
   const recordAttempt = useCallback(
     async (attempt: Omit<TutorAttemptPayload, 'userId'>): Promise<void> => {
-      const userId = getTutorDeviceId();
-
+      // Sempre grava local; nuvem só com sessão logada (user.id)
       const next = applyLocalUpdate(attempt.topic, attempt.evaluation);
       saveToLocal(next);
+
+      if (!cloudUserId) return;
 
       try {
         await fetch('/api/tutor/progress', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, attempt: { ...attempt, userId } }),
+          body: JSON.stringify({
+            userId: cloudUserId,
+            attempt: { ...attempt, userId: cloudUserId },
+          }),
         });
       } catch {
         // Supabase indisponível — local já foi salvo
       }
     },
-    []
+    [cloudUserId]
   );
 
   const getTopicProgress = useCallback(
@@ -171,5 +178,9 @@ export function useTutorProgress() {
     getTopicProgress,
     listProgress,
     deviceId: typeof window !== 'undefined' ? getTutorDeviceId() : '',
+    /** user.id quando logado; null = não sincroniza com a nuvem */
+    cloudUserId,
+    /** Compat: expõe o id de sincronização (só existe logado) */
+    syncUserId: cloudUserId,
   };
 }

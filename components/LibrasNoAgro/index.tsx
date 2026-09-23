@@ -10,6 +10,7 @@ import LibrasCaptureTest from '@/components/LibrasCaptureTest';
 import LibrasPractice from '@/components/LibrasPractice';
 import LibrasTutor from '@/components/LibrasTutor';
 import { useLibrasProgress } from '@/hooks/useLibrasProgress';
+import SaveProgressToggle from '@/components/auth/SaveProgressToggle';
 
 type SubTab = 'search' | 'course' | 'practice' | 'tutor' | 'capture-test';
 
@@ -48,6 +49,10 @@ export default React.memo(function LibrasNoAgro() {
         >
           Aprenda sinais em Libras relacionados ao agronegócio e à agropecuária
         </p>
+      </div>
+
+      <div className="max-w-md mx-auto">
+        <SaveProgressToggle id="libras_save_progress_toggle" />
       </div>
 
       {/* Sub-tabs */}

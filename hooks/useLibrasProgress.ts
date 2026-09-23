@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import type { LibrasModuleProgress } from '@/lib/libras-types';
 import { ALL_MODULES } from '@/lib/libras-course-data';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 const STORAGE_KEY = 'libras_progress_v1';
 const PROGRESS_EVENT = 'libras_progress_update';
@@ -54,24 +55,19 @@ function saveToLocalStorage(data: ProgressData) {
   window.dispatchEvent(new Event(PROGRESS_EVENT));
 }
 
-function getDeviceId(): string {
-  if (typeof window === 'undefined') return 'server';
-  const key = 'libras_device_id';
-  let id = localStorage.getItem(key);
-  if (!id) {
-    id = `libras_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    localStorage.setItem(key, id);
-  }
-  return id;
-}
-
-function syncToServer(wordId: string, moduleId: string, learned: boolean, quizScore: number) {
-  const userId = getDeviceId();
+function syncToServer(
+  cloudUserId: string | null,
+  wordId: string,
+  moduleId: string,
+  learned: boolean,
+  quizScore: number
+) {
+  if (!cloudUserId) return;
   fetch('/api/libras/progress', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      userId,
+      userId: cloudUserId,
       entries: [{ word_id: wordId, learned, quiz_score: quizScore, module_id: moduleId }],
     }),
   }).catch(() => {
@@ -82,11 +78,13 @@ function syncToServer(wordId: string, moduleId: string, learned: boolean, quizSc
 // --- Hook ---
 export function useLibrasProgress() {
   const localProgress = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const { user, loading: authLoading } = useAuth();
+  const cloudUserId = user?.id ?? null;
 
-  // Try to sync with Supabase on mount
+  // Sync com Supabase apenas logado (user.id)
   useEffect(() => {
-    const userId = getDeviceId();
-    fetch(`/api/libras/progress?userId=${encodeURIComponent(userId)}`)
+    if (authLoading || !cloudUserId) return;
+    fetch(`/api/libras/progress?userId=${encodeURIComponent(cloudUserId)}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.source === 'supabase' && Array.isArray(data.entries)) {
@@ -106,21 +104,27 @@ export function useLibrasProgress() {
       .catch(() => {
         // Supabase unavailable, use local only
       });
-  }, []);
+  }, [authLoading, cloudUserId]);
 
-  const markLearned = useCallback((wordId: string, moduleId: string) => {
-    const data = { ...getSnapshot() };
-    data[wordId] = { learned: true, quizScore: data[wordId]?.quizScore || 0 };
-    saveToLocalStorage(data);
-    syncToServer(wordId, moduleId, true, data[wordId].quizScore);
-  }, []);
+  const markLearned = useCallback(
+    (wordId: string, moduleId: string) => {
+      const data = { ...getSnapshot() };
+      data[wordId] = { learned: true, quizScore: data[wordId]?.quizScore || 0 };
+      saveToLocalStorage(data);
+      syncToServer(cloudUserId, wordId, moduleId, true, data[wordId].quizScore);
+    },
+    [cloudUserId]
+  );
 
-  const saveQuizScore = useCallback((wordId: string, moduleId: string, score: number) => {
-    const data = { ...getSnapshot() };
-    data[wordId] = { learned: data[wordId]?.learned || false, quizScore: score };
-    saveToLocalStorage(data);
-    syncToServer(wordId, moduleId, data[wordId].learned, score);
-  }, []);
+  const saveQuizScore = useCallback(
+    (wordId: string, moduleId: string, score: number) => {
+      const data = { ...getSnapshot() };
+      data[wordId] = { learned: data[wordId]?.learned || false, quizScore: score };
+      saveToLocalStorage(data);
+      syncToServer(cloudUserId, wordId, moduleId, data[wordId].learned, score);
+    },
+    [cloudUserId]
+  );
 
   const getModuleProgress = useCallback(
     (moduleId: string): LibrasModuleProgress => {
@@ -181,5 +185,6 @@ export function useLibrasProgress() {
     isLearned,
     getQuizScore,
     resetModule,
+    cloudUserId,
   };
 }

@@ -38,6 +38,8 @@ import GooeyTabPanel, { type TabId } from '@/components/GooeyTabPanel';
 import { ScrollStack } from '@/components/godui/scroll-stack';
 import { ElasticText } from '@/components/godui/elastic-text';
 import PresetMultiButton from '@/components/godui/preset-multi-button';
+import ProfileMenu from '@/components/auth/ProfileMenu';
+import GoogleSignInIsland from '@/components/auth/GoogleSignInIsland';
 
 // Lazy-loaded heavy components (Three.js, complex calculators)
 const VoiceAssistantHUD = dynamic(() => import('@/components/VoiceAssistantHUD'), { ssr: false });
@@ -507,6 +509,8 @@ export default function Home() {
               <div className="flex items-center">
                 <DarkMode3DToggle />
               </div>
+
+              <ProfileMenu />
 
               <button
                 id="btn_header_voice_agent"
@@ -1142,6 +1146,9 @@ export default function Home() {
         </footer>
 
       </div>
+
+      {/* Floating Google sign-in island (only when logged out) */}
+      <GoogleSignInIsland />
     </main>
     </>
   );

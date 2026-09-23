@@ -2,6 +2,8 @@ import type {Metadata, Viewport} from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css'; // Global styles
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { AuthProvider } from '@/components/auth/AuthProvider';
+import { getPublicAuthConfig } from '@/lib/authConfig';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -36,7 +38,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({children}: {children: React.ReactNode}) {
+export default async function RootLayout({children}: {children: React.ReactNode}) {
+  const authConfig = await getPublicAuthConfig();
+
   return (
     <html lang="pt-BR" suppressHydrationWarning className={`${inter.variable} overflow-x-hidden`}>
       <head>
@@ -74,7 +78,7 @@ export default function RootLayout({children}: {children: React.ReactNode}) {
       </head>
       <body suppressHydrationWarning className="antialiased transition-colors duration-300 overflow-x-hidden">
         <ThemeProvider>
-          {children}
+          <AuthProvider config={authConfig}>{children}</AuthProvider>
         </ThemeProvider>
       </body>
     </html>

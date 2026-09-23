@@ -3,7 +3,7 @@ import { formatSourcesByTopic } from '@/lib/research/sourceFormatter';
 import { generateWithFallback } from '@/lib/llm-providers';
 import { extractTopics } from '@/lib/topicExtractor';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { decideReuse } from '@/lib/reuseDecision';
+import { decideReuse, ReuseDecision } from '@/lib/reuseDecision';
 import {
   countQuestionsForTopic,
   insertQuestions,
@@ -19,6 +19,32 @@ import type {
 
 const REUSE_MIN_QUESTIONS = 6;
 const MAX_QUESTIONS_PER_RESEARCH = 8;
+/** Máximo de extrações LLM por request (artigo + acadêmica/pura). */
+const MAX_LLM_EXTRACTS = 2;
+/** Timeout por chamada LLM (evita travar até o kill da plataforma). */
+const LLM_TIMEOUT_MS = 18_000;
+/**
+ * Orçamento de tempo da cascata. Pesos pesados (scrapers / decideReuse
+ * extras) só rodam antes disso; o caminho cedo retorna parcial com erro
+ * em `errors` em vez de ser morto em ~60s (Vercel default).
+ */
+const HEAVY_BUDGET_MS = 40_000;
+/** Corta LLM se o request já passou deste ponto (deixa margem p/ persistência). */
+const HARD_STOP_MS = 55_000;
+/** Perfil enxuto de scrapers para contexto de questões (não é pesquisa completa). */
+const TUTOR_MAX_PER_SOURCE: Record<string, number> = {
+  Crossref: 10,
+  OpenAlex: 10,
+  'Semantic Scholar': 8,
+  Embrapa: 8,
+  SciELO: 8,
+  CAPES: 6,
+  BDTD: 6,
+  YouTube: 5,
+  CNPEM: 5,
+  INPA: 5,
+  IPEA: 5,
+};
 
 interface ExtractedQuestion {
   enunciado: string;
@@ -55,17 +81,35 @@ async function llmExtractQuestions(args: {
   subtema?: string;
   fontesContext: string;
   origemPadrao: QuestionOrigem;
+  signal?: AbortSignal;
 }): Promise<{ extracted: ExtractedQuestion[]; error?: string }> {
   try {
     const prompt = buildExtractQuestionsPrompt(args);
-    const llmResult = await generateWithFallback({ prompt });
+    const signal =
+      args.signal ??
+      AbortSignal.timeout(LLM_TIMEOUT_MS);
+    const llmResult = await generateWithFallback({ prompt, signal });
     let fullText = '';
     const reader = llmResult.stream.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      fullText += value.text;
-    }
+    const readAll = (async () => {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        fullText += value.text;
+      }
+    })();
+    const onAbort = new Promise<never>((_, reject) => {
+      if (signal.aborted) {
+        reject(signal.reason ?? new Error('Timeout LLM'));
+        return;
+      }
+      signal.addEventListener(
+        'abort',
+        () => reject(signal.reason ?? new Error('Timeout LLM')),
+        { once: true }
+      );
+    });
+    await Promise.race([readAll, onAbort]);
     const jsonMatch = fullText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { extracted: [], error: 'LLM não retornou JSON de questões.' };
     const parsed = JSON.parse(jsonMatch[0]) as { questions?: ExtractedQuestion[] };
@@ -82,16 +126,27 @@ async function llmExtractQuestions(args: {
  * Cascata de questões:
  * 1. Reuso do banco salvo (questions).
  * 2. Artigos/fontes já pesquisados (evidence memory) → origem "artigo".
- * 3. Fontes acadêmicas novas (ENEM, faculdades) via searchSources → "pesquisada".
- * 4. Gemini puro → "gerada".
+ * 3. Fontes acadêmicas novas (ENEM, faculdades) via searchSources light → "pesquisada".
+ * 4. Gemini puro → "gerada" (só se ainda faltar e couber no orçamento).
+ *
+ * Orçamento: HEAVY_BUDGET_MS para scrapers/decideReuse; no máximo
+ * MAX_LLM_EXTRACTS extrações; HARD_STOP_MS corta LLM. Compartilha
+ * `decideReuse` com searchSources (priorDecision) para não re-embedar.
  */
 export async function researchQuestions(
   tema: string,
   subtema?: string
 ): Promise<ResearchQuestionsResponse> {
+  const startedAt = Date.now();
+  const elapsedMs = () => Date.now() - startedAt;
+  const overHeavy = () => elapsedMs() > HEAVY_BUDGET_MS;
+  const overHard = () => elapsedMs() > HARD_STOP_MS;
   const assunto = subtema ? `${tema} — ${subtema}` : tema;
   const topics = extractTopics(assunto);
   const errors: string[] = [];
+  let llmExtractsUsed = 0;
+  const canExtract = () =>
+    llmExtractsUsed < MAX_LLM_EXTRACTS && !overHard();
 
   if (!isSupabaseConfigured()) {
     return {
@@ -165,11 +220,11 @@ export async function researchQuestions(
   };
 
   // ── 2. Artigos já pesquisados (evidence memory) → origem "artigo" ──
-  let artigoContext = '';
-  let artigoSourceCount = 0;
+  // decideReuse roda UMA vez; o resultado é repassado a searchSources.
+  let reuseDecision: ReuseDecision | null = null;
   try {
-    const reuse = await decideReuse(assunto, topics);
-    const artigos = (reuse.sourcesToReuse || []).filter((s) => {
+    reuseDecision = await decideReuse(assunto, topics);
+    const artigos = (reuseDecision.sourcesToReuse || []).filter((s) => {
       const t = String(s.sourceType || '').toLowerCase();
       return (
         t.includes('artigo') ||
@@ -180,9 +235,9 @@ export async function researchQuestions(
         t.includes('boletim')
       );
     });
-    artigoSourceCount = artigos.length;
-    if (artigos.length > 0) {
-      artigoContext =
+    if (artigos.length > 0 && canExtract()) {
+      llmExtractsUsed += 1;
+      const artigoContext =
         '=== ARTIGOS / FONTES JÁ PESQUISADAS ===\n' +
         artigos
           .slice(0, 8)
@@ -216,12 +271,27 @@ export async function researchQuestions(
   // ── 3. Fontes acadêmicas novas (ENEM/faculdades) se ainda insuficiente ──
   let academicContext = '';
   let sourcesCount = 0;
-  const stillNeed = novel.length + reused.length < REUSE_MIN_QUESTIONS;
+  const stillNeed = () => novel.length + reused.length < REUSE_MIN_QUESTIONS;
 
-  if (stillNeed) {
+  if (stillNeed() && !overHeavy()) {
     const searchQuery = buildResearchQuery(tema, subtema);
+    const searchTopics = (
+      reuseDecision?.topicsNeedingSearch?.length
+        ? reuseDecision.topicsNeedingSearch
+        : topics
+    ).slice(0, 2);
     try {
-      const result = await searchSources({ query: searchQuery, customTopics: topics });
+      const result = await searchSources({
+        query: searchQuery,
+        customTopics: searchTopics.length > 0 ? searchTopics : topics,
+        priorDecision: reuseDecision,
+        light: true,
+        maxTopicsForSearch: 2,
+        searchOptions: {
+          maxPerSource: TUTOR_MAX_PER_SOURCE,
+          language: 'pt-br',
+        },
+      });
       sourcesCount = result.sources.length;
       academicContext = formatSourcesByTopic(
         result.sources,
@@ -237,11 +307,12 @@ export async function researchQuestions(
       );
     }
 
-    if (academicContext.trim().length > 0 || assunto.trim().length > 0) {
+    if (stillNeed() && canExtract()) {
       const context =
         academicContext.trim().length > 0
           ? academicContext
           : `Sem fontes externas. Elabore questões didáticas de agronomia sobre: ${assunto}.`;
+      llmExtractsUsed += 1;
       const academicExtract = await llmExtractQuestions({
         tema,
         subtema,
@@ -251,12 +322,15 @@ export async function researchQuestions(
       if (academicExtract.error) errors.push(academicExtract.error);
       pushExtracted(academicExtract.extracted, sourcesCount > 0 ? 'pesquisada' : 'gerada');
     }
-  } else if (artigoSourceCount === 0 && sourcesCount === 0 && stillNeed === false) {
-    // não precisa de scrapers
+  } else if (stillNeed() && overHeavy()) {
+    errors.push(
+      `Pesquisa de fontes adiada por limite de tempo (${Math.round(elapsedMs() / 1000)}s).`
+    );
   }
 
-  // ── 4. Gemini puro se ainda abaixo da meta ──
-  if (reused.length + novel.length < REUSE_MIN_QUESTIONS) {
+  // ── 4. Gemini puro se ainda abaixo da meta e couber no orçamento ──
+  if (stillNeed() && canExtract()) {
+    llmExtractsUsed += 1;
     const pureExtract = await llmExtractQuestions({
       tema,
       subtema,

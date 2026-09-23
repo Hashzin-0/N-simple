@@ -54,6 +54,8 @@ const DEFAULT_LABELS: LiveSessionLabels = {
   thinking: 'Pensando…',
 };
 
+const SETUP_TIMEOUT_MS = 10_000;
+
 const INITIAL_STATE: LiveSessionState = {
   isConnected: false,
   isConnecting: false,
@@ -79,6 +81,19 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
   const isMutedRef = useRef(state.isMuted);
   const configRef = useRef(config);
   const executeToolRef = useRef(executeTool);
+  const stateRef = useRef(state);
+  const setupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  const clearSetupTimeout = useCallback(() => {
+    if (setupTimeoutRef.current) {
+      clearTimeout(setupTimeoutRef.current);
+      setupTimeoutRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     configRef.current = config;
@@ -101,6 +116,7 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
   }, []);
 
   const disconnect = useCallback(() => {
+    clearSetupTimeout();
     if (wsRef.current) {
       try {
         wsRef.current.close();
@@ -122,13 +138,14 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
       userVolume: 0,
       agentVolume: 0,
     }));
-  }, []);
+  }, [clearSetupTimeout]);
 
   useEffect(() => {
     return () => {
+      clearSetupTimeout();
       disconnect();
     };
-  }, [disconnect]);
+  }, [disconnect, clearSetupTimeout]);
 
   const connect = useCallback(async () => {
     setState((prev) => {
@@ -198,11 +215,30 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
               activityHandling: 'START_OF_ACTIVITY_INTERRUPTS',
               turnCoverage: 'TURN_INCLUDES_ONLY_ACTIVITY',
             },
-            sessionResumption: { transparent: true },
+            sessionResumption: {},
           },
         };
 
         ws.send(JSON.stringify(setupMsg));
+
+        setupTimeoutRef.current = setTimeout(() => {
+          if (!stateRef.current.isConnected) {
+            const prefix = configRef.current.logPrefix || 'Live';
+            console.error(`[${prefix}] Setup timeout: setupComplete não recebido em 10s`);
+            setState((prev) => ({
+              ...prev,
+              isConnecting: false,
+              isConnected: false,
+              status: 'error',
+              errorMessage: 'Tempo esgotado aguardando configuração da voz com o Gemini.',
+            }));
+            try {
+              ws.close();
+            } catch {
+              // ignore
+            }
+          }
+        }, SETUP_TIMEOUT_MS);
       };
 
       ws.onmessage = async (event) => {
@@ -212,7 +248,30 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
           const msg = JSON.parse(rawData);
           const labelsNow = configRef.current.labels;
 
+          if (msg.error) {
+            const errDetail =
+              msg.error.message || msg.error.code || JSON.stringify(msg.error);
+            const prefix = configRef.current.logPrefix || 'Live';
+            console.error(`[${prefix}] Setup/server error:`, errDetail);
+            clearSetupTimeout();
+            setState((prev) => ({
+              ...prev,
+              isConnecting: false,
+              isConnected: false,
+              status: 'error',
+              errorMessage: `Gemini recusou a sessão de voz: ${errDetail}`,
+              currentActionLabel: null,
+            }));
+            try {
+              ws.close();
+            } catch {
+              // ignore
+            }
+            return;
+          }
+
           if (msg.setupComplete) {
+            clearSetupTimeout();
             setState((prev) => ({
               ...prev,
               isConnected: true,
@@ -294,23 +353,35 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
       ws.onerror = (err) => {
         const prefix = configRef.current.logPrefix || 'Live';
         console.error(`[${prefix}] WebSocket error:`, err);
+        clearSetupTimeout();
         setState((prev) => ({
           ...prev,
+          isConnecting: false,
           status: 'error',
           errorMessage: 'Erro na conexão de voz com o Gemini.',
         }));
       };
 
-      ws.onclose = () => {
-        setState((prev) => ({
-          ...prev,
-          isConnected: false,
-          isConnecting: false,
-          status: 'idle',
-          currentActionLabel: null,
-          userVolume: 0,
-          agentVolume: 0,
-        }));
+      ws.onclose = (event) => {
+        clearSetupTimeout();
+        const prefix = configRef.current.logPrefix || 'Live';
+        if (event.code !== 1000 || event.reason) {
+          console.warn(
+            `[${prefix}] WebSocket closed: code=${event.code} reason=${event.reason || '(sem motivo)'}`
+          );
+        }
+        setState((prev) => {
+          if (prev.status === 'error') return prev;
+          return {
+            ...prev,
+            isConnected: false,
+            isConnecting: false,
+            status: 'idle',
+            currentActionLabel: null,
+            userVolume: 0,
+            agentVolume: 0,
+          };
+        });
         if (streamerRef.current) {
           streamerRef.current.stopRecording();
           streamerRef.current.stopPlayback();
@@ -318,6 +389,7 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
       };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Falha ao iniciar conversa de voz';
+      clearSetupTimeout();
       setState((prev) => ({
         ...prev,
         isConnecting: false,
@@ -327,7 +399,7 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
         currentActionLabel: null,
       }));
     }
-  }, [setActionLabel, setStatus]);
+  }, [setActionLabel, setStatus, clearSetupTimeout]);
 
   const toggleMute = useCallback(() => {
     setState((prev) => ({ ...prev, isMuted: !prev.isMuted }));

@@ -23,6 +23,7 @@ import AnswerBox from './AnswerBox';
 import FeedbackPanel from './FeedbackPanel';
 import ProgressPanel from './ProgressPanel';
 import ResearchPanel from './ResearchPanel';
+import SaveProgressToggle from '@/components/auth/SaveProgressToggle';
 import type { AvaliacaoResultado, SessionTema, TutorModo } from '@/lib/tutor/types';
 
 interface TutorInteligenteProps {
@@ -175,6 +176,8 @@ export default function TutorInteligente(props: TutorInteligenteProps) {
 
   return (
     <div className="w-full space-y-4">
+      <SaveProgressToggle id="tutor_save_progress_toggle" />
+
       {/* Header de modos */}
       <div
         id="tutor_modes"

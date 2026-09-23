@@ -23,6 +23,25 @@ export interface SourceSearchRequest {
   existingSources?: ScientificSource[];
   /** Callbacks de progresso (ex.: eventos SSE do stream de pesquisador-fontes). */
   onProgress?: SourceSearchProgress;
+  /**
+   * Decisão de reuso já calculada pelo caller — evita chamar decideReuse
+   * (embed + pgvector) de novo no mesmo request (ex.: tutor research).
+   */
+  priorDecision?: ReuseDecision | null;
+  /**
+   * Embedding da query já gerado pelo caller — compartilhado com
+   * understandSources em vez de gerar outro.
+   */
+  priorQueryEmbedding?: number[];
+  /**
+   * Caminho leve: só scrapers + formatação de contexto de prompt.
+   * Pula understandSources (full-text, cross-encoder, categorias) e
+   * indexSources — suficiente para montar questões do Tutor sem estourar
+   * o orçamento de tempo da função.
+   */
+  light?: boolean;
+  /** Limita quantos tópicos entram no fan-out de scrapers (reduz N×M). */
+  maxTopicsForSearch?: number;
 }
 
 export interface SourceSearchProgress {
@@ -50,6 +69,27 @@ export interface SourceSearchResult {
 }
 
 /**
+ * Envolve um ScientificSource cru como UnderstoodSource mínimo (caminho
+ * light do Tutor) — campos semânticos vazios; suficiente para
+ * formatSourcesByTopic em prompts de extração de questões.
+ */
+function toLightUnderstood(src: ScientificSource): UnderstoodSource {
+  return {
+    ...src,
+    semanticScore: 0,
+    semanticCategories: [],
+    bestExcerpt: '',
+    discarded: false,
+    docEmbedding: [],
+    chunks: [],
+    usedFullText: false,
+    domainScore: 0,
+    inAgroDomain: false,
+    shouldPersist: false,
+  };
+}
+
+/**
  * Orquestrador unificado de pesquisa de fontes.
  *
  * Encapsula o pipeline completo:
@@ -62,6 +102,10 @@ export interface SourceSearchResult {
  * O embedding da query é gerado UMA vez e compartilhado entre o
  * re-entendimento das fontes reutilizadas e o das novas (e pelo cache LRU
  * de embeddings, repete 0 chamadas HTTP repetidas entre calls do mesmo request).
+ *
+ * Callers avançados (tutor research) podem passar `priorDecision`,
+ * `priorQueryEmbedding` e `light` para reaproveitar trabalho já feito e
+ * cortar o custo do pipeline.
  */
 export async function searchSources(
   req: SourceSearchRequest
@@ -74,6 +118,10 @@ export async function searchSources(
     topicExtractorConfig,
     existingSources,
     onProgress,
+    priorDecision,
+    priorQueryEmbedding,
+    light = false,
+    maxTopicsForSearch,
   } = req;
 
   const topics = customTopics && customTopics.length > 0
@@ -81,12 +129,19 @@ export async function searchSources(
     : extractTopics(query, topicExtractorConfig);
 
   // 1 única embed da query, reutilizada em todos os understandSources deste request.
-  const sharedQueryEmbedding = await embedText(query, 'RETRIEVAL_QUERY').catch(() => undefined);
+  const sharedQueryEmbedding =
+    priorQueryEmbedding ??
+    (light
+      ? undefined
+      : await embedText(query, 'RETRIEVAL_QUERY').catch(() => undefined));
 
   // ── CAMADA 1: Verificar memória de evidências ──
-  const decision = isSupabaseConfigured()
-    ? await decideReuse(query, topics.length > 0 ? topics : undefined)
-    : null;
+  const decision =
+    priorDecision !== undefined
+      ? priorDecision
+      : isSupabaseConfigured()
+        ? await decideReuse(query, topics.length > 0 ? topics : undefined)
+        : null;
   onProgress?.onMemoryDecision?.(decision);
 
   // Pool de candidatas já conhecidas (memória Supabase + existingSources
@@ -112,6 +167,18 @@ export async function searchSources(
     decision.action === 'reuse' &&
     priorPool.length > 0
   ) {
+    if (light) {
+      const relevant = priorPool.filter((s) => !s.discarded);
+      return {
+        sources: relevant,
+        reusedSources: relevant,
+        newSources: [],
+        memoryDecision: decision,
+        topics,
+        indexingStats: null,
+        errors: [],
+      };
+    }
     const understood = await understandSources(
       query,
       priorPool,
@@ -131,25 +198,31 @@ export async function searchSources(
   }
 
   // ── 45%-75% (complementary) ou <45% (new_search): pesquisa fontes novas ──
-  const topicsToSearch =
+  let topicsToSearch =
     decision?.action === 'complementary' || decision?.action === 'new_search'
       ? decision.topicsNeedingSearch
       : undefined;
+  if (maxTopicsForSearch !== undefined && topicsToSearch) {
+    topicsToSearch = topicsToSearch.slice(0, Math.max(1, maxTopicsForSearch));
+  }
 
   // Re-entendimento completo das candidatas prévias (decisão do produto:
   // nunca reaproveitar vetor salvo sem passar pelo motor com a query atual).
+  // Caminho light: retorna o pool cru sem understandSources.
+  let reusedUnderstood: UnderstoodSource[] = [];
   if (priorPool.length > 0) {
-    onProgress?.onProcessingStart?.(
-      priorPool.length,
-      `Reutilizando ${priorPool.length} fontes da memória...`,
-    );
+    if (light) {
+      reusedUnderstood = priorPool.filter((s) => !s.discarded);
+    } else {
+      onProgress?.onProcessingStart?.(
+        priorPool.length,
+        `Reutilizando ${priorPool.length} fontes da memória...`,
+      );
+      reusedUnderstood = filterAndRankRelevant(
+        await understandSources(query, priorPool, sharedQueryEmbedding)
+      );
+    }
   }
-  const reusedUnderstood =
-    priorPool.length > 0
-      ? filterAndRankRelevant(
-          await understandSources(query, priorPool, sharedQueryEmbedding)
-        )
-      : [];
 
   // Scrapers sempre rodam neste ponto (o early-return de `reuse` com pool
   // cheio já saiu acima) — complementary garante contraponto, new_search
@@ -160,6 +233,25 @@ export async function searchSources(
     searchOptions,
     onProgress,
   );
+
+  if (light) {
+    // Contexto de prompt semântico: top-K por score de título/reuso, sem
+    // full-text nem cross-encoder. Mantém compat com formatSourcesByTopic.
+    const seenTitles = new Set(reusedUnderstood.map((s) => s.title));
+    const lightNew = result.sources
+      .filter((s) => !seenTitles.has(s.title))
+      .slice(0, 30)
+      .map(toLightUnderstood);
+    return {
+      sources: [...reusedUnderstood, ...lightNew],
+      reusedSources: reusedUnderstood,
+      newSources: lightNew,
+      memoryDecision: decision,
+      topics,
+      indexingStats: null,
+      errors: result.errors,
+    };
+  }
 
   onProgress?.onProcessingStart?.(
     result.sources.length,

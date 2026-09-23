@@ -31,11 +31,27 @@ function isQuotaError(err: unknown): boolean {
   );
 }
 
+function rejectIfAborted(signal?: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    if (!signal) return;
+    if (signal.aborted) {
+      reject(signal.reason ?? new Error('Aborted'));
+      return;
+    }
+    signal.addEventListener(
+      'abort',
+      () => reject(signal.reason ?? new Error('Aborted')),
+      { once: true }
+    );
+  });
+}
+
 export async function tryGemini(
   config: LLMProviderConfig
 ): Promise<LLMProviderResult | null> {
   const keys = getGeminiKeys();
   if (keys.length === 0) return null;
+  if (config.signal?.aborted) return null;
 
   for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
     const apiKey = keys[keyIndex];
@@ -45,11 +61,15 @@ export async function tryGemini(
     });
 
     for (const modelName of GEMINI_MODELS) {
+      if (config.signal?.aborted) return null;
       try {
-        const response = await ai.models.generateContentStream({
+        const streamPromise = ai.models.generateContentStream({
           model: modelName,
           contents: config.prompt,
         });
+        const response = config.signal
+          ? await Promise.race([streamPromise, rejectIfAborted(config.signal)])
+          : await streamPromise;
 
         const stream = new ReadableStream({
           async start(controller) {

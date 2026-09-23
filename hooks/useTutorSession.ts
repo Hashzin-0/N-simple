@@ -48,15 +48,20 @@ export function useTutorSession() {
   }, [state]);
 
   const refreshErrorQueue = useCallback(async () => {
+    const userId = progress.cloudUserId;
+    if (!userId) {
+      setErrorQueueCount(0);
+      return;
+    }
     try {
-      const res = await fetch(`/api/tutor/errors?userId=${encodeURIComponent(progress.deviceId)}&limit=1`);
+      const res = await fetch(`/api/tutor/errors?userId=${encodeURIComponent(userId)}&limit=1`);
       if (!res.ok) return;
       const data = (await res.json()) as TutorErrorsResponse;
       setErrorQueueCount(data.attempts?.length ?? 0);
     } catch {
       // fila indisponível
     }
-  }, [progress.deviceId]);
+  }, [progress.cloudUserId]);
 
   const fetchContextFontes = useCallback(async (tema: SessionTema): Promise<string> => {
     const query = [tema.tema, tema.subtema].filter(Boolean).join(' ');
@@ -117,9 +122,11 @@ export function useTutorSession() {
 
   const fetchErrorQueue = useCallback(
     async (): Promise<TutorQuestion[]> => {
+      const userId = progress.cloudUserId;
+      if (!userId) return [];
       try {
         const res = await fetch(
-          `/api/tutor/errors?userId=${encodeURIComponent(progress.deviceId)}&limit=8`
+          `/api/tutor/errors?userId=${encodeURIComponent(userId)}&limit=8`
         );
         if (!res.ok) return [];
         const data = (await res.json()) as TutorErrorsResponse;
@@ -129,7 +136,7 @@ export function useTutorSession() {
         return [];
       }
     },
-    [progress.deviceId]
+    [progress.cloudUserId]
   );
 
   const loadNextQuestion = useCallback(async (): Promise<TutorSessionState> => {

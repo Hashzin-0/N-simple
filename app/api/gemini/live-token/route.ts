@@ -14,7 +14,6 @@ export async function POST() {
       );
     }
 
-    // Ephemeral tokens allow secure client-to-Gemini WebSocket connections in serverless/Vercel
     const ai = new GoogleGenAI({
       apiKey,
       httpOptions: {
@@ -25,10 +24,12 @@ export async function POST() {
       },
     });
 
+    const now = Date.now();
     const token = await ai.authTokens.create({
       config: {
         uses: 50,
-        expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        expireTime: new Date(now + 30 * 60 * 1000).toISOString(),
+        newSessionExpireTime: new Date(now + 5 * 60 * 1000).toISOString(),
       },
     });
 
@@ -36,7 +37,8 @@ export async function POST() {
       token: token.name,
       model: LIVE_MODEL_ID,
       voice: LIVE_VOICE_NAME,
-      wsBaseUrl: 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained',
+      wsBaseUrl:
+        'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained',
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Falha ao criar token efêmero';
