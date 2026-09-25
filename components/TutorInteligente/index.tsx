@@ -23,7 +23,10 @@ import AnswerBox from './AnswerBox';
 import FeedbackPanel from './FeedbackPanel';
 import ProgressPanel from './ProgressPanel';
 import ResearchPanel from './ResearchPanel';
+import DocumentUploader from './DocumentUploader';
+import ReviewStudio from './ReviewStudio';
 import SaveProgressToggle from '@/components/auth/SaveProgressToggle';
+import { useAuth } from '@/components/auth/AuthProvider';
 import type { AvaliacaoResultado, SessionTema, TutorModo } from '@/lib/tutor/types';
 
 interface TutorInteligenteProps {
@@ -48,6 +51,7 @@ const MODO_CHIPS: Array<{ id: TutorModo; label: string; icon: React.ReactNode }>
 
 export default function TutorInteligente(props: TutorInteligenteProps) {
   void props.isDark;
+  const { user } = useAuth();
   const session = useTutorSession();
   const { state, summary, isResearching, progress, lastAvaliacao, errorQueueCount } = session;
   const [lastFeedback, setLastFeedback] = useState<AvaliacaoResultado | null>(null);
@@ -88,8 +92,11 @@ export default function TutorInteligente(props: TutorInteligenteProps) {
       },
       endSession: async () => session.end(),
       giveHint: async () => session.requestHint(),
+      getTema: () =>
+        state.tema ? [state.tema.tema, state.tema.subtema].filter(Boolean).join(' — ') : null,
+      getUserId: () => user?.id ?? null,
     }),
-    [session, modo]
+    [session, modo, state.tema, user?.id]
   );
 
   const tutorAgent = useTutorLiveAgent(liveBridge, state.modo || modo);
@@ -495,6 +502,12 @@ export default function TutorInteligente(props: TutorInteligenteProps) {
               ? 'Desconectar'
               : 'Conectar voz'}
         </button>
+      </div>
+
+      {/* Material enviado + Estúdio de revisão */}
+      <div className="rounded-3xl border border-[#E5E2D9] dark:border-[#2C3328] bg-white dark:bg-[#1C201A] p-4 sm:p-5 space-y-5">
+        <DocumentUploader userId={user?.id ?? null} />
+        <ReviewStudio tema={currentTema} userId={user?.id ?? null} />
       </div>
 
       <ResearchPanel tema={currentTema} />

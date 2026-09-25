@@ -15,6 +15,8 @@ interface LiveVoiceOrb3DProps {
   size?: number;
 }
 
+const MAX_SETUP_ATTEMPTS = 3;
+
 export default function LiveVoiceOrb3D({
   status,
   userVolume,
@@ -22,8 +24,10 @@ export default function LiveVoiceOrb3D({
   className = '',
   size = 180,
 }: LiveVoiceOrb3DProps) {
-  const [contextLost, setContextLost] = useState(false);
   const [rendererFailed, setRendererFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const restoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lostSeenRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -71,7 +75,8 @@ export default function LiveVoiceOrb3D({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !webglSupported || contextLost) return;
+    if (!canvas || !webglSupported || rendererFailed) return;
+    lostSeenRef.current = false;
 
     const width = size;
     const height = size;
@@ -84,20 +89,43 @@ export default function LiveVoiceOrb3D({
 
     const renderer = acquire(canvas, { powerPreference: 'high-performance' });
     if (!renderer) {
-      setTimeout(() => setRendererFailed(true), 0);
+      setTimeout(() => {
+        if (attempt < MAX_SETUP_ATTEMPTS - 1) setAttempt((a) => a + 1);
+        else setRendererFailed(true);
+      }, 0);
       return;
     }
 
     renderer.setSize(width, height);
     rendererRef.current = renderer;
 
+    const retryWithFreshCanvas = () => {
+      if (attempt < MAX_SETUP_ATTEMPTS - 1) setAttempt((a) => a + 1);
+      else setRendererFailed(true);
+    };
+
     const onContextLost = (e: Event) => {
       e.preventDefault();
-      setContextLost(true);
+      lostSeenRef.current = true;
+      try {
+        const loseCtx = renderer.getContext()?.getExtension('WEBGL_lose_context');
+        if (loseCtx) loseCtx.restoreContext();
+      } catch {}
+      if (restoreTimerRef.current) return;
+      restoreTimerRef.current = setTimeout(() => {
+        restoreTimerRef.current = null;
+        if (lostSeenRef.current) retryWithFreshCanvas();
+      }, 1500);
     };
 
     const onContextRestored = () => {
-      setContextLost(false);
+      if (!lostSeenRef.current) return;
+      lostSeenRef.current = false;
+      if (restoreTimerRef.current) {
+        clearTimeout(restoreTimerRef.current);
+        restoreTimerRef.current = null;
+      }
+      if (attempt < MAX_SETUP_ATTEMPTS - 1) setAttempt((a) => a + 1);
     };
 
     renderer.domElement.addEventListener('webglcontextlost', onContextLost);
@@ -277,12 +305,16 @@ export default function LiveVoiceOrb3D({
       if (animFrameIdRef.current) {
         cancelAnimationFrame(animFrameIdRef.current);
       }
+      if (restoreTimerRef.current) {
+        clearTimeout(restoreTimerRef.current);
+        restoreTimerRef.current = null;
+      }
       renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
       renderer.domElement.removeEventListener('webglcontextrestored', onContextRestored);
       release(renderer);
       rendererRef.current = null;
     };
-  }, [size, webglSupported, contextLost, rendererFailed, acquire, release]);
+  }, [size, webglSupported, rendererFailed, attempt, acquire, release]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     isDragging.current = true;
@@ -317,7 +349,7 @@ export default function LiveVoiceOrb3D({
     isDragging.current = false;
   };
 
-  if (!webglSupported || contextLost || rendererFailed) {
+  if (!webglSupported || rendererFailed) {
     const glowColor =
       status === 'speaking' ? '#2E6F40' :
       status === 'listening' ? '#D4A373' :
@@ -347,6 +379,7 @@ export default function LiveVoiceOrb3D({
       title="Assistente de Voz Puck (Arraste para girar)"
     >
       <canvas
+        key={attempt}
         ref={canvasRef}
         className="pointer-events-none"
         style={{ width: size, height: size }}

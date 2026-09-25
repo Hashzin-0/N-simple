@@ -25,16 +25,18 @@ export async function POST() {
     });
 
     const now = Date.now();
+    const expireTime = new Date(now + 30 * 60 * 1000);
     const token = await ai.authTokens.create({
       config: {
         uses: 1,
-        expireTime: new Date(now + 30 * 60 * 1000).toISOString(),
+        expireTime: expireTime.toISOString(),
         newSessionExpireTime: new Date(now + 1 * 60 * 1000).toISOString(),
       },
     });
 
     return NextResponse.json({
       token: token.name,
+      expiresAt: expireTime.toISOString(),
       model: LIVE_MODEL_ID,
       voice: LIVE_VOICE_NAME,
       wsBaseUrl:

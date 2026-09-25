@@ -63,9 +63,13 @@ export async function tryGemini(
     for (const modelName of GEMINI_MODELS) {
       if (config.signal?.aborted) return null;
       try {
+        const contents =
+          config.parts && config.parts.length > 0
+            ? [{ role: 'user' as const, parts: [{ text: config.prompt }, ...config.parts] }]
+            : config.prompt;
         const streamPromise = ai.models.generateContentStream({
           model: modelName,
-          contents: config.prompt,
+          contents,
         });
         const response = config.signal
           ? await Promise.race([streamPromise, rejectIfAborted(config.signal)])

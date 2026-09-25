@@ -7,10 +7,10 @@ export function isWebGLAvailable(): boolean {
   if (typeof window === 'undefined') return false;
   try {
     const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    const gl = canvas.getContext('webgl2');
     webglAvailable = !!gl;
     if (gl) {
-      const loseCtx = (gl as WebGLRenderingContext).getExtension('WEBGL_lose_context');
+      const loseCtx = gl.getExtension('WEBGL_lose_context');
       if (loseCtx) loseCtx.loseContext();
     }
   } catch {
@@ -130,13 +130,18 @@ export function releaseRenderer(renderer: THREE.WebGLRenderer): void {
     activeRenderers.splice(idx, 1);
   }
   try {
-    const loseCtx = renderer.getContext()?.getExtension('WEBGL_lose_context');
-    if (loseCtx) loseCtx.loseContext();
     renderer.dispose();
   } catch {}
 }
 
 function createRenderer(canvas: HTMLCanvasElement, options: RendererOptions): THREE.WebGLRenderer {
+  const existing = canvas.getContext('webgl2');
+  if (existing && existing.isContextLost()) {
+    try {
+      const loseCtx = existing.getExtension('WEBGL_lose_context');
+      if (loseCtx) loseCtx.restoreContext();
+    } catch {}
+  }
   const maxDPR = options.maxDPR ?? getMaxDPR();
   const renderer = new THREE.WebGLRenderer({
     canvas,

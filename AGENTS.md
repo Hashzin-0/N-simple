@@ -53,6 +53,7 @@ Embeddings / research (optional, see `.env.example`):
 | `supabase/migration-tutor-plano2.sql` | Tutor Plano 2: `questions.origem` + `'artigo'`, `tutor_attempts.modo`/`resolved`, partial index for error queue. |
 | `supabase/migration-semantic-engine.sql` | Adds `sources.embedding` + semantic columns, `source_chunks`, `source_categories`, RPC `match_sources_by_embedding`, RLS for new tables. Required by `lib/semantic/**`, `lib/evidenceIndex.ts`, `lib/reuseDecision.ts`. |
 | `supabase/migration-libras-progress.sql` | Mini-curso Libras: ensures `libras_progress` table + unique `(user_id,word_id)`, drops conflicting RLS policies, installs permissive `FOR ALL USING (true)` (fixes POST 42501 with publishable key). |
+| `supabase/migration-tutor-documentos.sql` | Documentos enviados (PDF/TXT): `tutor_documents`, `tutor_document_chunks` (VECTOR 768) + RPC `match_document_chunks`, `tutor_flashcards` (SM-2), `review_artifacts` (simulado/quiz/mapa_mental/seminario/resumo/plano), `questions.origem += 'documento'`. Required by `lib/tutor/documents.ts`, `lib/tutor/review.ts`, `/api/tutor/documents*`, `/api/tutor/review`, `/api/tutor/flashcards`. |
 
 Rules:
 1. Never rewrite an already-applied baseline file with new DDL — create the next `migration-*.sql` instead.
@@ -93,14 +94,30 @@ Progress events: SSE `processing_progress` → client `verifiedIds` (blue badges
 
 If function still SIGKILLs: raise **Function Memory** in Vercel Dashboard (Fluid Compute does not read `memory` from `vercel.json`).
 
+## Voice agent hub (global ↔ tutor)
+
+Uma **orb compartilhada** (`VoiceAssistantHUD`) serve a dois agentes Gemini Live que se trocam **em sessão** via session resumption:
+
+- `lib/voiceHub.ts` — singleton (store `useSyncExternalStore`): registra os runtimes, expõe `{activeAgentId, handoff}` e implementa `callAgent(target, {transitionText, delayNavigation})` / `syncTab(tab)`.
+- `lib/liveSession.ts` — `sessionResumption` no setup, captura `sessionResumptionUpdate` (handle, validade ~2h), `switchPersona(options)` reabre o socket com o handle + novo systemInstruction/tools (config só vale no setup — troca = nova conexão).
+- Fluxo do handoff: captura handle → `activeAgentId` + `handoff=true` + navega para a aba do destino (navigator registrado pelo `page.tsx`) → grace de **2,5s** (deixa a resposta da ferramenta e a fala de despedida saírem no socket antigo) → `disconnect()` do origem + `switchPersona({resumeHandle, transitionText})` no destino. Se o destino ainda não montou (ex: tab tutor lazy), guarda `pendingSwitch` e aplica no `register()`.
+- `syncTab()` roda no efeito de `activeTab` do `page.tsx`: handoff se houver sessão viva, senão só troca o agente ativo; cancela handoff pendente cujo destino não é a nova aba.
+- Tools de voz: `chamarAgente(alvo)` existe nos **dois** agentes (`useGeminiLiveAgent` → 'tutor'; `useTutorLiveAgent` → 'global', com `delayNavigation` para não desmontar o tutor antes da despedida).
+- HUD mostra a orb em `isConnected || isConnecting` e mantém "conectando" durante `handoff` (`page.tsx` mescla o estado via `hudAgentState`).
+- Registro: cada hook registra o runtime em `useEffect(() => {voiceHub.register(...)}, [])` e notifica `voiceHub.agentStateChanged()` a cada mudança de estado.
+
+Tutor tools de voz adicionais (`useTutorLiveAgent`): `lerDocumento` (POST `/api/tutor/documents/query`), `criarRevisao` (POST `/api/tutor/review` — pode demorar), `listarFlashcards` (GET `/api/tutor/flashcards?due=1`).
+
+Estúdio de revisão: `components/TutorInteligente/ReviewStudio.tsx` gera simulado/quiz/flashcards/resumo/plano/mapa mental/seminário a partir dos documentos enviados (fonte primária) ou do tema; persiste via `lib/tutor/review.ts` em `review_artifacts`/`tutor_flashcards`; SRS em `/api/tutor/flashcards` (SM-2 simplificado).
+
 ## Architecture
 
 - **App Router**: `app/page.tsx` is the single-page calculator (client component) — orchestrates layout and passes data, no business logic or UI state in results
 - **API Route**: `app/api/gemini/live-token/route.ts` — creates ephemeral tokens for Gemini Live WebSocket
 - **Components**: `components/` — shared UI building blocks (3D visualizers, toggles, HUD, modals) with 11 top-level components
 - **Components Metrics**: `components/metrics/` — modularized result cards and sections (see Modularization below)
-- **Hooks**: `hooks/useGeminiLiveAgent.ts` + `hooks/useTutorLiveAgent.ts` — thin wrappers over shared `lib/liveSession.ts` (Gemini Live WebSocket + voice); Tutor modes live in `hooks/useTutorSession.ts`
-- **Lib**: `lib/audioStreamer.ts` (audio capture/playback), `lib/liveSession.ts` (shared Live WS/audio core), `lib/liveConfig.ts` (`LIVE_MODEL_ID`, `LIVE_VOICE_NAME`), `lib/pageAutomator.ts` (UI automation for voice agent), `lib/storage.ts` (localStorage-based scenario DB), `lib/types.ts` (shared TypeScript interfaces), `lib/calculations.ts` (pure calculation functions), `lib/tutor/**` (Tutor session, cascade research, evaluate, prompts), `lib/authConfig.ts` + `lib/supabaseBrowser.ts` (auth config / browser Supabase)
+- **Hooks**: `hooks/useGeminiLiveAgent.ts` + `hooks/useTutorLiveAgent.ts` — thin wrappers over shared `lib/liveSession.ts` (Gemini Live WebSocket + voice); Tutor modes live in `hooks/useTutorSession.ts`; both agents register in `lib/voiceHub.ts`
+- **Lib**: `lib/audioStreamer.ts` (audio capture/playback), `lib/liveSession.ts` (shared Live WS/audio core), `lib/voiceHub.ts` (hub global↔tutor com session resumption), `lib/liveConfig.ts` (`LIVE_MODEL_ID`, `LIVE_VOICE_NAME`), `lib/pageAutomator.ts` (UI automation for voice agent), `lib/storage.ts` (localStorage-based scenario DB), `lib/types.ts` (shared TypeScript interfaces), `lib/calculations.ts` (pure calculation functions), `lib/tutor/**` (Tutor session, cascade research, evaluate, prompts, documents, review), `lib/llm-providers/**` (LLM fallback + `generateTextWithFallback` multimodal), `lib/authConfig.ts` + `lib/supabaseBrowser.ts` (auth config / browser Supabase)
 - **Storage**: localStorage with `useSyncExternalStore` for hydration safety; 3 default seed scenarios
 - **Language**: App UI is in Portuguese (pt-BR)
 

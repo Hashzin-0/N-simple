@@ -5,12 +5,22 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Mic, MicOff } from 'lucide-react';
 import LiveVoiceOrb3D from './LiveVoiceOrb3D';
 import AsciiSphere from './AsciiSphere';
-import { LiveAgentState } from '@/hooks/useGeminiLiveAgent';
 import { useAnimationLock } from '@/lib/useAnimationLock';
 import { useAuth } from '@/components/auth/AuthProvider';
 
+/** Estado mínimo que a HUD precisa (compatível com global e tutor). */
+export interface VoiceHUDState {
+  isConnected: boolean;
+  isConnecting: boolean;
+  isMuted: boolean;
+  status: 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error';
+  errorMessage: string | null;
+  userVolume: number;
+  agentVolume: number;
+}
+
 interface VoiceAssistantHUDProps {
-  agentState: LiveAgentState;
+  agentState: VoiceHUDState;
   onConnect: () => void;
   onDisconnect: () => void;
   onToggleMute: () => void;
@@ -144,7 +154,7 @@ export default function VoiceAssistantHUD({
         </div>
       )}
       <AnimatePresence mode="wait">
-        {!isConnected ? (
+        {!(isConnected || isConnecting) ? (
           <motion.div
             key="ascii-sphere"
             initial={{ opacity: 0, scale: 0.3, filter: 'blur(8px)' }}
@@ -154,7 +164,7 @@ export default function VoiceAssistantHUD({
             className="pointer-events-auto pb-4"
           >
             <AsciiSphere
-              size={72}
+              size={112}
               onClick={handleAsciiClick}
               isConnecting={isConnecting}
             />

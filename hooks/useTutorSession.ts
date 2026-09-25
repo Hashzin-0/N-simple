@@ -41,6 +41,7 @@ export function useTutorSession() {
   const lastAvaliacaoRef = useRef<AvaliacaoResultado | null>(null);
   const poolRef = useRef<TutorQuestion[]>([]);
   const stateRef = useRef(state);
+  const documentsContextRef = useRef<string>('');
   const progress = useTutorProgress();
 
   useEffect(() => {
@@ -97,14 +98,32 @@ export function useTutorSession() {
     }
   }, []);
 
+  /** Digest dos PDFs enviados — fonte primária para avaliação e pesquisa de questões. */
+  const fetchDocumentsContext = useCallback(async (): Promise<string> => {
+    const userId = progress.cloudUserId;
+    try {
+      const qs = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+      const res = await fetch(`/api/tutor/documents/context${qs}`);
+      if (!res.ok) return '';
+      const data = (await res.json()) as { context?: string };
+      return data.context || '';
+    } catch {
+      return '';
+    }
+  }, [progress.cloudUserId]);
+
   const research = useCallback(
-    async (tema: SessionTema): Promise<TutorQuestion[]> => {
+    async (tema: SessionTema, documentContext?: string): Promise<TutorQuestion[]> => {
       setIsResearching(true);
       try {
         const res = await fetch('/api/tutor/research', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tema: tema.tema, subtema: tema.subtema }),
+          body: JSON.stringify({
+            tema: tema.tema,
+            subtema: tema.subtema,
+            documentContext: documentContext || undefined,
+          }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
@@ -163,7 +182,7 @@ export function useTutorSession() {
           pool = await fetchErrorQueue();
         }
         if (pool.length === 0 && currentState.tema) {
-          pool = await research(currentState.tema);
+          pool = await research(currentState.tema, documentsContextRef.current || undefined);
         }
         poolRef.current = pool;
       } catch (err) {
@@ -247,8 +266,13 @@ export function useTutorSession() {
 
       try {
         if (modo === 'conversar') {
-          const contextFontes = await fetchContextFontes(tema);
-          nextState = { ...setSessionContext(nextState, contextFontes), status: 'conversando' };
+          const [contextFontes, docsContext] = await Promise.all([
+            fetchContextFontes(tema),
+            fetchDocumentsContext(),
+          ]);
+          documentsContextRef.current = docsContext;
+          const combined = [docsContext, contextFontes].filter(Boolean).join('\n\n');
+          nextState = { ...setSessionContext(nextState, combined), status: 'conversando' };
           setState(nextState);
           stateRef.current = nextState;
           return {
@@ -259,17 +283,22 @@ export function useTutorSession() {
         }
 
         if (modo === 'revisar_erros') {
-          const [contextFontes, queue] = await Promise.all([
+          const [contextFontes, queue, docsContext] = await Promise.all([
             fetchContextFontes(tema),
             fetchErrorQueue(),
+            fetchDocumentsContext(),
           ]);
-          nextState = setSessionContext(nextState, contextFontes);
+          documentsContextRef.current = docsContext;
+          nextState = setSessionContext(
+            nextState,
+            [docsContext, contextFontes].filter(Boolean).join('\n\n')
+          );
           stateRef.current = nextState;
           poolRef.current = queue;
 
           if (queue.length === 0) {
             // fallback: pesquisa normal
-            const questions = await research(tema);
+            const questions = await research(tema, docsContext || undefined);
             poolRef.current = questions;
             if (questions.length === 0) {
               const errored = setSessionError(
@@ -282,11 +311,16 @@ export function useTutorSession() {
             }
           }
         } else {
+          const docsContext = await fetchDocumentsContext();
+          documentsContextRef.current = docsContext;
           const [contextFontes, questions] = await Promise.all([
             fetchContextFontes(tema),
-            research(tema),
+            research(tema, docsContext || undefined),
           ]);
-          nextState = setSessionContext(nextState, contextFontes);
+          nextState = setSessionContext(
+            nextState,
+            [docsContext, contextFontes].filter(Boolean).join('\n\n')
+          );
           stateRef.current = nextState;
           poolRef.current = questions;
 
@@ -318,7 +352,7 @@ export function useTutorSession() {
         return { success: false, message: msg };
       }
     },
-    [fetchContextFontes, research, loadNextQuestion, fetchErrorQueue]
+    [fetchContextFontes, research, loadNextQuestion, fetchErrorQueue, fetchDocumentsContext]
   );
 
   const submitAnswer = useCallback(
@@ -348,6 +382,7 @@ export function useTutorSession() {
             modo: currentState.modo,
             tentativa: currentState.socratic.tentativa,
             pistaAnterior: lastAvaliacaoRef.current?.pista ?? null,
+            contextoDocumentos: documentsContextRef.current || undefined,
           }),
         });
 
@@ -539,6 +574,7 @@ export function useTutorSession() {
     lastAvaliacaoRef.current = null;
     setLastAvaliacao(null);
     poolRef.current = [];
+    documentsContextRef.current = '';
     setResearchInfo(null);
     const modo = stateRef.current.modo;
     const fresh = createSessionState(metaForModo(modo), modo);

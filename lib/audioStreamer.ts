@@ -4,6 +4,14 @@
 // Input audio to Gemini: 16kHz 16-bit PCM Mono
 // Output audio from Gemini: 24kHz 16-bit PCM Mono (Puck voice)
 
+function isContextClosed(ctx: AudioContext): boolean {
+  return ctx.state === 'closed';
+}
+
+function closeContext(ctx: AudioContext): void {
+  if (ctx.state !== 'closed') ctx.close().catch(() => {});
+}
+
 export class AudioStreamer {
   private outputCtx: AudioContext | null = null;
   private inputCtx: AudioContext | null = null;
@@ -19,6 +27,8 @@ export class AudioStreamer {
   private playbackWorkletNode: AudioWorkletNode | null = null;
   private useWorkletPlayback: boolean = false;
   private isRecording: boolean = false;
+  private isStarting: boolean = false;
+  private startAbort: boolean = false;
 
   private onAudioChunkCallback: ((base64Pcm: string) => void) | null = null;
   private onUserVolumeCallback: ((vol: number) => void) | null = null;
@@ -30,17 +40,19 @@ export class AudioStreamer {
   public async ensureOutputContext(): Promise<AudioContext> {
     if (!this.outputCtx || this.outputCtx.state === 'closed') {
       const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      this.outputCtx = new AudioCtxClass({ sampleRate: 24000 });
-      this.outputAnalyser = this.outputCtx.createAnalyser();
+      const ctx = new AudioCtxClass({ sampleRate: 24000 });
+      this.outputCtx = ctx;
+      this.outputAnalyser = ctx.createAnalyser();
       this.outputAnalyser.fftSize = 256;
       this.outputAnalyser.smoothingTimeConstant = 0.8;
-      this.outputAnalyser.connect(this.outputCtx.destination);
+      this.outputAnalyser.connect(ctx.destination);
 
       // Try loading the ring-buffer playback worklet for gapless audio
-      if (this.outputCtx.audioWorklet && 'addModule' in this.outputCtx.audioWorklet) {
+      if (ctx.audioWorklet && 'addModule' in ctx.audioWorklet) {
         try {
-          await this.outputCtx.audioWorklet.addModule('/audio-processors/playback.worklet.js');
-          this.playbackWorkletNode = new AudioWorkletNode(this.outputCtx, 'pcm-processor');
+          await ctx.audioWorklet.addModule('/audio-processors/playback.worklet.js');
+          if (this.outputCtx !== ctx || ctx.state === 'closed') return ctx;
+          this.playbackWorkletNode = new AudioWorkletNode(ctx, 'pcm-processor');
           this.playbackWorkletNode.connect(this.outputAnalyser);
           this.useWorkletPlayback = true;
         } catch {
@@ -49,10 +61,11 @@ export class AudioStreamer {
         }
       }
     }
-    if (this.outputCtx.state === 'suspended') {
-      await this.outputCtx.resume();
+    const outputCtx = this.outputCtx;
+    if (outputCtx.state === 'suspended') {
+      await outputCtx.resume();
     }
-    return this.outputCtx;
+    return outputCtx;
   }
 
   // Start microphone capture at 16kHz linear PCM
@@ -61,89 +74,123 @@ export class AudioStreamer {
     onUserVolume?: (vol: number) => void,
     onAgentVolume?: (vol: number) => void
   ): Promise<void> {
-    if (this.isRecording) return;
+    if (this.isRecording || this.isStarting) return;
 
-    this.onAudioChunkCallback = onChunk;
-    if (onUserVolume) this.onUserVolumeCallback = onUserVolume;
-    if (onAgentVolume) this.onAgentVolumeCallback = onAgentVolume;
+    this.isStarting = true;
+    this.startAbort = false;
 
-    await this.ensureOutputContext();
-
-    const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    this.inputCtx = new AudioCtxClass({ sampleRate: 16000 });
-    if (this.inputCtx.state === 'suspended') {
-      await this.inputCtx.resume();
-    }
-
-    this.inputAnalyser = this.inputCtx.createAnalyser();
-    this.inputAnalyser.fftSize = 256;
-    this.inputAnalyser.smoothingTimeConstant = 0.5;
-
-    // Get microphone with ideal constraints, fallback to minimal constraints
     try {
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: { ideal: 1 },
-          sampleRate: { ideal: 16000 },
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-    } catch {
-      try {
-        this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (err) {
-        this.inputCtx.close().catch(() => {});
-        this.inputCtx = null;
-        throw err;
+      this.onAudioChunkCallback = onChunk;
+      if (onUserVolume) this.onUserVolumeCallback = onUserVolume;
+      if (onAgentVolume) this.onAgentVolumeCallback = onAgentVolume;
+
+      await this.ensureOutputContext();
+      if (this.startAbort) return;
+
+      const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtxClass({ sampleRate: 16000 });
+      this.inputCtx = ctx;
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
       }
-    }
-
-    this.inputSource = this.inputCtx.createMediaStreamSource(this.mediaStream);
-    this.inputSource.connect(this.inputAnalyser);
-
-    // Try AudioWorklet (512 samples ~32ms at 16kHz) for low latency,
-    // fall back to ScriptProcessorNode if worklet unavailable
-    let workletLoaded = false;
-    if (this.inputCtx.audioWorklet && 'addModule' in this.inputCtx.audioWorklet) {
-      try {
-        await this.inputCtx.audioWorklet.addModule('/audio-processors/capture.worklet.js');
-        workletLoaded = true;
-      } catch {
-        console.warn('[AudioStreamer] worklet load failed; using ScriptProcessor fallback');
-      }
-    }
-
-    if (workletLoaded) {
-      try {
-        this.inputWorkletNode = new AudioWorkletNode(this.inputCtx, 'audio-capture-processor');
-        this.inputWorkletNode.port.onmessage = (e: MessageEvent) => {
-          if (!this.isRecording) return;
-          const float32 = e.data?.data as Float32Array | undefined;
-          if (float32) this.processAudioChunk(float32);
-        };
-        this.inputSource.connect(this.inputWorkletNode);
-        this.isRecording = true;
-        this.startVolumeMonitoringLoop();
+      if (this.startAbort || isContextClosed(ctx)) {
+        closeContext(ctx);
+        if (this.inputCtx === ctx) this.inputCtx = null;
         return;
-      } catch {
-        this.inputWorkletNode = null;
       }
+
+      const inputAnalyser = ctx.createAnalyser();
+      inputAnalyser.fftSize = 256;
+      inputAnalyser.smoothingTimeConstant = 0.5;
+      this.inputAnalyser = inputAnalyser;
+
+      let mediaStream: MediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: { ideal: 1 },
+            sampleRate: { ideal: 16000 },
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch {
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (err) {
+          closeContext(ctx);
+          if (this.inputCtx === ctx) this.inputCtx = null;
+          throw err;
+        }
+      }
+
+      if (this.startAbort || isContextClosed(ctx)) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+        closeContext(ctx);
+        if (this.inputCtx === ctx) this.inputCtx = null;
+        return;
+      }
+      this.mediaStream = mediaStream;
+
+      const inputSource = ctx.createMediaStreamSource(mediaStream);
+      inputSource.connect(inputAnalyser);
+      this.inputSource = inputSource;
+
+      // Try AudioWorklet (512 samples ~32ms at 16kHz) for low latency,
+      // fall back to ScriptProcessorNode if worklet unavailable
+      let workletLoaded = false;
+      if (ctx.audioWorklet && 'addModule' in ctx.audioWorklet) {
+        try {
+          await ctx.audioWorklet.addModule('/audio-processors/capture.worklet.js');
+          workletLoaded = true;
+        } catch {
+          console.warn('[AudioStreamer] worklet load failed; using ScriptProcessor fallback');
+        }
+      }
+
+      if (this.startAbort || isContextClosed(ctx)) {
+        inputSource.disconnect();
+        if (this.inputSource === inputSource) this.inputSource = null;
+        mediaStream.getTracks().forEach((track) => track.stop());
+        if (this.mediaStream === mediaStream) this.mediaStream = null;
+        closeContext(ctx);
+        if (this.inputCtx === ctx) this.inputCtx = null;
+        return;
+      }
+
+      if (workletLoaded) {
+        try {
+          this.inputWorkletNode = new AudioWorkletNode(ctx, 'audio-capture-processor');
+          this.inputWorkletNode.port.onmessage = (e: MessageEvent) => {
+            if (!this.isRecording) return;
+            const float32 = e.data?.data as Float32Array | undefined;
+            if (float32) this.processAudioChunk(float32);
+          };
+          inputSource.connect(this.inputWorkletNode);
+          this.isRecording = true;
+          this.startVolumeMonitoringLoop();
+          return;
+        } catch {
+          this.inputWorkletNode = null;
+        }
+      }
+
+      // Fallback: ScriptProcessorNode (widely supported, 4096 samples ~256ms)
+      this.inputProcessor = ctx.createScriptProcessor(4096, 1, 1);
+      inputSource.connect(this.inputProcessor);
+      this.inputProcessor.connect(ctx.destination);
+
+      this.inputProcessor.onaudioprocess = (e) => {
+        if (!this.isRecording) return;
+        this.processAudioChunk(e.inputBuffer.getChannelData(0));
+      };
+
+      this.isRecording = true;
+      this.startVolumeMonitoringLoop();
+    } finally {
+      this.isStarting = false;
     }
-
-    // Fallback: ScriptProcessorNode (widely supported, 4096 samples ~256ms)
-    this.inputProcessor = this.inputCtx.createScriptProcessor(4096, 1, 1);
-    this.inputSource.connect(this.inputProcessor);
-    this.inputProcessor.connect(this.inputCtx.destination);
-
-    this.inputProcessor.onaudioprocess = (e) => {
-      if (!this.isRecording) return;
-      this.processAudioChunk(e.inputBuffer.getChannelData(0));
-    };
-
-    this.isRecording = true;
-    this.startVolumeMonitoringLoop();
   }
 
   private processAudioChunk(inputData: Float32Array): void {
@@ -181,6 +228,7 @@ export class AudioStreamer {
 
   // Stop microphone recording
   public stopRecording(): void {
+    this.startAbort = true;
     this.isRecording = false;
 
     if (this.inputWorkletNode) {
@@ -208,7 +256,7 @@ export class AudioStreamer {
   // Play incoming 24kHz PCM chunk from Gemini Live (Puck voice)
   public async playPcmChunk(base64Pcm: string): Promise<void> {
     const ctx = await this.ensureOutputContext();
-    if (!this.outputAnalyser) return;
+    if (ctx.state === 'closed' || !this.outputAnalyser) return;
 
     // Decode base64 to binary
     const binary = atob(base64Pcm);

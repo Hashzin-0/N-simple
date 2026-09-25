@@ -12,7 +12,7 @@ interface AsciiSphereProps {
 const CHAR_RAMP = ' .,:;+*%#@';
 
 export default function AsciiSphere({
-  size = 72,
+  size = 112,
   onClick,
   isConnecting = false,
   className = '',
@@ -119,7 +119,9 @@ export default function AsciiSphere({
       title={isConnecting ? 'Conectando ao Puck...' : 'Conversar por voz com Puck'}
       id="btn_start_voice_agent"
     >
-      <div className="absolute inset-0 rounded-full bg-[#5A5A40]/20 dark:bg-[#C5A880]/10 blur-xl animate-pulse pointer-events-none" />
+      {isConnecting && (
+        <div className="absolute inset-0 rounded-full bg-[#5A5A40]/20 dark:bg-[#C5A880]/10 blur-xl animate-pulse pointer-events-none" />
+      )}
       <canvas
         ref={canvasRef}
         className="pointer-events-none relative z-10"

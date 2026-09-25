@@ -13,18 +13,37 @@ interface WebGLFallbackProps {
 }
 
 function OrbFallback({ color, size, className }: { color: string; size: number; className?: string }) {
+  const ringMask = 'radial-gradient(circle, transparent 60%, black 66%, black 84%, transparent 90%)';
   return (
     <div
       className={cn('relative select-none flex items-center justify-center', className)}
       style={{ width: size, height: size }}
     >
       <div
-        className="rounded-full animate-pulse"
+        className="absolute rounded-full blur-xl animate-pulse"
         style={{
-          width: size * 0.5,
-          height: size * 0.5,
-          backgroundColor: color,
-          boxShadow: `0 0 ${size * 0.25}px ${size * 0.12}px ${color}60`,
+          width: size * 0.95,
+          height: size * 0.95,
+          background: `radial-gradient(circle, ${color}55 0%, transparent 70%)`,
+        }}
+      />
+      <div
+        className="absolute rounded-full animate-spin [animation-duration:8s]"
+        style={{
+          width: size * 0.8,
+          height: size * 0.8,
+          background: `conic-gradient(from 0deg, transparent 0%, ${color}dd 22%, transparent 50%, transparent 100%)`,
+          maskImage: ringMask,
+          WebkitMaskImage: ringMask,
+        }}
+      />
+      <div
+        className="relative rounded-full animate-pulse"
+        style={{
+          width: size * 0.62,
+          height: size * 0.62,
+          background: `radial-gradient(circle at 32% 28%, ${color} 0%, ${color}cc 45%, ${color}66 78%, ${color}22 100%)`,
+          boxShadow: `0 0 ${size * 0.18}px ${size * 0.06}px ${color}55, inset 0 0 ${size * 0.12}px ${color}44`,
         }}
       />
     </div>

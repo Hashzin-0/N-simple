@@ -10,6 +10,7 @@ interface EvaluateRequestBody {
   gabarito?: string | null;
   explicacao?: string | null;
   contextoFontes?: string;
+  contextoDocumentos?: string;
   dificuldade?: string;
   modo?: 'sessao' | 'socratico' | 'revisar_erros' | 'rapida' | 'conversar';
   tentativa?: number;
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
       gabarito: body.gabarito ?? null,
       explicacao: body.explicacao ?? null,
       contextoFontes: body.contextoFontes,
+      contextoDocumentos: body.contextoDocumentos,
       dificuldade: body.dificuldade,
       modo: body.modo ?? 'sessao',
       tentativa: body.tentativa,

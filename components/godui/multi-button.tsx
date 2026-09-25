@@ -108,7 +108,7 @@ const MultiButtonLabel = React.forwardRef<
     style={{
       color: active && highlightColor ? highlightColor : undefined,
     }}
-    className={`relative z-10 -ml-1 shrink-0 whitespace-nowrap pr-2 font-semibold leading-none transition-all duration-200 ${
+    className={`relative z-10 -ml-1 min-w-0 truncate pr-2 font-semibold leading-none transition-all duration-200 ${
       active ? "scale-[1.06] font-bold" : ""
     } ${textClass}`}
   >
@@ -190,7 +190,7 @@ function MultiButtonItemButton({
         scale: visible ? 1 : 0.8,
       }}
       transition={{ duration: 0.15 }}
-      style={{ width: `${width}px` }}
+      style={{ maxWidth: active ? `${width + 600}px` : `${width}px` }}
       className={`relative isolate flex shrink-0 cursor-pointer items-center justify-start overflow-hidden ${cfg.minHeight} focus:outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-not-allowed disabled:opacity-40 active:scale-[0.96] transition-all duration-150 ${
         accessible ? "" : "pointer-events-none"
       } ${ITEM_HOVER_CLASSES[variant]} ${item.hoverClassName ?? ""} ${item.className ?? ""}`}
@@ -315,7 +315,6 @@ const MultiButton = React.forwardRef<HTMLDivElement, MultiButtonProps>(
       >
         {items.map((item, index) => {
           const active = activeId === item.id;
-          const selected = selectedId === item.id;
           const width = cfg.cell;
 
           return (

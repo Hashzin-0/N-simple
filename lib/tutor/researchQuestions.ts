@@ -72,7 +72,7 @@ function normalizeDificuldade(value: unknown): QuestionDificuldade {
 
 function normalizeOrigem(value: unknown, fallback: QuestionOrigem): QuestionOrigem {
   const v = String(value || '').toLowerCase();
-  if (v === 'pesquisada' || v === 'gerada' || v === 'artigo') return v;
+  if (v === 'pesquisada' || v === 'gerada' || v === 'artigo' || v === 'documento') return v;
   return fallback;
 }
 
@@ -124,6 +124,7 @@ async function llmExtractQuestions(args: {
 
 /**
  * Cascata de questões:
+ * 0. Material enviado pelo aluno (PDFs) → origem "documento" (fonte primária).
  * 1. Reuso do banco salvo (questions).
  * 2. Artigos/fontes já pesquisados (evidence memory) → origem "artigo".
  * 3. Fontes acadêmicas novas (ENEM, faculdades) via searchSources light → "pesquisada".
@@ -135,7 +136,8 @@ async function llmExtractQuestions(args: {
  */
 export async function researchQuestions(
   tema: string,
-  subtema?: string
+  subtema?: string,
+  options?: { documentContext?: string }
 ): Promise<ResearchQuestionsResponse> {
   const startedAt = Date.now();
   const elapsedMs = () => Date.now() - startedAt;
@@ -174,20 +176,6 @@ export async function researchQuestions(
     });
   }
 
-  if (reused.length >= REUSE_MIN_QUESTIONS) {
-    return {
-      ok: true,
-      decision: 'reuse',
-      questions: shuffled(reused),
-      reusedCount: reused.length,
-      researchedCount: 0,
-      generatedCount: 0,
-      artigoCount: 0,
-      errors,
-      message: `${reused.length} questões reutilizadas da memória acadêmica.`,
-    };
-  }
-
   const seen = new Set(reused.map((q) => q.enunciado.toLowerCase().slice(0, 80)));
   const novel: Array<Omit<TutorQuestion, 'id' | 'similarity'>> = [];
 
@@ -218,6 +206,34 @@ export async function researchQuestions(
       });
     }
   };
+
+  // ── 0. Material enviado pelo aluno (PDFs) → origem "documento" (fonte primária) ──
+  const documentContext = options?.documentContext?.trim();
+  if (documentContext && canExtract()) {
+    llmExtractsUsed += 1;
+    const docExtract = await llmExtractQuestions({
+      tema,
+      subtema,
+      fontesContext: documentContext.slice(0, 40_000),
+      origemPadrao: 'documento',
+    });
+    if (docExtract.error) errors.push(docExtract.error);
+    pushExtracted(docExtract.extracted, 'documento');
+  }
+
+  if (reused.length >= REUSE_MIN_QUESTIONS && novel.length === 0) {
+    return {
+      ok: true,
+      decision: 'reuse',
+      questions: shuffled(reused),
+      reusedCount: reused.length,
+      researchedCount: 0,
+      generatedCount: 0,
+      artigoCount: 0,
+      errors,
+      message: `${reused.length} questões reutilizadas da memória acadêmica.`,
+    };
+  }
 
   // ── 2. Artigos já pesquisados (evidence memory) → origem "artigo" ──
   // decideReuse roda UMA vez; o resultado é repassado a searchSources.
@@ -362,7 +378,7 @@ export async function researchQuestions(
       ? await searchQuestions({
           query: assunto,
           assunto: tema,
-          limit: MAX_QUESTIONS_PER_RESEARCH,
+          limit: Math.min(MAX_QUESTIONS_PER_RESEARCH + novel.length, 16),
           threshold: 25,
         })
       : [];
@@ -372,6 +388,7 @@ export async function researchQuestions(
   const generatedCount = all.filter((q) => q.origem === 'gerada').length;
   const researchedCount = all.filter((q) => q.origem === 'pesquisada').length;
   const artigoCount = all.filter((q) => q.origem === 'artigo').length;
+  const documentoCount = all.filter((q) => q.origem === 'documento').length;
 
   if (all.length === 0) {
     errors.push('Nenhuma questão encontrada ou gerada para este tema.');
@@ -385,10 +402,11 @@ export async function researchQuestions(
     researchedCount,
     generatedCount,
     artigoCount,
+    documentoCount,
     errors,
     message:
       all.length > 0
-        ? `${all.length} questões prontas (${reused.length} reaproveitadas, ${artigoCount} de artigos, ${insertedCount} novas).`
+        ? `${all.length} questões prontas (${reused.length} reaproveitadas, ${documentoCount} do seu material, ${artigoCount} de artigos, ${insertedCount} novas).`
         : 'Não foi possível obter questões para este tema.',
   };
 }

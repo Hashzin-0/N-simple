@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "gemini-docs": {
+      "type": "remote",
+      "enabled": true,
+      "url": "https://gemini-api-docs-mcp.dev"
+    }
+  }
+}

@@ -31,4 +31,27 @@ export async function generateWithFallback(
   );
 }
 
+/** Consome um stream de LLM e devolve o texto completo. */
+export async function collectText(
+  stream: ReadableStream<{ text: string }>
+): Promise<string> {
+  const reader = stream.getReader();
+  let full = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    full += value.text;
+  }
+  return full;
+}
+
+/** Geração não-streaming (texto completo) com fallback de providers. */
+export async function generateTextWithFallback(
+  config: LLMProviderConfig
+): Promise<{ text: string; provider: string; model: string }> {
+  const result = await generateWithFallback(config);
+  const text = await collectText(result.stream);
+  return { text, provider: result.provider, model: result.model };
+}
+
 export type { LLMProviderConfig, LLMProviderResult, LLMStreamChunk } from './types';

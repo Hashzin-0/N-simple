@@ -7,6 +7,7 @@ export const maxDuration = 300;
 interface ResearchBody {
   tema?: string;
   subtema?: string;
+  documentContext?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -22,7 +23,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await researchQuestions(tema, subtema);
+    const result = await researchQuestions(tema, subtema, {
+      documentContext: (body.documentContext || '').trim() || undefined,
+    });
     return Response.json(result);
   } catch (error: unknown) {
     console.error('[TutorResearch] Error:', error);

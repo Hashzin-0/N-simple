@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { smoothScrollToSection, PageSection } from '@/lib/pageAutomator';
 import { ABNTReference } from '@/lib/abnt/types';
 import { useLiveSession, type ExecuteToolFn } from '@/lib/liveSession';
+import { voiceHub, type VoiceAgentRuntime } from '@/lib/voiceHub';
 
 export interface LiveAgentState {
   isConnected: boolean;
@@ -55,7 +56,8 @@ Suas capacidades:
 4. Você também pode acessar a Calculadora ITR (Imposto Territorial Rural) com parâmetros de VTN, área total, área tributável, área aproveitável e área utilizada.
 5. Você também pode acessar o Formatter de Referências ABNT com dados de tipo, autor, título, ano, editor e URL.
 6. IMPORTANTE: Sempre que você alterar um valor no simulador (usando 'setYieldGoal', 'setSoilParameters', 'setFertilizerParceling', 'setITRParameters' ou 'setABNTReference'), o site rolará automaticamente para mostrar a alteração. Logo em seguida, quando você falar sobre os resultados da dose total e parcelamento, a tela rolará para a seção de resultados.
-5. Você pode rolar a tela manualmente com 'scrollToSection' ('parametros', 'resultados', 'parcelamento', 'adubos', 'presets').
+7. Você pode rolar a tela manualmente com 'scrollToSection' ('parametros', 'resultados', 'parcelamento', 'adubos', 'presets').
+8. Quando o usuário pedir para revisar, estudar, treinar com questões, fazer um simulado, seminário, mapa mental, flashcards ou falar com o Tutor, use a ferramenta 'chamarAgente' com alvo 'tutor'. Ela abre a aba do Tutor e transfere a sessão de voz para o Tutor de Revisão. Responda com uma frase curta de despedida (ex: "Vou te chamar o Tutor!") — a partir de quem responde é ele.
 
 Fórmulas do simulador de Adubação Nitrogenada:
 - Extração Total (kg N/ha) = Produtividade (sc/ha) × Exigência (ex: 1.35 kg N/sc)
@@ -225,6 +227,28 @@ const GLOBAL_TOOLS = [
             },
           },
           required: ['section'],
+        },
+      },
+      {
+        name: 'chamarAgente',
+        description:
+          'Transfere a conversa de voz para outro agente do aplicativo (ex: Tutor de Revisão). Use quando o usuário pedir para revisar, estudar, fazer questões, simulado ou falar com o tutor. A sessão continua viva e o novo agente assume a fala.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            alvo: {
+              type: 'STRING',
+              enum: ['tutor'],
+              description: 'Agente de destino. Atualmente apenas "tutor".',
+            },
+            acao: {
+              type: 'STRING',
+              description:
+                'O que o usuário quer revisar/estudar (ex: "revisão de calagem"). Vira o contexto inicial do tutor.',
+            },
+          },
+          required: ['alvo'],
         },
       },
     ],
@@ -466,6 +490,26 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
         };
       }
 
+      case 'chamarAgente': {
+        const alvo = String(args.alvo || 'tutor');
+        if (alvo !== 'tutor') {
+          return { success: true, message: 'Você já é o agente ativo.' };
+        }
+        const acao = args.acao ? String(args.acao) : undefined;
+        setActionLabel('Transferindo para o Tutor…');
+        const res = voiceHub.callAgent('tutor', {
+          transitionText: acao
+            ? `Atenção: a sessão foi transferida de outro assistente. O aluno quer revisar: ${acao}. Cumprimente e comece essa revisão.`
+            : 'Atenção: a sessão foi transferida de outro assistente. Cumprimente o aluno e pergunte o que ele quer revisar.',
+        });
+        if (!res.ok) return { success: false, error: res.message };
+        return {
+          success: true,
+          message:
+            'Tutor de Revisão ativado. Diga uma frase curta de despedida (ex: "Vou te chamar o Tutor!") — quem responde daqui para frente é o Tutor.',
+        };
+      }
+
       default:
         return { error: `Ferramenta ${name} não reconhecida.` };
     }
@@ -481,10 +525,56 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
     lastUserTranscript: '',
   };
 
+  // ---- registro no hub de agentes de voz ----
+  const stateRef = useRef(state);
+  const lastNotifiedStateRef = useRef(state);
+  const methodsRef = useRef({
+    connect: session.connect,
+    disconnect: session.disconnect,
+    switchPersona: session.switchPersona,
+    getResumptionHandle: session.getResumptionHandle,
+    toggleMute: session.toggleMute,
+  });
+
+  useLayoutEffect(() => {
+    stateRef.current = state;
+    methodsRef.current = {
+      connect: session.connect,
+      disconnect: session.disconnect,
+      switchPersona: session.switchPersona,
+      getResumptionHandle: session.getResumptionHandle,
+      toggleMute: session.toggleMute,
+    };
+    if (lastNotifiedStateRef.current !== state) {
+      lastNotifiedStateRef.current = state;
+      voiceHub.agentStateChanged();
+    }
+  });
+
+  useEffect(() => {
+    const runtime: VoiceAgentRuntime = {
+      id: 'global',
+      getState: () => stateRef.current,
+      connect: () => methodsRef.current.connect(),
+      disconnect: () => methodsRef.current.disconnect(),
+      switchPersona: (options) =>
+        methodsRef.current.switchPersona(
+          options ? { resumeHandle: options.resumeHandle, transitionText: options.transitionText } : {}
+        ),
+      getResumptionHandle: () => methodsRef.current.getResumptionHandle(),
+      toggleMute: () => methodsRef.current.toggleMute(),
+    };
+    voiceHub.register(runtime);
+    return () => voiceHub.unregister('global');
+  }, []);
+
   return {
     state,
     connect: session.connect,
     disconnect: session.disconnect,
+    switchPersona: session.switchPersona,
+    getResumptionHandle: session.getResumptionHandle,
+    clearResumption: session.clearResumption,
     toggleMute: session.toggleMute,
     toggleConnection: session.toggleConnection,
   };

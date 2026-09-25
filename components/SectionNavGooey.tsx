@@ -28,6 +28,7 @@ import {
   GraduationCap,
   MessagesSquare,
   Library,
+  Languages,
 } from 'lucide-react';
 
 interface SectionConfig {
@@ -65,6 +66,7 @@ const ITR_SECTIONS: SectionConfig[] = [
 const ABNT_SECTIONS: SectionConfig[] = [
   { id: 'abnt_section', label: 'Referências ABNT', shortLabel: 'ABNT', icon: BookOpen, color: '#5A5A40', colorDark: '#9CB386' },
   { id: 'bibliography_autodetect', label: 'Detector Fontes', shortLabel: 'Detector', icon: ScanSearch, color: '#2E6F40', colorDark: '#86efac' },
+  { id: 'analise_morfologica', label: 'Análise Morfológica', shortLabel: 'Morfologia', icon: Languages, color: '#D4A373', colorDark: '#D4A373' },
 ];
 
 const PESQUISADOR_SECTIONS: SectionConfig[] = [
@@ -202,6 +204,7 @@ export default React.memo(function SectionNavGooey({ activeTab, activeSectionIds
           isDark={isDark}
           edgeColor={accentColor}
           cardFill={isDark ? '#151813' : '#F9F8F6'}
+          style={isMobile ? undefined : { height: 'auto' }}
           className={
             isMobile
               ? 'justify-center !gap-0 overflow-visible'

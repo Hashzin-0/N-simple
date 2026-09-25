@@ -6,6 +6,7 @@ export interface EvaluateAnswerArgs {
   gabarito?: string | null;
   explicacao?: string | null;
   contextoFontes?: string;
+  contextoDocumentos?: string;
   dificuldade?: string;
   modo?: 'sessao' | 'socratico' | 'revisar_erros' | 'rapida' | 'conversar';
   tentativa?: number;
@@ -26,6 +27,9 @@ export function buildEvaluatePrompt(args: EvaluateAnswerArgs): string {
   const contexto = args.contextoFontes?.trim()
     ? args.contextoFontes.trim()
     : 'Nenhuma fonte adicional disponível. Use seu conhecimento agronômico padrão.';
+  const materialAluno = args.contextoDocumentos?.trim()
+    ? `MATERIAL ENVIADO PELO ALUNO (PDFs/docs — use como fonte primária):\n${args.contextoDocumentos.trim()}`
+    : '';
   const dificuldade = args.dificuldade || 'desconhecida';
   const modo = args.modo || 'sessao';
   const tentativa = Math.min(Math.max(args.tentativa ?? 1, 1), 3);
@@ -64,6 +68,7 @@ ${explicacao}
 CONTEXTO CIENTÍFICO DAS FONTES PESQUISADAS:
 ${contexto}
 
+${materialAluno ? `${materialAluno}\n` : ''}
 RESPOSTA DO ALUNO (transcrição):
 "${args.respostaAluno}"
 
@@ -115,7 +120,7 @@ export interface ExtractQuestionsArgs {
   tema: string;
   subtema?: string;
   fontesContext: string;
-  origemPadrao?: 'pesquisada' | 'gerada' | 'artigo';
+  origemPadrao?: 'pesquisada' | 'gerada' | 'artigo' | 'documento';
 }
 
 /**
@@ -177,7 +182,7 @@ Retorne APENAS JSON válido:
       "tipo_prova": "string | null",
       "fonte": "string | null",
       "fonte_url": "string | null",
-      "origem": "pesquisada" | "gerada" | "artigo",
+      "origem": "pesquisada" | "gerada" | "artigo" | "documento",
       "dificuldade": "basica" | "aplicacao" | "detalhamento"
     }
   ]

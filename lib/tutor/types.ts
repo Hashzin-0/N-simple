@@ -1,6 +1,6 @@
 export type QuestionDificuldade = 'basica' | 'aplicacao' | 'detalhamento';
 
-export type QuestionOrigem = 'pesquisada' | 'gerada' | 'artigo';
+export type QuestionOrigem = 'pesquisada' | 'gerada' | 'artigo' | 'documento';
 
 export type StatusGeral = 'dominou' | 'parcial' | 'revisar';
 
@@ -140,6 +140,7 @@ export interface ResearchQuestionsResponse {
   researchedCount: number;
   generatedCount: number;
   artigoCount?: number;
+  documentoCount?: number;
   errors: string[];
   message?: string;
 }

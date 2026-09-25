@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef, useMemo, startTransition } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, startTransition, useSyncExternalStore } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { motion, AnimatePresence } from 'motion/react';
 import dynamic from 'next/dynamic';
@@ -20,6 +20,8 @@ import Input3D from '@/components/Input3D';
 import Select3D from '@/components/Select3D';
 import { CssGooeyStack } from '@/components/godui/css-gooey-stack';
 import { useGeminiLiveAgent } from '@/hooks/useGeminiLiveAgent';
+import { voiceHub } from '@/lib/voiceHub';
+import type { VoiceHUDState } from '@/components/VoiceAssistantHUD';
 import { useTheme } from '@/components/ThemeProvider';
 import { useAnimationLock } from '@/lib/useAnimationLock';
 import { computeCalculations } from '@/lib/calculations';
@@ -48,6 +50,7 @@ const SectionNavGooey = dynamic(() => import('@/components/SectionNavGooey'), { 
 const CornYieldCalculator = dynamic(() => import('@/components/CornYieldCalculator'), { ssr: false });
 const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr: false });
 const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
+const AnaliseMorfologica = dynamic(() => import('@/components/AnaliseMorfologica'), { ssr: false });
 const PesquisadorAgro = dynamic(() => import('@/components/PesquisadorAgro'), { ssr: false });
 const LibrasNoAgro = dynamic(() => import('@/components/LibrasNoAgro'), { ssr: false });
 const TutorInteligente = dynamic(() => import('@/components/TutorInteligente'), { ssr: false });
@@ -407,11 +410,14 @@ export default function Home() {
       <div className="w-full">
         <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
           <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6">
-            <AbntReferenceFormatter isConnected />
+            <div id="abnt_section" className="scroll-mt-24">
+              <AbntReferenceFormatter isConnected />
+            </div>
             <BibliografiaAutoDetectCard
               onReferenceSelected={handleReferenceSelected}
               initialUrl=""
             />
+            <AnaliseMorfologica />
           </div>
         </ScrollStack>
       </div>
@@ -463,15 +469,45 @@ export default function Home() {
     [isDark],
   );
 
-  // Troca de mic: ao entrar na tab Tutor, desconecta o agente global.
-  // O agente do Tutor desconecta sozinho ao desmontar (unmount cleanup).
-  const voiceAgentIsConnected = voiceAgent.state.isConnected;
-  const voiceAgentDisconnect = voiceAgent.disconnect;
+  // ---- Hub de agentes de voz (global ↔ tutor) ----
+  // Navegação disparada pelo hub (ex: ferramenta chamarAgente do agente de voz).
   useEffect(() => {
-    if (activeTab === 'tutor' && voiceAgentIsConnected) {
-      voiceAgentDisconnect();
-    }
-  }, [activeTab, voiceAgentIsConnected, voiceAgentDisconnect]);
+    voiceHub.setNavigator((_agentId, tab) => {
+      handleTabChange(tab as TabId);
+    });
+    return () => voiceHub.setNavigator(null);
+  }, [handleTabChange]);
+
+  // Sincroniza o agente ativo com a aba escolhida pelo usuário.
+  // Se houver sessão viva no agente anterior, faz o handoff (session resumption).
+  useEffect(() => {
+    voiceHub.syncTab(activeTab);
+  }, [activeTab]);
+
+  const hubSnapshot = useSyncExternalStore(
+    voiceHub.subscribe,
+    voiceHub.getSnapshot,
+    voiceHub.getSnapshot
+  );
+
+  // Encerra o handoff quando o agente destino conecta (ou falha).
+  useEffect(() => {
+    if (!hubSnapshot.handoff) return;
+    const st = voiceHub.getAgentState(hubSnapshot.activeAgentId);
+    if (st && (st.isConnected || st.status === 'error')) voiceHub.endHandoff();
+  }, [hubSnapshot]);
+
+  const activeRuntime = voiceHub.getAgentRuntime(hubSnapshot.activeAgentId);
+  const rawHudState: VoiceHUDState =
+    voiceHub.getAgentState(hubSnapshot.activeAgentId) ?? voiceAgent.state;
+  // Durante o handoff (troca de agente), a orb permanece viva em "conectando".
+  const hudAgentState: VoiceHUDState =
+    hubSnapshot.handoff && !rawHudState.isConnected && rawHudState.status !== 'error'
+      ? { ...rawHudState, isConnecting: true, status: 'connecting' }
+      : rawHudState;
+  const hudConnect = activeRuntime ? activeRuntime.connect : voiceAgent.connect;
+  const hudDisconnect = activeRuntime ? activeRuntime.disconnect : voiceAgent.disconnect;
+  const hudToggleMute = activeRuntime ? activeRuntime.toggleMute : voiceAgent.toggleMute;
 
   return (
     <>
@@ -515,21 +551,29 @@ export default function Home() {
               <button
                 id="btn_header_voice_agent"
                 onClick={() => {
-                  if (voiceAgent.state.isConnected) {
-                    voiceAgent.disconnect();
+                  if (hudAgentState.isConnected) {
+                    hudDisconnect();
                   } else {
-                    voiceAgent.connect();
+                    hudConnect();
                   }
                 }}
                 className={`flex-1 md:flex-none flex items-center justify-center gap-2 font-bold py-2.5 px-4 rounded-xl transition-all text-sm active:scale-95 shadow-md ${
-                  voiceAgent.state.isConnected
+                  hudAgentState.isConnected
                     ? 'bg-[#2E6F40] text-white ring-2 ring-white/50'
                     : 'bg-white dark:bg-[#2A3125] text-[#5A5A40] dark:text-[#E8E6DF] hover:bg-[#F9F8F6] dark:hover:bg-[#343D2F]'
                 }`}
-                title="Conversar por voz com Puck (Gemini Live API)"
+                title="Conversar por voz com o assistente ativo (Gemini Live API)"
               >
-                <Mic className={`h-4 w-4 ${voiceAgent.state.isConnected ? 'animate-bounce text-white' : 'text-[#5A5A40] dark:text-[#C5D9B0]'}`} />
-                <span>{voiceAgent.state.isConnected ? 'Puck Conectado' : 'Falar com Puck'}</span>
+                <Mic className={`h-4 w-4 ${hudAgentState.isConnected ? 'animate-bounce text-white' : 'text-[#5A5A40] dark:text-[#C5D9B0]'}`} />
+                <span>
+                  {hubSnapshot.activeAgentId === 'tutor'
+                    ? hudAgentState.isConnected
+                      ? 'Tutor Conectado'
+                      : 'Falar com Tutor'
+                    : hudAgentState.isConnected
+                      ? 'Puck Conectado'
+                      : 'Falar com Puck'}
+                </span>
               </button>
               <button
                 id="btn_header_accessibility"
@@ -572,7 +616,7 @@ export default function Home() {
       </header>
 
       {/* Desktop: fixed sidebar nav */}
-      <aside className="hidden lg:block fixed top-0 left-0 h-screen w-[180px] bg-[#5A5A40] dark:bg-[#1E241B] shadow-lg border-r border-[#4A4A30] dark:border-[#2D3528] p-2 z-40">
+      <aside className="hidden lg:block fixed top-0 left-0 h-screen w-[180px] bg-[#5A5A40] dark:bg-[#1E241B] shadow-lg border-r border-[#4A4A30] dark:border-[#2D3528] p-2 z-[60]">
         <SectionNavGooey activeTab={activeTab} />
       </aside>
 
@@ -1125,10 +1169,10 @@ export default function Home() {
 
         {/* GEMINI LIVE VOICE ASSISTANT HUD WITH 3D ORB */}
         <VoiceAssistantHUD
-          agentState={voiceAgent.state}
-          onConnect={voiceAgent.connect}
-          onDisconnect={voiceAgent.disconnect}
-          onToggleMute={voiceAgent.toggleMute}
+          agentState={hudAgentState}
+          onConnect={hudConnect}
+          onDisconnect={hudDisconnect}
+          onToggleMute={hudToggleMute}
         />
 
         {/* VLIBRAS WIDGET */}
