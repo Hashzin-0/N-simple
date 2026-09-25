@@ -285,6 +285,7 @@ const MultiButton = React.forwardRef<HTMLDivElement, MultiButtonProps>(
       size = "md",
       className,
       style,
+      gooey,
       ...props
     },
     ref,
@@ -301,7 +302,7 @@ const MultiButton = React.forwardRef<HTMLDivElement, MultiButtonProps>(
         ref={ref}
         data-slot="multi-button"
         role="group"
-        className={`relative inline-flex items-stretch rounded-full ${cfg.minHeight} overflow-hidden ${
+        className={`relative inline-flex items-stretch rounded-full ${cfg.minHeight} overflow-hidden gooey ${
           variant === "default"
             ? "bg-primary text-primary-foreground shadow-sm ring-1 ring-primary/20"
             : variant === "outline"

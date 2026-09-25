@@ -376,7 +376,7 @@ export default function Home() {
   const productivityContent = useMemo(
     () => (
       <div className="w-full">
-        <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
+        <ScrollStack peek={12} blur pinTop="4vh">
           <CornYieldCalculator
             isConnected
             onApplyYieldGoal={handleApplyYieldGoal}
@@ -390,7 +390,7 @@ export default function Home() {
   const itrContent = useMemo(
     () => (
       <div className="w-full">
-        <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
+        <ScrollStack peek={12} blur pinTop="4vh">
           <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328]">
             <ITRCalculator isConnected />
           </div>
@@ -408,7 +408,7 @@ export default function Home() {
   const abntContent = useMemo(
     () => (
       <div className="w-full">
-        <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
+        <ScrollStack peek={12} blur pinTop="4vh">
           <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6">
             <div id="abnt_section" className="scroll-mt-24">
               <AbntReferenceFormatter isConnected />
@@ -428,7 +428,7 @@ export default function Home() {
   const pesquisadorContent = useMemo(
     () => (
       <div className="w-full">
-        <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
+        <ScrollStack peek={12} blur pinTop="4vh">
           <PesquisadorAgro isDark={isDark} />
         </ScrollStack>
       </div>
@@ -448,7 +448,7 @@ export default function Home() {
   const redacaoContent = useMemo(
     () => (
       <div className="w-full">
-        <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
+        <ScrollStack peek={12} blur pinTop="4vh">
           <PesquisadorRedacao isDark={isDark} />
         </ScrollStack>
       </div>
@@ -459,7 +459,7 @@ export default function Home() {
   const tutorContent = useMemo(
     () => (
       <div className="w-full">
-        <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
+        <ScrollStack peek={12} blur pinTop="4vh">
           <div className="bg-white dark:bg-[#1C201A] p-4 sm:p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328]">
             <TutorInteligente isDark={isDark} />
           </div>
@@ -646,7 +646,7 @@ export default function Home() {
           onTabChange={handleTabChange}
           nitrogenContent={
             <div className="w-full">
-              <ScrollStack baseScale={0.92} peek={12} blur pinTop="4vh">
+              <ScrollStack peek={12} blur pinTop="4vh">
         {/* INPUT SECTION — scenarios + inputs in one card */}
             <div id="form_section" className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-5 transition-colors">
 

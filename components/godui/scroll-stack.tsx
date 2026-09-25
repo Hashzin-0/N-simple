@@ -5,7 +5,6 @@ import * as React from "react";
 export type ScrollStackProps = React.HTMLAttributes<HTMLDivElement> & {
   children?: React.ReactNode;
   height?: string;
-  baseScale?: number;
   peek?: number;
   blur?: boolean;
   pinTop?: string;

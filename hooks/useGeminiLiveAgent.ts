@@ -523,7 +523,7 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
   const state: LiveAgentState = {
     ...session.state,
     lastUserTranscript: '',
-  };
+  } as LiveAgentState;
 
   // ---- registro no hub de agentes de voz ----
   const stateRef = useRef(state);
@@ -545,7 +545,19 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
       getResumptionHandle: session.getResumptionHandle,
       toggleMute: session.toggleMute,
     };
-    if (lastNotifiedStateRef.current !== state) {
+    const prev = lastNotifiedStateRef.current;
+    const changed =
+      prev.isConnected !== state.isConnected ||
+      prev.isConnecting !== state.isConnecting ||
+      prev.isMuted !== state.isMuted ||
+      prev.status !== state.status ||
+      prev.errorMessage !== state.errorMessage ||
+      prev.lastUserTranscript !== state.lastUserTranscript ||
+      prev.lastAgentTranscript !== state.lastAgentTranscript ||
+      prev.currentActionLabel !== state.currentActionLabel ||
+      prev.userVolume !== state.userVolume ||
+      prev.agentVolume !== state.agentVolume;
+    if (changed) {
       lastNotifiedStateRef.current = state;
       voiceHub.agentStateChanged();
     }

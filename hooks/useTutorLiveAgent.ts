@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useLiveSession, type ExecuteToolFn } from '@/lib/liveSession';
-import { voiceHub, type VoiceAgentRuntime } from '@/lib/voiceHub';
+import { voiceHub, type VoiceAgentRuntime, type HubAgentState } from '@/lib/voiceHub';
 import type { AvaliacaoResultado, TutorModo } from '@/lib/tutor/types';
 
 export interface TutorLiveState {
@@ -503,7 +503,7 @@ export function useTutorLiveAgent(bridge: TutorLiveBridgeContext, modo?: TutorMo
   useEffect(() => {
     const runtime: VoiceAgentRuntime = {
       id: 'tutor',
-      getState: () => stateRef.current,
+      getState: () => stateRef.current as HubAgentState,
       connect: () => methodsRef.current.connect(),
       disconnect: () => methodsRef.current.disconnect(),
       switchPersona: (options) =>
