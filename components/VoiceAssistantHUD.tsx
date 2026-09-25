@@ -15,6 +15,8 @@ export interface VoiceHUDState {
   isMuted: boolean;
   status: 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error';
   errorMessage: string | null;
+  /** Rótulo livre da tool em execução (ex: "Consultando data local"). */
+  currentActionLabel: string | null;
   userVolume: number;
   agentVolume: number;
 }

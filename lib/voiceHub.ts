@@ -26,6 +26,8 @@ export interface HubAgentState {
   isMuted: boolean;
   status: 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error';
   errorMessage: string | null;
+  /** Rótulo livre da tool em execução (ex: "Consultando data local"). */
+  currentActionLabel: string | null;
   userVolume: number;
   agentVolume: number;
 }
@@ -181,13 +183,24 @@ class VoiceHub {
       this.pendingArmed = true; // aguarda register()
       return;
     }
+    const p = this.pendingSwitch;
     const st = next.getState();
     if (st.isConnected) {
+      // Sessão já viva: encerra o handoff e descarta o switch antigo
+      // (senão ele dispararia num register() futuro, trocando persona à toa).
+      this.pendingSwitch = null;
+      this.pendingArmed = false;
       this.endHandoff();
       return;
     }
-    if (st.isConnecting) return; // já subindo
-    const p = this.pendingSwitch;
+    if (st.isConnecting) {
+      // Já subindo com a própria sessão — não há o que injetar aqui.
+      // Limpa para o handoff não ficar preso para sempre em "conectando".
+      this.pendingSwitch = null;
+      this.pendingArmed = false;
+      this.endHandoff();
+      return;
+    }
     this.pendingSwitch = null;
     this.pendingArmed = false;
     next.switchPersona({
@@ -276,6 +289,12 @@ class VoiceHub {
       this.pendingSwitch = null;
       this.pendingArmed = false;
       this.update({ handoff: false });
+      // Com delayNavigation a navegação fica para o finish(); como aqui não há
+      // grace (nenhuma sessão para transferir), navega já — senão a tool
+      // responderia "agente ativado" sem trocar de aba.
+      if (options.delayNavigation) {
+        this.navigator?.(target, TAB_FOR_AGENT[target]);
+      }
     }
 
     return {

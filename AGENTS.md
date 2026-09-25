@@ -116,9 +116,9 @@ Estúdio de revisão: `components/TutorInteligente/ReviewStudio.tsx` gera simula
 
 - **Pesquisador Agro** (demoram → retornam "iniciado" e o resultado é lido depois): `pesquisarFontes` → `lerResultadosFontes`; `gerarArtigoABNT` → `copiarCitacaoABNT`.
 - **Redação** (fluxo): `pesquisarRepertorio` → `gerarRedacao` → `lerRedacao` / `validarRedacao` / `recomecarRedacao`.
-- **Libras**: `abrirSecaoLibras`, `buscarSinal`, `progressoLibras` (lê `libras_progress_v1` vs `ALL_MODULES`).
+- **Libras**: `abrirSecaoLibras`, `buscarSinal`, `progressoLibras` (lê `libras_progress_v1` vs `ALL_MODULES`). A tab Libras é dividida em **sessões empilhadas** (mesma página, âncoras `libras_search`/`librascurso`/`libras_practice`/`libras_tutor`/`libras_capture_test`, navigadas pelo `SectionNavGooey` scroll-spy) — após `setActiveTab('libras')` a voz usa `smoothScrollToSection` com delay de 400ms.
 
-Padrão de requisição pendente (aba desmonta ao trocar): a tool grava `{seq, ...}` no estado de `page.tsx` (via callbacks `onPesquisarFontes`/`onRedacaoAction`/... que também fazem `setActiveTab`) → o componente consumidor guarda o `seq` num ref e executa uma única vez → o filho reporta o resultado de volta para `page.tsx` (`*Report` state) → `SimulatorContext` → tools de leitura. Report states **não** entram como deps dos memos de conteúdo de aba (loop de render). Componentes-chave: `PesquisadorAgro/index.tsx`, `PesquisadorRedacao/index.tsx` (+ persistência estendida em `hooks/useRedacaoState.ts`), `LibrasNoAgro` (sub-aba controlada).
+Padrão de requisição pendente (aba desmonta ao trocar): a tool grava `{seq, ...}` no estado de `page.tsx` (via callbacks `onPesquisarFontes`/`onRedacaoAction`/... que também fazem `setActiveTab`) → o componente consumidor guarda o `seq` num ref e executa uma única vez → o filho reporta o resultado de volta para `page.tsx` (`*Report` state) → `SimulatorContext` → tools de leitura. Report states **não** entram como deps dos memos de conteúdo de aba (loop de render). Componentes-chave: `PesquisadorAgro/index.tsx`, `PesquisadorRedacao/index.tsx` (+ persistência estendida em `hooks/useRedacaoState.ts`), `LibrasNoAgro` (sessões empilhadas; `pendingSearch` chega sempre — guarda por `seq`).
 
 ## Architecture
 

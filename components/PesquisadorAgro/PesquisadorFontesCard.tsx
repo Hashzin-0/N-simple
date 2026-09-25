@@ -28,6 +28,15 @@ import { ScientificSource, SourceType } from './types';
 import { computeTrigonometricSimilarity } from './trigonometry';
 import { deduplicateSources } from '@/lib/scrapers/dedup';
 
+/** Progresso da busca de fontes, espelhado para o card do header da voz. */
+export interface FontesSearchProgress {
+  phase: 'searching' | 'done' | 'error';
+  /** portal → nº de fontes já retornadas por ele. */
+  counts: Record<string, number>;
+  /** Total final de fontes (só na fase 'done'). */
+  total: number;
+}
+
 interface PesquisadorFontesCardProps {
   currentTheme: string;
   onThemeChange: (newTheme: string) => void;
@@ -36,6 +45,8 @@ interface PesquisadorFontesCardProps {
   isDark: boolean;
   /** Pedido externo (voz) para disparar uma busca; seq monotônico evita re-execução. */
   pendingSearch?: { seq: number; theme: string } | null;
+  /** Espelha o progresso da busca (portal a portal) para o header da voz. */
+  onSearchProgress?: (progress: FontesSearchProgress) => void;
 }
 
 interface ScoredSource extends ScientificSource {
@@ -120,6 +131,7 @@ export default function PesquisadorFontesCard({
   onSendToAutomaticResearcher,
   onSourcesLoaded,
   pendingSearch,
+  onSearchProgress,
 }: PesquisadorFontesCardProps) {
   const [searchTerm, setSearchTerm] = usePersistedState<string>('pesq_fontes_search', '');
   const [prevTheme, setPrevTheme] = useState(currentTheme);
@@ -127,6 +139,24 @@ export default function PesquisadorFontesCard({
   const [selectedPortal, setSelectedPortal] = usePersistedState<string>('pesq_fontes_portal', 'todos');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [searchingLive, setSearchingLive] = useState(false);
+
+  // Progresso espelhado para o header da voz (ref p/ não recriar o efeito de busca)
+  const onSearchProgressRef = useRef(onSearchProgress);
+  useEffect(() => {
+    onSearchProgressRef.current = onSearchProgress;
+  }, [onSearchProgress]);
+  const fontesCountsRef = useRef<Record<string, number>>({});
+  const reportSearchProgress = useCallback(
+    (phase: FontesSearchProgress['phase'], total = 0) => {
+      onSearchProgressRef.current?.({
+        phase,
+        counts: { ...fontesCountsRef.current },
+        total,
+      });
+    },
+    []
+  );
+
   const [dynamicSources, setDynamicSources] = useState<ScientificSource[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [scraperProgress, setScraperProgress] = useState<Record<string, { status: 'pending' | 'loading' | 'complete' | 'error'; count?: number; message?: string }>>({});
@@ -327,6 +357,8 @@ export default function PesquisadorFontesCard({
     setScraperProgress({});
     setVerifiedIds(new Set());
     setVerifyProgress(null);
+    fontesCountsRef.current = {};
+    reportSearchProgress('searching');
 
     try {
       const res = await fetch('/api/gemini/pesquisador-fontes', {
@@ -368,6 +400,13 @@ export default function PesquisadorFontesCard({
                   ...prev,
                   [data.name]: { status: 'complete', count: data.count }
                 }));
+                if (typeof data.count === 'number') {
+                  fontesCountsRef.current = {
+                    ...fontesCountsRef.current,
+                    [data.name]: data.count,
+                  };
+                  reportSearchProgress('searching');
+                }
                 if (data.results && data.results.length > 0) {
                   setDynamicSources(prev => deduplicateSources([...prev, ...data.results]));
                 }
@@ -468,6 +507,7 @@ export default function PesquisadorFontesCard({
                 if (Array.isArray(data.errors) && data.errors.length > 0) {
                   console.warn('[PesquisadorFontes] erros da pesquisa:', data.errors);
                 }
+                reportSearchProgress('done', Array.isArray(data.sources) ? data.sources.length : 0);
               } else if (event === 'error') {
                 console.error('[PesquisadorFontes] erro no stream:', data?.message);
                 setScraperProgress(prev => {
@@ -475,6 +515,7 @@ export default function PesquisadorFontesCard({
                   delete next._processing;
                   return next;
                 });
+                reportSearchProgress('error');
               }
             } catch {
               // ignore parse errors
@@ -484,10 +525,11 @@ export default function PesquisadorFontesCard({
       }
     } catch (err) {
       console.warn('Live portal search error, relying on local curated sources:', err);
+      reportSearchProgress('error');
     } finally {
       setSearchingLive(false);
     }
-  }, [searchOptions]);
+  }, [searchOptions, reportSearchProgress]);
 
   // Run live search on mount and when theme changes externally
   const executeLiveSearchRef = useRef(executeLiveSearch);

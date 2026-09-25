@@ -105,6 +105,9 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
   const pendingTransitionRef = useRef<string | null>(null);
   /** true enquanto uma sessão ainda não completou o setup (evita falso "connected"). */
   const setupCompletedRef = useRef(false);
+  /** true enquanto uma tool está executando (impede o label da tool de ser
+   *  sobrescrito por "Pensando…" no meio da execução). */
+  const toolBusyRef = useRef(false);
 
   useEffect(() => {
     stateRef.current = state;
@@ -387,6 +390,9 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
             }
 
             if (msg.serverContent?.turnComplete) {
+              // Fim do turno: o label da tool expirou — sem isso ele fica
+              // "Consultando data local" eternamente enquanto o app ouve.
+              setActionLabel(null);
               if (!streamer.getIsPlaying()) {
                 setStatus('listening');
               }
@@ -395,7 +401,10 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
             const interactionStatus = msg.serverContent?.interactionStatus;
             if (interactionStatus === 'IN_PROGRESS') {
               setStatus('thinking');
-              setActionLabel(labelsNow.thinking ?? DEFAULT_LABELS.thinking);
+              // Durante a execução de uma tool, o label dela manda.
+              if (!toolBusyRef.current) {
+                setActionLabel(labelsNow.thinking ?? DEFAULT_LABELS.thinking);
+              }
             } else if (interactionStatus === 'IDLE' && !streamer.getIsPlaying()) {
               setStatus('listening');
               setActionLabel(labelsNow.listening ?? DEFAULT_LABELS.listening);
@@ -403,12 +412,31 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
 
             if (msg.toolCall?.functionCalls) {
               setStatus('thinking');
+              toolBusyRef.current = true;
               const functionResponses = [];
               for (const call of msg.toolCall.functionCalls) {
                 const { name, args, id } = call;
-                const result = await executeToolRef.current(name, args || {}, setActionLabel);
-                functionResponses.push({ response: { output: result }, id });
+                // Uma tool que lança exceção SEMPRE precisa devolver resposta:
+                // sem functionResponse o modelo fica sem retorno e inventa
+                // um "houve um erro técnico" para o usuário.
+                let output: unknown;
+                try {
+                  output = await executeToolRef.current(name, args || {}, setActionLabel);
+                } catch (toolErr) {
+                  const prefix = configRef.current.logPrefix || 'Live';
+                  console.error(`[${prefix}] Tool ${name} falhou:`, toolErr);
+                  output = {
+                    success: false,
+                    error:
+                      toolErr instanceof Error
+                        ? toolErr.message
+                        : 'Erro interno ao executar a ferramenta.',
+                  };
+                }
+                functionResponses.push({ response: { output }, id });
               }
+              toolBusyRef.current = false;
+              setActionLabel(labelsNow.thinking ?? DEFAULT_LABELS.thinking);
               ws.send(JSON.stringify({ toolResponse: { functionResponses } }));
             }
           } catch (err) {

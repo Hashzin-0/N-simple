@@ -101,12 +101,12 @@ Capacidades:
 7. Referências ABNT com 'setABNTReference' (tipo, autor, título, ano, editor, local, URL) — adiciona à lista e abre a aba ABNT.
 8. Cenários salvos: 'salvarCenario' (nome + notas opcionais), 'listarCenarios', 'carregarCenario' (por id), 'excluirCenario'. Os cenários ficam salvos neste dispositivo.
 9. Utilitários: 'redefinirCalculadora' (zera tudo — só quando pedirem explicitamente) e 'imprimirTela' (abre a impressão/PDF).
-10. Rolagem com 'scrollToSection' nas seções: 'parametros', 'resultados', 'dose_total', 'parcelamento', 'balanco', 'presets', 'produtividade', 'solo', 'eficiencia', 'fonte_nitrogenada', 'estimativa_milho', 'itr', 'abnt', 'topo'. E troca de aba com 'mudarAba' ('nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor') — se a seção estiver em outra aba, mude de aba primeiro e aguarde um instante antes de rolar.
+10. Rolagem com 'scrollToSection' nas seções: 'parametros', 'resultados', 'dose_total', 'parcelamento', 'balanco', 'presets', 'produtividade', 'solo', 'eficiencia', 'fonte_nitrogenada', 'estimativa_milho', 'itr', 'abnt', 'topo'. E troca de aba com 'mudarAba' ('nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao') — a aba do Tutor NÃO existe em 'mudarAba' (para lá é 'chamarAgente'); se a seção estiver em outra aba, mude de aba primeiro e aguarde um instante antes de rolar.
 11. Após cada alteração no simulador a tela rola automaticamente até o local afetado; quando o usuário pedir os resultados (dose total, parcelamento, balanço), role para 'resultados'/'dose_total'/'parcelamento'/'balanco'.
-12. Para revisar, estudar, treinar com questões, simulado, seminário, mapa mental, flashcards ou falar com o Tutor, use 'chamarAgente' com alvo 'tutor'. Ela abre a aba do Tutor e transfere a sessão de voz. Responda com uma frase curta de despedida (ex: "Vou te chamar o Tutor!") — de quem responde é ele.
+12. Para revisar, estudar, treinar com questões, simulado, seminário, mapa mental, flashcards ou falar com o Tutor, use 'chamarAgente' com alvo 'tutor'. Ela abre a aba do Tutor e transfere a sessão de voz. Responda com uma frase curta de despedida (ex: "Vou te chamar o Tutor!") — de quem responde é ele. Se o usuário pedir para "voltar para o agente global", "falar com o Puck" ou "mudar para o agente de voz" enquanto VOCÊ já é o agente ativo, não chame nenhuma ferramenta: responda que você já é ele e siga a conversa. Alvo 'global' só se aplica quando a chamada vem do Tutor (devolvendo a conversa).
 13. Pesquisador Agro: 'pesquisarFontes' (busca fontes sobre um tema — demora; depois leia com 'lerResultadosFontes'), 'gerarArtigoABNT' (gera artigo ABNT — demora bastante; as referências ficam prontas para 'copiarCitacaoABNT'). Sempre avise que a ação foi iniciada e que o resultado pode ser lido depois.
 14. Pesquisador de Redação: fluxo = 'pesquisarRepertorio' (tema) → 'gerarRedacao' → 'lerRedacao' (lê o texto e a validação) → 'validarRedacao' (revalida) e 'recomecarRedacao' (zera). Não pule a pesquisa de repertório: sem contexto a geração falha.
-15. Libras no Agro: 'abrirSecaoLibras' (seções: buscar, curso, praticar, tutor, camera), 'buscarSinal' (busca o vídeo do sinal de uma palavra) e 'progressoLibras' (lê o progresso do mini-curso).
+15. Libras no Agro: 'abrirSecaoLibras' (seções: buscar, curso, praticar, tutor, camera), 'buscarSinal' (busca o vídeo do sinal de uma palavra) e 'progressoLibras' (lê o progresso do mini-curso). NÃO existe um "agente Libras": Libras é uma aba — use 'mudarAba' com alvo 'libras' ou 'abrirSecaoLibras'.
 
 Fórmulas do simulador de Adubação Nitrogenada:
 - Extração Total (kg N/ha) = Produtividade (sc/ha) × Exigência (ex: 1.35 kg N/sc)
@@ -606,7 +606,7 @@ const GLOBAL_TOOLS = [
       },
       {
         name: 'abrirSecaoLibras',
-        description: 'Abre a aba Libras no Agro e seleciona a seção pedida (buscar sinais, mini-curso, praticar, tutor ou teste de câmera).',
+        description: 'Abre a aba Libras no Agro e rola até a seção pedida (buscar sinais, mini-curso, praticar, tutor ou teste de câmera).',
         behavior: 'NON_BLOCKING',
         parameters: {
           type: 'OBJECT',
@@ -649,8 +649,9 @@ const GLOBAL_TOOLS = [
           properties: {
             alvo: {
               type: 'STRING',
-              enum: ['tutor'],
-              description: 'Agente de destino. Atualmente apenas "tutor".',
+              enum: ['tutor', 'global'],
+              description:
+                'Agente de destino: "tutor" (Tutor de Revisão) ou "global" (este assistente — use quando o usuário pedir para voltar/ficar aqui).',
             },
             acao: {
               type: 'STRING',
@@ -671,6 +672,11 @@ const SECTION_TAB_MAP: Record<string, TabId | null> = {
   estimativa_milho: 'productivity',
   itr: 'itr',
   abnt: 'abnt',
+  libras_search: 'libras',
+  librascurso: 'libras',
+  libras_practice: 'libras',
+  libras_tutor: 'libras',
+  libras_capture_test: 'libras',
 };
 
 const TAB_LABELS: Record<string, string> = {
@@ -1314,7 +1320,7 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
         }
         setActionLabel(`Libras: ${secao}`);
         ctx.onAbrirLibras(sub);
-        return { success: true, secao, message: `Aba Libras no Agro aberta na seção "${secao}".` };
+        return { success: true, secao, message: `Aba Libras no Agro aberta — rolando até a seção "${secao}".` };
       }
 
       case 'buscarSinal': {
@@ -1364,6 +1370,17 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
 
       case 'chamarAgente': {
         const alvo = String(args.alvo || 'tutor');
+        if (alvo === 'global') {
+          // Pedido "para cá" (o usuário quer este assistente): garante que ele
+          // é o agente ativo e conecta caso a sessão tenha caído.
+          const self = voiceHub.callAgent('global', { connect: true });
+          if (!self.ok) return { success: false, error: self.message };
+          return {
+            success: true,
+            message:
+              'Você é o agente ativo. Nenhuma transferência foi necessária — continue a conversa normalmente.',
+          };
+        }
         if (alvo !== 'tutor') {
           return { success: true, message: 'Você já é o agente ativo.' };
         }

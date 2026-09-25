@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import { Search, BookOpen, Camera, Hand, Sparkles } from 'lucide-react';
-import { motion } from 'motion/react';
 import LibrasSearch from './LibrasSearch';
 import LibrasCourse from './LibrasCourse';
 import LibrasCaptureTest from '@/components/LibrasCaptureTest';
@@ -16,46 +15,54 @@ type SubTab = 'search' | 'course' | 'practice' | 'tutor' | 'capture-test';
 
 export type LibrasSubTab = SubTab;
 
-const SUB_TABS: { id: SubTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: 'search', label: 'Buscar Sinais', icon: Search },
-  { id: 'course', label: 'Mini-Curso', icon: BookOpen },
-  { id: 'practice', label: 'Praticar', icon: Hand },
-  { id: 'tutor', label: 'Tutor', icon: Sparkles },
-  { id: 'capture-test', label: 'Teste Câmera', icon: Camera },
+/**
+ * Sessões empilhadas na mesma página (mesmo padrão da calculadora de nitrogênio).
+ * `domId` é a âncora usada pelo SectionNavGooey (scroll-spy) e pela navegação por voz.
+ */
+const SECTIONS: {
+  id: SubTab;
+  domId: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { id: 'search', domId: 'libras_search', label: 'Buscar Sinais', icon: Search },
+  { id: 'course', domId: 'librascurso', label: 'Mini-Curso', icon: BookOpen },
+  { id: 'practice', domId: 'libras_practice', label: 'Praticar', icon: Hand },
+  { id: 'tutor', domId: 'libras_tutor', label: 'Tutor', icon: Sparkles },
+  { id: 'capture-test', domId: 'libras_capture_test', label: 'Teste Câmera', icon: Camera },
 ];
 
 interface LibrasNoAgroProps {
-  /** Sub-aba controlada pelo page.tsx (voz pode trocar em tempo real). */
-  activeSubTab?: SubTab;
-  onSubTabChange?: (tab: SubTab) => void;
   /** Pedido externo (voz) de busca de sinal; seq monotônico evita re-execução. */
   pendingSearch?: { seq: number; query: string } | null;
 }
 
-export default React.memo(function LibrasNoAgro({
-  activeSubTab: controlledSubTab,
-  onSubTabChange,
-  pendingSearch,
-}: LibrasNoAgroProps) {
+export default React.memo(function LibrasNoAgro({ pendingSearch }: LibrasNoAgroProps) {
   const { isDark } = useTheme();
-  const [internalSubTab, setInternalSubTab] = useState<SubTab>('search');
   const progress = useLibrasProgress();
 
-  const isControlled = onSubTabChange !== undefined;
-  const activeSubTab = isControlled ? controlledSubTab ?? 'search' : internalSubTab;
+  const cardClass = `p-4 sm:p-6 rounded-3xl shadow-sm border ${
+    isDark ? 'bg-[#1C201A] border-[#2C3328]' : 'bg-white border-[#E5E2D9]'
+  }`;
 
-  const handleSubTabChange = useCallback(
-    (tab: SubTab) => {
-      if (isControlled) onSubTabChange?.(tab);
-      else setInternalSubTab(tab);
-    },
-    [isControlled, onSubTabChange]
-  );
+  const headerClass = `text-lg font-bold ${
+    isDark ? 'text-[#E8E6DF]' : 'text-[#3D3D3D]'
+  }`;
 
-  // Pedido externo (voz) com busca: força a sub-aba de busca (o LibrasSearch
-  // consome pendingSearch e dispara a consulta).
-  const effectivePendingSearch =
-    pendingSearch && activeSubTab === 'search' ? pendingSearch : null;
+  const renderContent = (id: SubTab) => {
+    switch (id) {
+      case 'search':
+        return <LibrasSearch maxResults={3} pendingSearch={pendingSearch ?? null} />;
+      case 'course':
+        return <LibrasCourse progress={progress} />;
+      case 'practice':
+        return <LibrasPractice />;
+      case 'tutor':
+        return <LibrasTutor />;
+      case 'capture-test':
+        return <LibrasCaptureTest />;
+    }
+  };
 
   return (
     <div id="libras_section" className="space-y-4 p-4 sm:p-6">
@@ -81,65 +88,19 @@ export default React.memo(function LibrasNoAgro({
         <SaveProgressToggle id="libras_save_progress_toggle" />
       </div>
 
-      {/* Sub-tabs */}
-      <div className="flex justify-center">
-        <div
-          className={`inline-flex rounded-xl p-1 gap-1 ${
-            isDark ? 'bg-[#242720]' : 'bg-[#F0EDE5]'
-          }`}
-        >
-          {SUB_TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeSubTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => handleSubTabChange(tab.id)}
-                className={`relative flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  isActive
-                    ? isDark
-                      ? 'bg-[#9CB386] text-[#121511]'
-                      : 'bg-[#2E6F40] text-white'
-                    : isDark
-                    ? 'text-[#9EA399] hover:text-[#E8E6DF]'
-                    : 'text-[#8C897E] hover:text-[#3D3D3D]'
-                }`}
-              >
-                <Icon className="size-4" />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div
-        id={
-          activeSubTab === 'search'
-            ? 'libras_search'
-            : activeSubTab === 'course'
-            ? 'librascurso'
-            : activeSubTab === 'practice'
-            ? 'libras_practice'
-            : activeSubTab === 'tutor'
-            ? 'libras_tutor'
-            : 'libras_capture_test'
-        }
-        className={`p-4 sm:p-5 rounded-2xl border transition-colors ${
-          isDark
-            ? 'bg-[#1C201A] border-[#2C3328]'
-            : 'bg-white border-[#E5E2D9]'
-        }`}
-      >
-        {activeSubTab === 'search' && (
-          <LibrasSearch maxResults={3} pendingSearch={effectivePendingSearch} />
-        )}
-        {activeSubTab === 'course' && <LibrasCourse progress={progress} />}
-        {activeSubTab === 'practice' && <LibrasPractice />}
-        {activeSubTab === 'tutor' && <LibrasTutor />}
-        {activeSubTab === 'capture-test' && <LibrasCaptureTest />}
-      </div>
+      {/* Sessões empilhadas — todas montadas; o scroll-spy navega entre elas */}
+      {SECTIONS.map((section) => {
+        const Icon = section.icon;
+        return (
+          <section key={section.id} id={section.domId} className={cardClass}>
+            <div className="flex items-center gap-2 mb-4">
+              <Icon className="size-5 text-[#2E6F40] dark:text-[#9CB386]" />
+              <h3 className={headerClass}>{section.label}</h3>
+            </div>
+            {renderContent(section.id)}
+          </section>
+        );
+      })}
     </div>
   );
 });

@@ -11,10 +11,11 @@ import {
   Percent,
   Printer,
   Sprout,
-  Mic,
   ArrowRightLeft,
   Hand,
 } from 'lucide-react';
+import AgentStatusOrb from '@/components/AgentStatusOrb';
+import type { OrbState } from 'thinking-orbs';
 import LoadingSkeleton3D from '@/components/LoadingSkeleton3D';
 import Input3D from '@/components/Input3D';
 import Select3D from '@/components/Select3D';
@@ -45,8 +46,19 @@ import SavedScenariosCard from '@/components/SavedScenariosCard';
 import { SQLikeCalculationDB } from '@/lib/storage';
 import type { CornYieldFillParams, CornYieldFillRequest } from '@/components/CornYieldCalculator';
 import type { PesqSourcesReport, PesqArticleReport } from '@/components/PesquisadorAgro';
+import type { FontesSearchProgress } from '@/components/PesquisadorAgro/PesquisadorFontesCard';
 import type { RedacaoVoiceReport } from '@/components/PesquisadorRedacao';
 import type { LibrasSubTab } from '@/components/LibrasNoAgro';
+import { smoothScrollToSection } from '@/lib/pageAutomator';
+
+/** Âncoras das sessões de Libras (ids no DOM de LibrasNoAgro). */
+const LIBRAS_SECTION_IDS: Record<LibrasSubTab, string> = {
+  search: 'libras_search',
+  course: 'librascurso',
+  practice: 'libras_practice',
+  tutor: 'libras_tutor',
+  'capture-test': 'libras_capture_test',
+};
 import ProfileMenu from '@/components/auth/ProfileMenu';
 import GoogleSignInIsland from '@/components/auth/GoogleSignInIsland';
 
@@ -356,9 +368,19 @@ export default function Home() {
   const [pesqArticleReq, setPesqArticleReq] = useState<{ seq: number; theme?: string; mode?: 'padrao' | 'aprofundado' } | null>(null);
   const [pesqSourcesReport, setPesqSourcesReport] = useState<PesqSourcesReport | null>(null);
   const [pesqArticleReport, setPesqArticleReport] = useState<PesqArticleReport | null>(null);
+  // Progresso da busca de fontes (portal a portal) — alimenta o card do header.
+  const [pesqSearchProgress, setPesqSearchProgress] = useState<FontesSearchProgress | null>(null);
+  const onPesqSearchProgress = useCallback((p: FontesSearchProgress) => {
+    setPesqSearchProgress(p);
+  }, []);
+  // Fases finais ficam uns segundos no header e depois somem.
+  useEffect(() => {
+    if (pesqSearchProgress?.phase === 'searching') return;
+    const id = setTimeout(() => setPesqSearchProgress(null), 4000);
+    return () => clearTimeout(id);
+  }, [pesqSearchProgress]);
   const [redacaoReq, setRedacaoReq] = useState<{ seq: number; action: 'pesquisar' | 'gerar' | 'validar' | 'recomecar'; tema?: string } | null>(null);
   const [redacaoReport, setRedacaoReport] = useState<RedacaoVoiceReport | null>(null);
-  const [librasSubTab, setLibrasSubTab] = useState<LibrasSubTab>('search');
   const [librasSearchReq, setLibrasSearchReq] = useState<{ seq: number; query: string } | null>(null);
   const voiceReqSeqRef = useRef(0);
 
@@ -549,10 +571,12 @@ export default function Home() {
   const onRedacaoReport = useCallback((r: RedacaoVoiceReport) => setRedacaoReport(r), []);
 
   // ---- Voice callbacks: Libras no Agro ----
+  // As sessões ficam empilhadas na mesma página; a voz troca de aba e rola
+  // até a âncora (conteúdo só monta depois da troca — por isso o delay).
   const onAbrirLibras = useCallback(
     (subTab: LibrasSubTab) => {
-      setLibrasSubTab(subTab);
       setActiveTab('libras');
+      setTimeout(() => smoothScrollToSection(LIBRAS_SECTION_IDS[subTab]), 400);
     },
     [setActiveTab]
   );
@@ -561,8 +585,8 @@ export default function Home() {
     (palavra: string) => {
       voiceReqSeqRef.current += 1;
       setLibrasSearchReq({ seq: voiceReqSeqRef.current, query: palavra });
-      setLibrasSubTab('search');
       setActiveTab('libras');
+      setTimeout(() => smoothScrollToSection(LIBRAS_SECTION_IDS.search), 400);
     },
     [setActiveTab]
   );
@@ -717,24 +741,23 @@ export default function Home() {
             pendingArticle={pesqArticleReq}
             onSourcesReport={onPesqSourcesReport}
             onArticleReport={onPesqArticleReport}
+            onSearchProgress={onPesqSearchProgress}
           />
         </ScrollStack>
       </div>
     ),
-    [isDark, pesqSearchReq, pesqArticleReq, onPesqSourcesReport, onPesqArticleReport],
+    [isDark, pesqSearchReq, pesqArticleReq, onPesqSourcesReport, onPesqArticleReport, onPesqSearchProgress],
   );
 
   const librasContent = useMemo(
     () => (
       <div className="w-full">
-        <LibrasNoAgro
-          activeSubTab={librasSubTab}
-          onSubTabChange={setLibrasSubTab}
-          pendingSearch={librasSearchReq}
-        />
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <LibrasNoAgro pendingSearch={librasSearchReq} />
+        </ScrollStack>
       </div>
     ),
-    [librasSubTab, librasSearchReq],
+    [librasSearchReq]
   );
 
   const redacaoContent = useMemo(
@@ -805,6 +828,94 @@ export default function Home() {
   const hudDisconnect = activeRuntime ? activeRuntime.disconnect : voiceAgent.disconnect;
   const hudToggleMute = activeRuntime ? activeRuntime.toggleMute : voiceAgent.toggleMute;
 
+  // ---- Card do header: orb de status + rótulo vivo ----
+  const [typedTheme, setTypedTheme] = useState<string | null>(null);
+
+  // Digitação animada do tema quando a tool `pesquisarFontes` dispara uma busca.
+  // (todo setState acontece dentro de timeout — nunca síncrono no corpo do efeito)
+  useEffect(() => {
+    const theme = pesqSearchReq?.theme?.trim();
+    if (!hudAgentState.isConnected || !theme) {
+      const id = setTimeout(() => setTypedTheme(null), 0);
+      return () => clearTimeout(id);
+    }
+    const startedAt = Date.now();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = () => {
+      const chars = Math.min(
+        theme.length,
+        Math.max(0, Math.round(((Date.now() - startedAt) / 900) * theme.length))
+      );
+      setTypedTheme(theme.slice(0, chars));
+      if (chars >= theme.length) {
+        timer = setTimeout(() => setTypedTheme(null), 700);
+      } else {
+        timer = setTimeout(tick, 35);
+      }
+    };
+    timer = setTimeout(tick, 35);
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [pesqSearchReq, hudAgentState.isConnected]);
+
+  const fontesCountsText = Object.entries(pesqSearchProgress?.counts ?? {})
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name, n]) => `${name} ${n}`)
+    .join(' · ');
+
+  const activeVoiceLabel = hudAgentState.currentActionLabel?.trim() || null;
+  let orbState: OrbState;
+  let voiceLabel: string;
+  if (!hudAgentState.isConnected) {
+    orbState = 'breathing';
+    voiceLabel = hubSnapshot.activeAgentId === 'tutor' ? 'Falar com Tutor' : 'Falar com Puck';
+  } else if (typedTheme !== null) {
+    // tool "digitando" o tema no pesquisador
+    orbState = 'working';
+    voiceLabel = `digitando: …${typedTheme.slice(-24)}▍`;
+  } else if (pesqSearchProgress?.phase === 'searching') {
+    orbState = 'searching';
+    voiceLabel = `Buscando fontes${fontesCountsText ? `… ${fontesCountsText}` : '…'}`;
+  } else if (pesqSearchProgress?.phase === 'done') {
+    orbState = 'breathing';
+    voiceLabel = `${pesqSearchProgress.total} fontes encontradas${
+      fontesCountsText ? ` · ${fontesCountsText}` : ''
+    }`;
+  } else if (pesqSearchProgress?.phase === 'error') {
+    orbState = 'shaping';
+    voiceLabel = 'Falha na busca de fontes';
+  } else {
+    switch (hudAgentState.status) {
+      case 'connecting':
+        orbState = 'connecting';
+        voiceLabel = 'Conectando…';
+        break;
+      case 'listening':
+        orbState = 'listening';
+        voiceLabel = activeVoiceLabel ?? 'Ouvindo…';
+        break;
+      case 'thinking':
+        // com tool em execução o rótulo diz qual (ex: "Consultando data local")
+        orbState = activeVoiceLabel ? 'searching' : 'working';
+        voiceLabel = activeVoiceLabel ?? 'Pensando…';
+        break;
+      case 'speaking':
+        orbState = 'composing';
+        voiceLabel = activeVoiceLabel ?? 'Falando…';
+        break;
+      case 'error':
+        orbState = 'shaping';
+        voiceLabel = 'Erro de conexão';
+        break;
+      default:
+        orbState = 'breathing';
+        voiceLabel = activeVoiceLabel ?? 'Pronto';
+    }
+  }
+
   return (
     <>
       <LoadingSkeleton3D
@@ -853,22 +964,25 @@ export default function Home() {
                     hudConnect();
                   }
                 }}
-                className={`flex-1 md:flex-none flex items-center justify-center gap-2 font-bold py-2.5 px-4 rounded-xl transition-all text-sm active:scale-95 shadow-md ${
+                className={`flex-1 md:flex-none flex items-center justify-center gap-2 font-bold py-2 px-3.5 rounded-xl transition-all text-sm active:scale-95 shadow-md ${
                   hudAgentState.isConnected
                     ? 'bg-[#2E6F40] text-white ring-2 ring-white/50'
                     : 'bg-white dark:bg-[#2A3125] text-[#5A5A40] dark:text-[#E8E6DF] hover:bg-[#F9F8F6] dark:hover:bg-[#343D2F]'
                 }`}
                 title="Conversar por voz com o assistente ativo (Gemini Live API)"
               >
-                <Mic className={`h-4 w-4 ${hudAgentState.isConnected ? 'animate-bounce text-white' : 'text-[#5A5A40] dark:text-[#C5D9B0]'}`} />
-                <span>
-                  {hubSnapshot.activeAgentId === 'tutor'
-                    ? hudAgentState.isConnected
-                      ? 'Tutor Conectado'
-                      : 'Falar com Tutor'
-                    : hudAgentState.isConnected
-                      ? 'Puck Conectado'
-                      : 'Falar com Puck'}
+                <AgentStatusOrb
+                  state={orbState}
+                  size={20}
+                  theme={hudAgentState.isConnected ? 'dark' : 'auto'}
+                  className="shrink-0"
+                  ariaLabel={voiceLabel}
+                />
+                <span
+                  className="max-w-[13rem] truncate"
+                  title={voiceLabel}
+                >
+                  {voiceLabel}
                 </span>
               </button>
               <button

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import PesquisadorFontesCard from './PesquisadorFontesCard';
+import PesquisadorFontesCard, { type FontesSearchProgress } from './PesquisadorFontesCard';
 import PortaisConfiaveisSection from './PortaisConfiaveisSection';
 import PesquisadorAutomaticoSection from './PesquisadorAutomaticoSection';
 import { ScientificSource } from './types';
@@ -30,6 +30,8 @@ interface PesquisadorAgroProps {
   onSourcesReport?: (report: PesqSourcesReport) => void;
   /** Reporta o artigo ABNT gerado (para a voz ler/copiar). */
   onArticleReport?: (report: PesqArticleReport) => void;
+  /** Espelha o progresso da busca (portal a portal) para o header da voz. */
+  onSearchProgress?: (progress: FontesSearchProgress) => void;
 }
 
 export default function PesquisadorAgro({
@@ -38,6 +40,7 @@ export default function PesquisadorAgro({
   pendingArticle,
   onSourcesReport,
   onArticleReport,
+  onSearchProgress,
 }: PesquisadorAgroProps) {
   const [currentTheme, setCurrentTheme] = useState<string>('');
   const { cachedSources, saveSources } = useEvidenceMemory();
@@ -99,6 +102,7 @@ export default function PesquisadorAgro({
         onSendToAutomaticResearcher={handleSendToAutomatic}
         onSourcesLoaded={handleSourcesLoaded}
         pendingSearch={pendingSearch ?? null}
+        onSearchProgress={onSearchProgress}
         isDark={isDark}
       />
 
