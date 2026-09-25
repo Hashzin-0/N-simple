@@ -6,32 +6,50 @@ import CalculationIsland from '@/components/CalculationIsland';
 import CalculationMemoryPanel from '@/components/CalculationMemoryPanel';
 import { NumberTicker } from '@/components/godui/number-ticker';
 import { ElasticText } from '@/components/godui/elastic-text';
-
-interface PresetFertilizer {
-  id: string;
-  name: string;
-  teorN: number; // percentage
-}
-
-const PRESET_FERTILIZERS: PresetFertilizer[] = [
-  { id: 'ureia', name: 'Ureia', teorN: 45 },
-  { id: 'ureia_abpt', name: 'Ureia + ABPT', teorN: 41 },
-  { id: 'sulfato_amonio', name: 'Sulfato de Amônio', teorN: 21 },
-  { id: 'cloreto_amonio', name: 'Cloreto de Amônio', teorN: 26 },
-  { id: 'nitrato_amonio', name: 'Nitrato de Amônio', teorN: 34 },
-  { id: 'custom', name: 'Personalizado', teorN: 0 },
-];
+import { PRESET_FERTILIZERS } from '@/lib/fertilizers';
 
 interface Props {
   liquidNeed: number;
   animKey?: string | number;
+  selectedPreset?: string;
+  customTeorN?: number;
+  onChange?: (patch: { preset?: string; customTeorN?: number }) => void;
 }
 
-export default React.memo(function FonteNitrogenadaCard({ liquidNeed, animKey }: Props) {
+export default React.memo(function FonteNitrogenadaCard({
+  liquidNeed,
+  animKey,
+  selectedPreset: selectedPresetProp = 'ureia',
+  customTeorN: customTeorNProp = 45,
+  onChange,
+}: Props) {
   const { isDark } = useTheme();
   const [showCalc, setShowCalc] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState('ureia');
-  const [customTeorN, setCustomTeorN] = useState(45);
+  const [localPreset, setLocalPreset] = useState('ureia');
+  const [localTeor, setLocalTeor] = useState(45);
+
+  const controlled = onChange !== undefined;
+  const selectedPreset = controlled ? selectedPresetProp : localPreset;
+  const customTeorN = controlled ? customTeorNProp : localTeor;
+
+  const applyPreset = (id: string) => {
+    const preset = PRESET_FERTILIZERS.find((p) => p.id === id);
+    if (controlled) {
+      onChange?.({ preset: id, ...(id !== 'custom' && preset ? { customTeorN: preset.teorN } : {}) });
+    } else {
+      setLocalPreset(id);
+      if (id !== 'custom' && preset) setLocalTeor(preset.teorN);
+    }
+  };
+
+  const applyTeor = (val: number) => {
+    if (controlled) {
+      onChange?.({ customTeorN: val, ...(selectedPreset !== 'custom' ? { preset: 'custom' } : {}) });
+    } else {
+      setLocalTeor(val);
+      if (selectedPreset !== 'custom') setLocalPreset('custom');
+    }
+  };
 
   const activeTeorN = useMemo(() => {
     if (selectedPreset === 'custom') return customTeorN;
@@ -45,11 +63,7 @@ export default React.memo(function FonteNitrogenadaCard({ liquidNeed, animKey }:
   }, [liquidNeed, activeTeorN]);
 
   const handlePresetChange = (id: string) => {
-    setSelectedPreset(id);
-    if (id !== 'custom') {
-      const preset = PRESET_FERTILIZERS.find((p) => p.id === id);
-      if (preset) setCustomTeorN(preset.teorN);
-    }
+    applyPreset(id);
   };
 
   const selectedName = useMemo(() => {
@@ -122,9 +136,7 @@ export default React.memo(function FonteNitrogenadaCard({ liquidNeed, animKey }:
                 type="number"
                 value={activeTeorN}
                 onChange={(e) => {
-                  const val = Number(e.target.value);
-                  setCustomTeorN(val);
-                  if (selectedPreset !== 'custom') setSelectedPreset('custom');
+                  applyTeor(Number(e.target.value));
                 }}
                 min={1}
                 max={100}

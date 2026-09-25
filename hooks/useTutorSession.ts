@@ -103,7 +103,7 @@ export function useTutorSession() {
     const userId = progress.cloudUserId;
     try {
       const qs = userId ? `?userId=${encodeURIComponent(userId)}` : '';
-      const res = await fetch(`/api/tutor/documents/context${qs}`);
+      const res = await fetch(`/api/tutor/documents/query${qs}`);
       if (!res.ok) return '';
       const data = (await res.json()) as { context?: string };
       return data.context || '';

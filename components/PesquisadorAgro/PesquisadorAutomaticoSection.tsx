@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import {
   Sparkles,
@@ -41,6 +41,10 @@ interface PesquisadorAutomaticoSectionProps {
   existingSources?: ScientificSource[];
   existingTheme?: string;
   isDark: boolean;
+  /** Pedido externo (voz) para gerar o artigo; seq monotônico evita re-execução. */
+  pendingRun?: { seq: number; theme?: string; mode?: 'padrao' | 'aprofundado' } | null;
+  /** Reporta o artigo finalizado para a voz (ler/copiar citação). */
+  onArticleReport?: (report: { titulo: string; tema: string; resumo: string; referencias: string[] }) => void;
 }
 
 export default function PesquisadorAutomaticoSection({
@@ -48,6 +52,8 @@ export default function PesquisadorAutomaticoSection({
   onThemeChange,
   existingSources,
   existingTheme,
+  pendingRun,
+  onArticleReport,
 }: PesquisadorAutomaticoSectionProps) {
   const [themeInput, setThemeInput] = usePersistedState<string>('pesq_auto_theme', currentTheme || 'Gessagem e Subsolo: Vantagens e Desvantagens');
   const [prevTheme, setPrevTheme] = useState(currentTheme);
@@ -67,6 +73,12 @@ export default function PesquisadorAutomaticoSection({
   const [articleMode, setArticleMode] = useState<'padrao' | 'aprofundado'>('padrao');
   const printableAreaRef = useRef<HTMLDivElement>(null);
   const { saveSources } = useEvidenceMemory();
+
+  const onArticleReportRef = useRef(onArticleReport);
+  useEffect(() => {
+    onArticleReportRef.current = onArticleReport;
+  }, [onArticleReport]);
+  const latestArticleRef = useRef<ScientificArticleABNT | null>(null);
 
   const toggleTopicSources = (topicNumber: string) => {
     setCollapsedTopics((prev) => ({
@@ -141,6 +153,7 @@ export default function PesquisadorAutomaticoSection({
 
     setLoading(true);
     setReuseStats(null);
+    latestArticleRef.current = null;
 
     const isAprofundado = effectiveMode === 'aprofundado';
 
@@ -230,6 +243,7 @@ export default function PesquisadorAutomaticoSection({
               try {
                 const partial = JSON.parse(fullText);
                 if (partial && typeof partial === 'object' && partial.title) {
+                  latestArticleRef.current = partial as ScientificArticleABNT;
                   setArticle(partial as ScientificArticleABNT);
                 }
               } catch {
@@ -269,11 +283,22 @@ export default function PesquisadorAutomaticoSection({
         try {
           const finalArticle = JSON.parse(fullText) as ScientificArticleABNT;
           if (finalArticle.topicosDesenvolvimento?.length > 0) {
+            latestArticleRef.current = finalArticle;
             setArticle(finalArticle);
           }
         } catch {
           console.warn('Parse final falhou, mantendo artigo parcial do streaming');
         }
+      }
+
+      const reportable = latestArticleRef.current;
+      if (reportable?.title) {
+        onArticleReportRef.current?.({
+          titulo: reportable.title,
+          tema: themeToUse,
+          resumo: reportable.resumo || '',
+          referencias: reportable.referenciasABNT || [],
+        });
       }
 
       onThemeChange(themeToUse);
@@ -286,6 +311,21 @@ export default function PesquisadorAutomaticoSection({
       setLoadingStep('');
     }
   }, [themeInput, userLinksInput, topics, onThemeChange, existingSources, existingTheme, minSourcesPerTopic, usePreviouslySearched, articleMode, saveSources]);
+
+  // Pedido externo (voz): dispara a geração do artigo ABNT uma única vez por seq.
+  const handleRunResearchRef = useRef(handleRunResearch);
+  useEffect(() => {
+    handleRunResearchRef.current = handleRunResearch;
+  }, [handleRunResearch]);
+  const lastPendingRunSeqRef = useRef(0);
+  useEffect(() => {
+    if (!pendingRun || pendingRun.seq === lastPendingRunSeqRef.current) return;
+    lastPendingRunSeqRef.current = pendingRun.seq;
+    const theme = (pendingRun.theme || themeInput || currentTheme).trim();
+    if (!theme) return;
+    setThemeInput(theme);
+    void handleRunResearchRef.current(theme, pendingRun.mode || 'padrao');
+  }, [pendingRun, themeInput, currentTheme, setThemeInput]);
 
   const handleCopyABNT = () => {
     if (!article) return;

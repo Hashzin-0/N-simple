@@ -84,17 +84,39 @@ export function useRedacaoState() {
     tema: string;
     modo: RedacaoState['modo'];
     redacaoSecoes: RedacaoSecoes;
+    passo?: RedacaoState['passo'];
+    context?: RedacaoState['context'];
+    redacao?: string;
+    validacao?: RedacaoState['validacao'];
   }>(STORAGE_KEY, {
     tema: INITIAL_STATE.tema,
     modo: INITIAL_STATE.modo,
     redacaoSecoes: INITIAL_STATE.redacaoSecoes,
+    passo: INITIAL_STATE.passo,
+    context: INITIAL_STATE.context,
+    redacao: INITIAL_STATE.redacao,
+    validacao: INITIAL_STATE.validacao,
   });
+
+  // Restaura o fluxo salvo; estados transitórios (pesquisa/redacao sem
+  // material) são rebaixados para a etapa anterior para não travar a UI.
+  const restoredPasso = (() => {
+    const p = persisted.passo ?? 'tema';
+    if (p === 'pesquisa') return 'tema';
+    if (p === 'redacao' && !persisted.redacao) return persisted.context ? 'repertorio' : 'tema';
+    if (p === 'validacao' && !persisted.validacao) return persisted.redacao ? 'redacao' : 'tema';
+    return p;
+  })();
 
   const [state, dispatch] = useReducer(redacaoReducer, {
     ...INITIAL_STATE,
     tema: persisted.tema,
     modo: persisted.modo,
     redacaoSecoes: persisted.redacaoSecoes,
+    passo: restoredPasso,
+    context: persisted.context ?? null,
+    redacao: persisted.redacao ?? '',
+    validacao: persisted.validacao ?? null,
   });
 
   // Sincroniza mudanças de seções para localStorage com debounce
@@ -117,9 +139,13 @@ export function useRedacaoState() {
         tema: state.tema,
         modo: state.modo,
         redacaoSecoes: state.redacaoSecoes,
+        passo: state.passo,
+        context: state.context,
+        redacao: state.redacao,
+        validacao: state.validacao,
       });
     }, 300);
-  }, [state.tema, state.modo, state.redacaoSecoes, setPersisted]);
+  }, [state.tema, state.modo, state.redacaoSecoes, state.passo, state.context, state.redacao, state.validacao, setPersisted]);
 
   const setTema = useCallback((tema: string) => {
     dispatch({ type: 'SET_TEMA', payload: tema });

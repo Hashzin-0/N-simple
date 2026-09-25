@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { PenTool, RotateCcw, Wand2, Hammer } from 'lucide-react';
 import { useRedacaoState } from '@/hooks/useRedacaoState';
 import TemaInput from './TemaInput';
@@ -11,13 +11,30 @@ import RedacaoGerada from './RedacaoGerada';
 import ValidadorPanel from './ValidadorPanel';
 import ModoConstruir from './ModoConstruir';
 import ModoAutomatico from './ModoAutomatico';
-import type { RedacaoResearchContext, RedacaoEstrutura, ExpressionCategoria } from './types';
+import type { RedacaoResearchContext, RedacaoEstrutura, ExpressionCategoria, ValidacaoResult } from './types';
+
+export interface RedacaoVoiceReport {
+  tema: string;
+  redacao: string;
+  redacaoLength: number;
+  validacao: ValidacaoResult | null;
+  temContexto: boolean;
+  error?: string;
+}
 
 interface PesquisadorRedacaoProps {
   isDark?: boolean;
+  /** Pedido externo (voz); seq monotônico evita re-execução. */
+  pendingAction?: { seq: number; action: 'pesquisar' | 'gerar' | 'validar' | 'recomecar'; tema?: string } | null;
+  /** Reporta o estado atual (redação/validação) para a voz ler. */
+  onReport?: (report: RedacaoVoiceReport) => void;
 }
 
-export default function PesquisadorRedacao({ isDark }: PesquisadorRedacaoProps) {
+export default function PesquisadorRedacao({
+  isDark,
+  pendingAction,
+  onReport,
+}: PesquisadorRedacaoProps) {
   const {
     state,
     setTema,
@@ -286,6 +303,70 @@ export default function PesquisadorRedacao({ isDark }: PesquisadorRedacaoProps) 
     setSelecionadasExpressoes(new Map());
     setProgresso([]);
   }, [reset]);
+
+  // Refs para callbacks/ações (evitam recriar o efeito de pedido externo)
+  const onReportRef = useRef(onReport);
+  useEffect(() => {
+    onReportRef.current = onReport;
+  }, [onReport]);
+  const actionsRef = useRef({ handlePesquisar, handleGerarAutomatico, handleRevalidar, handleReset });
+  useEffect(() => {
+    actionsRef.current = { handlePesquisar, handleGerarAutomatico, handleRevalidar, handleReset };
+  });
+
+  // Pedido externo (voz): executa a ação uma única vez por seq.
+  const lastPendingSeqRef = useRef(0);
+  useEffect(() => {
+    if (!pendingAction || pendingAction.seq === lastPendingSeqRef.current) return;
+    lastPendingSeqRef.current = pendingAction.seq;
+    switch (pendingAction.action) {
+      case 'pesquisar': {
+        const tema = pendingAction.tema?.trim();
+        if (tema) void actionsRef.current.handlePesquisar(tema);
+        break;
+      }
+      case 'gerar':
+        if (state.context) {
+          void actionsRef.current.handleGerarAutomatico();
+        } else {
+          onReportRef.current?.({
+            tema: state.tema,
+            redacao: state.redacao,
+            redacaoLength: state.redacao.length,
+            validacao: state.validacao,
+            temContexto: false,
+            error: 'Sem contexto de pesquisa. Faça antes "pesquisarRepertorio".',
+          });
+        }
+        break;
+      case 'validar':
+        if (state.redacao && state.tema) {
+          void actionsRef.current.handleRevalidar();
+        }
+        break;
+      case 'recomecar':
+        actionsRef.current.handleReset();
+        break;
+    }
+  }, [pendingAction, state.context, state.tema, state.redacao, state.validacao]);
+
+  // Reporta o estado atual para a voz (após stream terminar / quando ocioso).
+  const lastReportedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (state.isLoading) return;
+    const key = `${state.tema}|${state.redacao.length}|${
+      state.validacao ? JSON.stringify(state.validacao.resumo) : 'v'
+    }|${state.context ? 'c' : '-'}`;
+    if (lastReportedRef.current === key) return;
+    lastReportedRef.current = key;
+    onReportRef.current?.({
+      tema: state.tema,
+      redacao: state.redacao,
+      redacaoLength: state.redacao.length,
+      validacao: state.validacao,
+      temContexto: !!state.context,
+    });
+  }, [state.isLoading, state.tema, state.redacao, state.validacao, state.context]);
 
   return (
     <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6">

@@ -5,7 +5,20 @@ import { Landmark, Info, CheckCircle2 } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import Input3D from '@/components/Input3D';
 import { cn } from '@/lib/utils';
-import { usePersistedState } from '@/hooks/usePersistedState';
+
+export interface ITRValues {
+  vtn: number;
+  areaTotal: number;
+  areaTributavel: number;
+  areaAproveitavel: number;
+  areaUtilizada: number;
+}
+
+interface ITRCalculatorProps {
+  isConnected?: boolean;
+  values: ITRValues;
+  onChange: (patch: Partial<ITRValues>) => void;
+}
 
 const ALIQUOT_TABLE = [
   { maxArea: 50,      rates: [1.00, 0.70, 0.40, 0.20, 0.03] },
@@ -40,14 +53,10 @@ function lookupAliquot(areaHa: number, gu: number): number {
   return ALIQUOT_TABLE[row].rates[col];
 }
 
-export default function ITRCalculator({ isConnected }: { isConnected?: boolean }) {
+export default function ITRCalculator({ isConnected, values, onChange }: ITRCalculatorProps) {
   const { isDark } = useTheme();
 
-  const [vtn, setVtn] = usePersistedState<number>('itr_vtn', 0);
-  const [areaTotal, setAreaTotal] = usePersistedState<number>('itr_areaTotal', 0);
-  const [areaTributavel, setAreaTributavel] = usePersistedState<number>('itr_areaTributavel', 0);
-  const [areaAproveitavel, setAreaAproveitavel] = usePersistedState<number>('itr_areaAproveitavel', 0);
-  const [areaUtilizada, setAreaUtilizada] = usePersistedState<number>('itr_areaUtilizada', 0);
+  const { vtn, areaTotal, areaTributavel, areaAproveitavel, areaUtilizada } = values;
 
   const result = useMemo(() => {
     if (areaTotal <= 0) return null;
@@ -92,7 +101,7 @@ export default function ITRCalculator({ isConnected }: { isConnected?: boolean }
       </div>
 
       {/* Input Form */}
-      <div className={cn(
+      <div id="itr_params_section" className={cn(
         `${isConnected ? 'rounded-b-2xl rounded-t-none' : 'rounded-2xl'} border p-5 space-y-4 transition-colors`,
         inputBg, borderColor
       )}>
@@ -102,7 +111,7 @@ export default function ITRCalculator({ isConnected }: { isConnected?: boolean }
             label="Valor da Terra Nua (VTN)"
             unit="R$"
             value={vtn}
-            onChange={setVtn}
+            onChange={(v) => onChange({ vtn: v })}
             min={0}
             step={1000}
           />
@@ -111,7 +120,7 @@ export default function ITRCalculator({ isConnected }: { isConnected?: boolean }
             label="Área Total"
             unit="ha"
             value={areaTotal}
-            onChange={setAreaTotal}
+            onChange={(v) => onChange({ areaTotal: v })}
             min={0}
             step={1}
           />
@@ -120,7 +129,7 @@ export default function ITRCalculator({ isConnected }: { isConnected?: boolean }
             label="Área Tributável"
             unit="ha"
             value={areaTributavel}
-            onChange={setAreaTributavel}
+            onChange={(v) => onChange({ areaTributavel: v })}
             min={0}
             step={1}
           />
@@ -129,7 +138,7 @@ export default function ITRCalculator({ isConnected }: { isConnected?: boolean }
             label="Área Aproveitável"
             unit="ha"
             value={areaAproveitavel}
-            onChange={setAreaAproveitavel}
+            onChange={(v) => onChange({ areaAproveitavel: v })}
             min={0}
             step={1}
           />
@@ -138,7 +147,7 @@ export default function ITRCalculator({ isConnected }: { isConnected?: boolean }
             label="Área Efetivamente Utilizada"
             unit="ha"
             value={areaUtilizada}
-            onChange={setAreaUtilizada}
+            onChange={(v) => onChange({ areaUtilizada: v })}
             min={0}
             step={1}
           />
@@ -156,7 +165,7 @@ export default function ITRCalculator({ isConnected }: { isConnected?: boolean }
 
       {/* Results */}
       {result && areaTotal > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-4" id="itr_results_section">
           {/* Hero Card */}
           <div className="bg-[#5A5A40] dark:bg-[#263122] rounded-2xl p-5 text-white border border-transparent dark:border-[#3D4C37] shadow-md">
             <span className="text-[10px] font-bold uppercase tracking-widest opacity-85">

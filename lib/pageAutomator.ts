@@ -16,7 +16,6 @@ export type PageSection =
   | 'fonte_nitrogenada'
   | 'parcelamento'
   | 'balanco'
-  | 'adubos'
   | 'estimativa_milho'
   | 'itr';
 
@@ -33,7 +32,6 @@ const SECTION_ELEMENT_MAP: Record<PageSection, string> = {
   fonte_nitrogenada: 'fonte_nitrogenada_section',
   parcelamento: 'parceling_section',
   balanco: 'balanco_section',
-  adubos: 'fertilizer_equivalent_section',
   estimativa_milho: 'corn_yield_calculator_section',
   itr: 'itr_section',
 };

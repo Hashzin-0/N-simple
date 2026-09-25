@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { motion } from 'motion/react';
 import { 
@@ -25,9 +25,26 @@ import { useAnimationLock } from '@/lib/useAnimationLock';
 import { SplitFlapValue } from '@/components/godui/split-flap-value';
 import type { AgronomicValidationIssue } from '@/lib/types';
 
+export interface CornYieldFillParams {
+  plantasPorMetro?: number;
+  espacamentoLinhas?: number;
+  fileiras?: number;
+  graosPorFileira?: number;
+  espigas?: number;
+  pmg?: number;
+  quebraDecimal?: number;
+}
+
+export interface CornYieldFillRequest {
+  seq: number;
+  params: CornYieldFillParams;
+  applyToNitrogen?: boolean;
+}
+
 interface CornYieldCalculatorProps {
   onApplyYieldGoal?: (scHa: number) => void;
   isConnected?: boolean;
+  fillRequest?: CornYieldFillRequest | null;
 }
 
 interface YieldPreset {
@@ -82,7 +99,7 @@ const YIELD_PRESETS: YieldPreset[] = [
   },
 ];
 
-export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: CornYieldCalculatorProps) {
+export default function CornYieldCalculator({ onApplyYieldGoal, isConnected, fillRequest }: CornYieldCalculatorProps) {
   const { isDark } = useTheme();
 
   const [plantasPorMetro, setPlantasPorMetro] = usePersistedState<number>('corn_yield_plantas', 0);
@@ -127,6 +144,11 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
   const produtividadeLiquida = useMemo(() => {
     return Number((scHaBruto * (1 - quebraDecimal)).toFixed(2));
   }, [scHaBruto, quebraDecimal]);
+
+  const produtividadeLiquidaRef = useRef(produtividadeLiquida);
+  useEffect(() => {
+    produtividadeLiquidaRef.current = produtividadeLiquida;
+  }, [produtividadeLiquida]);
 
   const quebraValor = useMemo(() => {
     return Number((scHaBruto - produtividadeLiquida).toFixed(2));
@@ -237,11 +259,46 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
     return issues;
   }, [plantasPorMetro, espacamentoLinhas, fileiras, graosPorFileira, espigas, pmg, quebraDecimal]);
 
+  const fillFields = useCallback(
+    (fieldsToFill: Array<{ name: string; value: number; delay: number }>) => {
+      // Clear any existing timers
+      fillingTimersRef.current.forEach(clearTimeout);
+      fillingTimersRef.current = [];
+
+      // Animate each field with staggered delay
+      fieldsToFill.forEach(({ name, value, delay }) => {
+        const timer = setTimeout(() => {
+          // Add field to filling state
+          setFillingFields(prev => new Set([...prev, name]));
+
+          // Set the actual value
+          switch (name) {
+            case 'plantasPorMetro': setPlantasPorMetro(value); break;
+            case 'espacamentoLinhas': setEspacamentoLinhas(value); break;
+            case 'fileiras': setFileiras(value); break;
+            case 'graosPorFileira': setGraosPorFileira(value); break;
+            case 'espigas': setEspigas(value); break;
+            case 'pmg': setPmg(value); break;
+            case 'quebraDecimal': setQuebraDecimal(value); break;
+          }
+
+          // Remove from filling state after animation completes
+          setTimeout(() => {
+            setFillingFields(prev => {
+              const next = new Set(prev);
+              next.delete(name);
+              return next;
+            });
+          }, 300);
+        }, delay);
+
+        fillingTimersRef.current.push(timer);
+      });
+    },
+    [setPlantasPorMetro, setEspacamentoLinhas, setFileiras, setGraosPorFileira, setEspigas, setPmg, setQuebraDecimal]
+  );
+
   const loadPreset = useCallback((p: YieldPreset) => {
-    // Clear any existing timers
-    fillingTimersRef.current.forEach(clearTimeout);
-    fillingTimersRef.current = [];
-    
     // Define the fields to fill with their delays (staggered animation)
     const fieldsToFill = [
       { name: 'plantasPorMetro', value: p.plantasPorMetro, delay: 0 },
@@ -257,46 +314,43 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected }: C
     setDirectMode(false);
     setActivePreset(p.id);
 
-    // Animate each field with staggered delay
-    fieldsToFill.forEach(({ name, value, delay }) => {
-      const timer = setTimeout(() => {
-        // Add field to filling state
-        setFillingFields(prev => new Set([...prev, name]));
-        
-        // Set the actual value
-        switch (name) {
-          case 'plantasPorMetro': setPlantasPorMetro(value); break;
-          case 'espacamentoLinhas': setEspacamentoLinhas(value); break;
-          case 'fileiras': setFileiras(value); break;
-          case 'graosPorFileira': setGraosPorFileira(value); break;
-          case 'espigas': setEspigas(value); break;
-          case 'pmg': setPmg(value); break;
-          case 'quebraDecimal': setQuebraDecimal(value); break;
-        }
-        
-        // Remove from filling state after animation completes
-        setTimeout(() => {
-          setFillingFields(prev => {
-            const next = new Set(prev);
-            next.delete(name);
-            return next;
-          });
-        }, 300);
-      }, delay);
-      
-      fillingTimersRef.current.push(timer);
-    });
-  }, [setDirectMode, setActivePreset, setPlantasPorMetro, setEspacamentoLinhas, setFileiras, setGraosPorFileira, setEspigas, setPmg, setQuebraDecimal]);
+    fillFields(fieldsToFill);
+  }, [fillFields, setDirectMode, setActivePreset]);
 
   const handleApplyToNitrogenCalculator = () => {
     if (onApplyYieldGoal) {
-      onApplyYieldGoal(Math.round(produtividadeLiquida));
-      setAppliedToast(`Meta de ${Math.round(produtividadeLiquida)} sc/ha aplicada no Simulador de Nitrogênio!`);
+      const liquid = Math.round(produtividadeLiquidaRef.current);
+      onApplyYieldGoal(liquid);
+      setAppliedToast(`Meta de ${liquid} sc/ha aplicada no Simulador de Nitrogênio!`);
       setTimeout(() => setAppliedToast(null), 4000);
       const el = document.getElementById('form_section');
       if (el) el.scrollIntoView({ behavior: 'smooth' });
     }
   };
+
+  // Voice-agent fill: applies partial params with the same staggered animation
+  const lastFillSeqRef = useRef(0);
+  useEffect(() => {
+    if (!fillRequest || fillRequest.seq === lastFillSeqRef.current) return;
+    lastFillSeqRef.current = fillRequest.seq;
+
+    const p = fillRequest.params;
+    const order: Array<keyof CornYieldFillParams> = [
+      'plantasPorMetro', 'espacamentoLinhas', 'fileiras', 'graosPorFileira', 'espigas', 'pmg', 'quebraDecimal',
+    ];
+    const defined = order.filter((k) => typeof p[k] === 'number' && !Number.isNaN(p[k] as number));
+
+    setDirectMode(false);
+    setActivePreset('personalizado');
+    fillFields(defined.map((k, i) => ({ name: k, value: p[k] as number, delay: i * 80 })));
+
+    if (fillRequest.applyToNitrogen) {
+      const applyDelay = (defined.length ? (defined.length - 1) * 80 : 0) + 500;
+      const timer = setTimeout(() => handleApplyToNitrogenCalculator(), applyDelay);
+      fillingTimersRef.current.push(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fillRequest]);
 
   // Helper: check if a field has issues
   const getFieldSeverity = (field: string): 'warning' | 'critical' | undefined => {

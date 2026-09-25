@@ -14,6 +14,8 @@ import SaveProgressToggle from '@/components/auth/SaveProgressToggle';
 
 type SubTab = 'search' | 'course' | 'practice' | 'tutor' | 'capture-test';
 
+export type LibrasSubTab = SubTab;
+
 const SUB_TABS: { id: SubTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'search', label: 'Buscar Sinais', icon: Search },
   { id: 'course', label: 'Mini-Curso', icon: BookOpen },
@@ -22,14 +24,38 @@ const SUB_TABS: { id: SubTab; label: string; icon: React.ComponentType<{ classNa
   { id: 'capture-test', label: 'Teste Câmera', icon: Camera },
 ];
 
-export default React.memo(function LibrasNoAgro() {
+interface LibrasNoAgroProps {
+  /** Sub-aba controlada pelo page.tsx (voz pode trocar em tempo real). */
+  activeSubTab?: SubTab;
+  onSubTabChange?: (tab: SubTab) => void;
+  /** Pedido externo (voz) de busca de sinal; seq monotônico evita re-execução. */
+  pendingSearch?: { seq: number; query: string } | null;
+}
+
+export default React.memo(function LibrasNoAgro({
+  activeSubTab: controlledSubTab,
+  onSubTabChange,
+  pendingSearch,
+}: LibrasNoAgroProps) {
   const { isDark } = useTheme();
-  const [activeSubTab, setActiveSubTab] = useState<SubTab>('search');
+  const [internalSubTab, setInternalSubTab] = useState<SubTab>('search');
   const progress = useLibrasProgress();
 
-  const handleSubTabChange = useCallback((tab: SubTab) => {
-    setActiveSubTab(tab);
-  }, []);
+  const isControlled = onSubTabChange !== undefined;
+  const activeSubTab = isControlled ? controlledSubTab ?? 'search' : internalSubTab;
+
+  const handleSubTabChange = useCallback(
+    (tab: SubTab) => {
+      if (isControlled) onSubTabChange?.(tab);
+      else setInternalSubTab(tab);
+    },
+    [isControlled, onSubTabChange]
+  );
+
+  // Pedido externo (voz) com busca: força a sub-aba de busca (o LibrasSearch
+  // consome pendingSearch e dispara a consulta).
+  const effectivePendingSearch =
+    pendingSearch && activeSubTab === 'search' ? pendingSearch : null;
 
   return (
     <div id="libras_section" className="space-y-4 p-4 sm:p-6">
@@ -106,7 +132,9 @@ export default React.memo(function LibrasNoAgro() {
             : 'bg-white border-[#E5E2D9]'
         }`}
       >
-        {activeSubTab === 'search' && <LibrasSearch maxResults={3} />}
+        {activeSubTab === 'search' && (
+          <LibrasSearch maxResults={3} pendingSearch={effectivePendingSearch} />
+        )}
         {activeSubTab === 'course' && <LibrasCourse progress={progress} />}
         {activeSubTab === 'practice' && <LibrasPractice />}
         {activeSubTab === 'tutor' && <LibrasTutor />}

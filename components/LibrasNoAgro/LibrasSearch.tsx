@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import { Search, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import LibrasVideoCard from './LibrasVideoCard';
@@ -11,12 +11,15 @@ interface LibrasSearchProps {
   initialQuery?: string;
   maxResults?: number;
   onResults?: (results: LibrasVideoResult[]) => void;
+  /** Pedido externo (voz) de busca; seq monotônico evita re-execução. */
+  pendingSearch?: { seq: number; query: string } | null;
 }
 
 export default React.memo(function LibrasSearch({
   initialQuery = '',
   maxResults = 3,
   onResults,
+  pendingSearch,
 }: LibrasSearchProps) {
   const { isDark } = useTheme();
   const [query, setQuery] = useState(initialQuery);
@@ -30,8 +33,8 @@ export default React.memo(function LibrasSearch({
   const [searched, setSearched] = useState(false);
 
   const runSearch = useCallback(
-    async (senseId?: string | null) => {
-      const trimmed = query.trim();
+    async (senseId?: string | null, queryOverride?: string) => {
+      const trimmed = (queryOverride ?? query).trim();
       if (!trimmed) return;
 
       setLoading(true);
@@ -101,6 +104,17 @@ export default React.memo(function LibrasSearch({
     },
     [handleSearch]
   );
+
+  // Pedido externo (voz): preenche o campo e dispara a busca uma única vez por seq.
+  const lastPendingSeqRef = useRef(0);
+  useEffect(() => {
+    if (!pendingSearch || pendingSearch.seq === lastPendingSeqRef.current) return;
+    lastPendingSeqRef.current = pendingSearch.seq;
+    const q = pendingSearch.query.trim();
+    if (!q) return;
+    setQuery(q);
+    void runSearch(null, q);
+  }, [pendingSearch, runSearch]);
 
   const totalVideos =
     results.length + signGroups.reduce((n, g) => n + g.results.length, 0);

@@ -110,6 +110,16 @@ Tutor tools de voz adicionais (`useTutorLiveAgent`): `lerDocumento` (POST `/api/
 
 Estúdio de revisão: `components/TutorInteligente/ReviewStudio.tsx` gera simulado/quiz/flashcards/resumo/plano/mapa mental/seminário a partir dos documentos enviados (fonte primária) ou do tema; persiste via `lib/tutor/review.ts` em `review_artifacts`/`tutor_flashcards`; SRS em `/api/tutor/flashcards` (SM-2 simplificado).
 
+### Tools globais de voz (`useGeminiLiveAgent`)
+
+34 tools declaradas em `GLOBAL_TOOLS`, todas com `behavior: 'NON_BLOCKING'`, handler em `executeTool` e menção em `GLOBAL_SYSTEM_INSTRUCTION` (sincronia obrigatória ao adicionar tool: declaração + case + instrução, nesta ordem). Além de navegação/params/cenários/fonte, cobrem:
+
+- **Pesquisador Agro** (demoram → retornam "iniciado" e o resultado é lido depois): `pesquisarFontes` → `lerResultadosFontes`; `gerarArtigoABNT` → `copiarCitacaoABNT`.
+- **Redação** (fluxo): `pesquisarRepertorio` → `gerarRedacao` → `lerRedacao` / `validarRedacao` / `recomecarRedacao`.
+- **Libras**: `abrirSecaoLibras`, `buscarSinal`, `progressoLibras` (lê `libras_progress_v1` vs `ALL_MODULES`).
+
+Padrão de requisição pendente (aba desmonta ao trocar): a tool grava `{seq, ...}` no estado de `page.tsx` (via callbacks `onPesquisarFontes`/`onRedacaoAction`/... que também fazem `setActiveTab`) → o componente consumidor guarda o `seq` num ref e executa uma única vez → o filho reporta o resultado de volta para `page.tsx` (`*Report` state) → `SimulatorContext` → tools de leitura. Report states **não** entram como deps dos memos de conteúdo de aba (loop de render). Componentes-chave: `PesquisadorAgro/index.tsx`, `PesquisadorRedacao/index.tsx` (+ persistência estendida em `hooks/useRedacaoState.ts`), `LibrasNoAgro` (sub-aba controlada).
+
 ## Architecture
 
 - **App Router**: `app/page.tsx` is the single-page calculator (client component) — orchestrates layout and passes data, no business logic or UI state in results

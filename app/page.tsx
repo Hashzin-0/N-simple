@@ -34,12 +34,19 @@ import ParcelamentoSection from '@/components/metrics/ParcelamentoSection';
 import BalancoSection from '@/components/metrics/BalancoSection';
 import DetailedMathPanel from '@/components/metrics/DetailedMathPanel';
 import { ABNTReference } from '@/lib/abnt/types';
+import { sortReferences } from '@/lib/abnt/utils';
 import { type Preset } from '@/lib/types';
 import BibliografiaAutoDetectCard from '@/components/metrics/BibliografiaAutoDetectCard';
 import GooeyTabPanel, { type TabId } from '@/components/GooeyTabPanel';
 import { ScrollStack } from '@/components/godui/scroll-stack';
 import { ElasticText } from '@/components/godui/elastic-text';
 import PresetMultiButton from '@/components/godui/preset-multi-button';
+import SavedScenariosCard from '@/components/SavedScenariosCard';
+import { SQLikeCalculationDB } from '@/lib/storage';
+import type { CornYieldFillParams, CornYieldFillRequest } from '@/components/CornYieldCalculator';
+import type { PesqSourcesReport, PesqArticleReport } from '@/components/PesquisadorAgro';
+import type { RedacaoVoiceReport } from '@/components/PesquisadorRedacao';
+import type { LibrasSubTab } from '@/components/LibrasNoAgro';
 import ProfileMenu from '@/components/auth/ProfileMenu';
 import GoogleSignInIsland from '@/components/auth/GoogleSignInIsland';
 
@@ -150,7 +157,6 @@ export default function Home() {
   // Tab state
   const [activeTab, setActiveTab] = usePersistedState<TabId>('n_calc_activeTab', 'nitrogen');
   const [saveToast, setSaveToast] = useState<string | null>(null);
-  const [bibliographyRef, setBibliographyRef] = useState<ABNTReference | null>(null);
 
   // Accessibility panel state
   const [isAccessibilityPanelOpen, setIsAccessibilityPanelOpen] = useState(false);
@@ -313,30 +319,253 @@ export default function Home() {
     if (p) handleLoadPreset(p);
   }, [handleLoadPreset]);
 
-  const onSetITRParameters = useCallback((params: Record<string, unknown>) => {
+  const onSetNRequirementPerBag = useCallback((val: number) => {
+    setNRequirementPerBag(Math.max(0, val));
+    setActivePreset('personalizado');
+  }, [setActivePreset, setNRequirementPerBag]);
+
+  const onSetSplitBase = useCallback((base: 'dose_perdas' | 'necessidade_liquida') => {
+    setSplitBase(base);
+    setActivePreset('personalizado');
+  }, [setActivePreset, setSplitBase]);
+
+  const onNavigateTab = useCallback((tab: TabId) => {
+    setActiveTab(tab);
+  }, [setActiveTab]);
+
+  // ITR calculator params (lifted so the voice agent can fill them; same localStorage keys as before)
+  const [itrVtn, setItrVtn] = usePersistedState<number>('itr_vtn', 0);
+  const [itrAreaTotal, setItrAreaTotal] = usePersistedState<number>('itr_areaTotal', 0);
+  const [itrAreaTributavel, setItrAreaTributavel] = usePersistedState<number>('itr_areaTributavel', 0);
+  const [itrAreaAproveitavel, setItrAreaAproveitavel] = usePersistedState<number>('itr_areaAproveitavel', 0);
+  const [itrAreaUtilizada, setItrAreaUtilizada] = usePersistedState<number>('itr_areaUtilizada', 0);
+
+  // ABNT reference list (lifted from AbntReferenceFormatter so voice can add references)
+  const [abntReferences, setAbntReferences] = usePersistedState<ABNTReference[]>('abnt_references_v1', []);
+
+  // Fonte nitrogenada (lifted from FonteNitrogenadaCard so voice can choose the source)
+  const [fontePreset, setFontePreset] = usePersistedState<string>('fonte_nitrogenada_preset', 'ureia');
+  const [fonteTeorN, setFonteTeorN] = usePersistedState<number>('fonte_nitrogenada_teor', 45);
+
+  // Fill request for the corn yield calculator (voice → calculator, with animation)
+  const [cornYieldFill, setCornYieldFill] = useState<CornYieldFillRequest | null>(null);
+  const cornYieldFillSeqRef = useRef(0);
+
+  // ---- Pedidos/relatórios de voz para as abas Pesquisador / Redação / Libras ----
+  const [pesqSearchReq, setPesqSearchReq] = useState<{ seq: number; theme: string } | null>(null);
+  const [pesqArticleReq, setPesqArticleReq] = useState<{ seq: number; theme?: string; mode?: 'padrao' | 'aprofundado' } | null>(null);
+  const [pesqSourcesReport, setPesqSourcesReport] = useState<PesqSourcesReport | null>(null);
+  const [pesqArticleReport, setPesqArticleReport] = useState<PesqArticleReport | null>(null);
+  const [redacaoReq, setRedacaoReq] = useState<{ seq: number; action: 'pesquisar' | 'gerar' | 'validar' | 'recomecar'; tema?: string } | null>(null);
+  const [redacaoReport, setRedacaoReport] = useState<RedacaoVoiceReport | null>(null);
+  const [librasSubTab, setLibrasSubTab] = useState<LibrasSubTab>('search');
+  const [librasSearchReq, setLibrasSearchReq] = useState<{ seq: number; query: string } | null>(null);
+  const voiceReqSeqRef = useRef(0);
+
+
+  const onSetITRParameters = useCallback((params: { vtn: number; areaTotal: number; areaTributavel?: number; areaAproveitavel?: number; areaUtilizada?: number }) => {
     setActivePreset('personalizado');
     setActiveTab('itr');
-    const el = document.getElementById('itr_section');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
-    console.log('ITR parameters received:', params);
-  }, [setActivePreset, setActiveTab]);
+    setItrVtn(params.vtn);
+    setItrAreaTotal(params.areaTotal);
+    if (params.areaTributavel !== undefined) setItrAreaTributavel(params.areaTributavel);
+    if (params.areaAproveitavel !== undefined) setItrAreaAproveitavel(params.areaAproveitavel);
+    if (params.areaUtilizada !== undefined) setItrAreaUtilizada(params.areaUtilizada);
+  }, [setActivePreset, setActiveTab, setItrAreaAproveitavel, setItrAreaTributavel, setItrAreaTotal, setItrAreaUtilizada, setItrVtn]);
 
-  const onSetABNTReference = useCallback((ref: Record<string, unknown>) => {
-    setActivePreset('personalizado');
-    setActiveTab('abnt');
-    const el = document.getElementById('abnt_section');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
-    console.log('ABNT reference received:', ref);
-  }, [setActivePreset, setActiveTab]);
+  const onITRChange = useCallback(
+    (patch: Partial<{ vtn: number; areaTotal: number; areaTributavel: number; areaAproveitavel: number; areaUtilizada: number }>) => {
+      if (patch.vtn !== undefined) setItrVtn(patch.vtn);
+      if (patch.areaTotal !== undefined) setItrAreaTotal(patch.areaTotal);
+      if (patch.areaTributavel !== undefined) setItrAreaTributavel(patch.areaTributavel);
+      if (patch.areaAproveitavel !== undefined) setItrAreaAproveitavel(patch.areaAproveitavel);
+      if (patch.areaUtilizada !== undefined) setItrAreaUtilizada(patch.areaUtilizada);
+    },
+    [setItrAreaAproveitavel, setItrAreaTributavel, setItrAreaTotal, setItrAreaUtilizada, setItrVtn]
+  );
 
-  const onSetBibliographyReference = useCallback((ref: ABNTReference) => {
-    setBibliographyRef(ref);
-    setActivePreset('personalizado');
+  const onSetABNTReference = useCallback((ref: ABNTReference) => {
+    setAbntReferences((prev) => {
+      const exists = prev.some((r) => r.id === ref.id);
+      const next = exists ? prev.map((r) => (r.id === ref.id ? ref : r)) : [...prev, ref];
+      return sortReferences(next);
+    });
     setActiveTab('abnt');
-    const el = document.getElementById('abnt_section');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
-    console.log('Bibliography reference received:', ref);
-  }, [setActivePreset, setActiveTab, setBibliographyRef]);
+  }, [setActiveTab, setAbntReferences]);
+
+  const onDeleteAbntReference = useCallback((id: string) => {
+    setAbntReferences((prev) => prev.filter((r) => r.id !== id));
+  }, [setAbntReferences]);
+
+  const onSetFonteNitrogenada = useCallback((params: { preset: string; customTeorN?: number }) => {
+    setFontePreset(params.preset);
+    if (typeof params.customTeorN === 'number') setFonteTeorN(params.customTeorN);
+  }, [setFontePreset, setFonteTeorN]);
+
+  const onSetCornYield = useCallback((params: CornYieldFillParams, applyToNitrogen?: boolean) => {
+    cornYieldFillSeqRef.current += 1;
+    setCornYieldFill({
+      seq: cornYieldFillSeqRef.current,
+      params,
+      applyToNitrogen: !!applyToNitrogen,
+    });
+  }, []);
+
+  const onSalvarCenario = useCallback(
+    (nome: string, notas?: string) => {
+      try {
+        const rec = SQLikeCalculationDB.insert({
+          name: nome,
+          ...(notas ? { notes: notas } : {}),
+          yield_goal: yieldGoal,
+          n_req_per_bag: nRequirementPerBag,
+          mos_n: mosNContribution,
+          soy_n: soyNContribution,
+          efficiency: efficiency,
+          base_dose: baseDose,
+          v4v6_percent: v4v6Percent,
+          v8v10_percent: v8v10Percent,
+          split_base: splitBase,
+          total_extraction: calculations.totalExtraction,
+          liquid_need: calculations.liquidNeed,
+          recommended_dose: calculations.recommendedDose,
+          selected_v4v6_val: calculations.v4v6_1_kg,
+          selected_v8v10_val: calculations.v8v10_1_kg,
+          sum_of_splits: calculations.sumOfSplits,
+        });
+        setSaveToast(`Cenário "${rec.name}" salvo!`);
+        setTimeout(() => setSaveToast(null), 4500);
+        return { success: true as const, id: rec.id };
+      } catch (e) {
+        return { success: false as const, error: e instanceof Error ? e.message : 'Erro ao salvar cenário.' };
+      }
+    },
+    [
+      yieldGoal,
+      nRequirementPerBag,
+      mosNContribution,
+      soyNContribution,
+      efficiency,
+      baseDose,
+      v4v6Percent,
+      v8v10Percent,
+      splitBase,
+      calculations,
+      setSaveToast,
+    ]
+  );
+
+  const onCarregarCenario = useCallback(
+    (id: string) => {
+      const rec = SQLikeCalculationDB.findById(id);
+      if (!rec) return { success: false as const, error: 'Cenário não encontrado.' };
+      startTransition(() => {
+        setYieldGoal(rec.yield_goal);
+        setNRequirementPerBag(rec.n_req_per_bag);
+        setMosNContribution(rec.mos_n);
+        setSoyNContribution(rec.soy_n);
+        setEfficiency(rec.efficiency);
+        setBaseDose(rec.base_dose);
+        setV4v6Percent(rec.v4v6_percent);
+        setV8v10Percent(rec.v8v10_percent);
+        setSplitBase(rec.split_base);
+        setBaseDoseMode('single');
+        setBaseDose2(0);
+        setV4v6Percent2(0);
+        setV8v10Percent2(0);
+        setUseDirectInput(false);
+        setLiquidNeedInput(0);
+        setEfficiencyAlreadyApplied(false);
+        setActivePreset('personalizado');
+      });
+      setActiveTab('nitrogen');
+      setSaveToast(`Cenário "${rec.name}" carregado!`);
+      setTimeout(() => setSaveToast(null), 4500);
+      return { success: true as const, name: rec.name };
+    },
+    [
+      setActivePreset,
+      setActiveTab,
+      setBaseDose,
+      setBaseDose2,
+      setBaseDoseMode,
+      setEfficiency,
+      setEfficiencyAlreadyApplied,
+      setLiquidNeedInput,
+      setMosNContribution,
+      setNRequirementPerBag,
+      setSaveToast,
+      setSoyNContribution,
+      setSplitBase,
+      setUseDirectInput,
+      setV4v6Percent,
+      setV4v6Percent2,
+      setV8v10Percent,
+      setV8v10Percent2,
+      setYieldGoal,
+    ]
+  );
+
+  // ---- Voice callbacks: Pesquisador Agro ----
+  const onPesquisarFontes = useCallback(
+    (tema: string) => {
+      voiceReqSeqRef.current += 1;
+      setPesqSearchReq({ seq: voiceReqSeqRef.current, theme: tema });
+      setActiveTab('pesquisador');
+    },
+    [setActiveTab]
+  );
+
+  const onGerarArtigo = useCallback(
+    (tema: string | undefined, mode?: 'padrao' | 'aprofundado') => {
+      voiceReqSeqRef.current += 1;
+      setPesqArticleReq({
+        seq: voiceReqSeqRef.current,
+        ...(tema ? { theme: tema } : {}),
+        mode: mode || 'padrao',
+      });
+      setActiveTab('pesquisador');
+    },
+    [setActiveTab]
+  );
+
+  const onPesqSourcesReport = useCallback((r: PesqSourcesReport) => setPesqSourcesReport(r), []);
+  const onPesqArticleReport = useCallback((r: PesqArticleReport) => setPesqArticleReport(r), []);
+
+  // ---- Voice callbacks: Pesquisador de Redação ----
+  const onRedacaoAction = useCallback(
+    (action: 'pesquisar' | 'gerar' | 'validar' | 'recomecar', tema?: string) => {
+      voiceReqSeqRef.current += 1;
+      setRedacaoReq({
+        seq: voiceReqSeqRef.current,
+        action,
+        ...(tema ? { tema } : {}),
+      });
+      setActiveTab('redacao');
+    },
+    [setActiveTab]
+  );
+
+  const onRedacaoReport = useCallback((r: RedacaoVoiceReport) => setRedacaoReport(r), []);
+
+  // ---- Voice callbacks: Libras no Agro ----
+  const onAbrirLibras = useCallback(
+    (subTab: LibrasSubTab) => {
+      setLibrasSubTab(subTab);
+      setActiveTab('libras');
+    },
+    [setActiveTab]
+  );
+
+  const onBuscarSinal = useCallback(
+    (palavra: string) => {
+      voiceReqSeqRef.current += 1;
+      setLibrasSearchReq({ seq: voiceReqSeqRef.current, query: palavra });
+      setLibrasSubTab('search');
+      setActiveTab('libras');
+    },
+    [setActiveTab]
+  );
 
   const voiceAgent = useGeminiLiveAgent({
     yieldGoal,
@@ -345,23 +574,52 @@ export default function Home() {
     soyNContribution,
     efficiency,
     baseDose,
+    baseDose2,
+    baseDoseMode,
     v4v6Percent,
+    v4v6Percent2,
     v8v10Percent,
+    v8v10Percent2,
     splitBase,
+    useDirectInput,
+    liquidNeedInput,
+    efficiencyAlreadyApplied,
+    activePreset,
+    activeTab,
     totalExtraction: calculations.totalExtraction,
     liquidNeed: calculations.liquidNeed,
     recommendedDose: calculations.recommendedDose,
     selectedV4V6Val: calculations.v4v6_1_kg,
     selectedV8V10Val: calculations.v8v10_1_kg,
     sumOfSplits: calculations.sumOfSplits,
+    targetSplitTotal: calculations.targetSplitTotal,
+    splitDiscrepancy: calculations.splitDiscrepancy,
     onSetYieldGoal,
+    onSetNRequirementPerBag,
     onSetSoilParameters,
     onSetLiquidNeed,
     onSetParceling,
+    onSetSplitBase,
     onLoadPreset,
+    onNavigateTab,
     onSetITRParameters,
     onSetABNTReference,
-    onSetBibliographyReference,
+    fontePreset,
+    fonteTeorN,
+    onSetFonteNitrogenada,
+    onSetCornYield,
+    onSalvarCenario,
+    onCarregarCenario,
+    onRedefinir: handleReset,
+    pesqSourcesReport,
+    pesqArticleReport,
+    redacaoReq,
+    redacaoReport,
+    onPesquisarFontes,
+    onGerarArtigo,
+    onRedacaoAction,
+    onAbrirLibras,
+    onBuscarSinal,
   });
 
   // Memoized tab contents to avoid unneeded re-renders when nitrogen parameters update
@@ -380,30 +638,49 @@ export default function Home() {
           <CornYieldCalculator
             isConnected
             onApplyYieldGoal={handleApplyYieldGoal}
+            fillRequest={cornYieldFill}
           />
         </ScrollStack>
       </div>
     ),
-    [handleApplyYieldGoal],
+    [handleApplyYieldGoal, cornYieldFill],
   );
 
   const itrContent = useMemo(
     () => (
-      <div className="w-full">
+      <div className="w-full" id="itr_section">
         <ScrollStack peek={12} blur pinTop="4vh">
           <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328]">
-            <ITRCalculator isConnected />
+            <ITRCalculator
+              isConnected
+              values={{
+                vtn: itrVtn,
+                areaTotal: itrAreaTotal,
+                areaTributavel: itrAreaTributavel,
+                areaAproveitavel: itrAreaAproveitavel,
+                areaUtilizada: itrAreaUtilizada,
+              }}
+              onChange={onITRChange}
+            />
           </div>
         </ScrollStack>
       </div>
     ),
-    [],
+    [
+      itrVtn,
+      itrAreaTotal,
+      itrAreaTributavel,
+      itrAreaAproveitavel,
+      itrAreaUtilizada,
+      onITRChange,
+    ]
   );
 
   const handleReferenceSelected = useCallback((ref: ABNTReference) => {
-    setBibliographyRef(ref);
-    setActiveTab("abnt");
-  }, [setActiveTab, setBibliographyRef]);
+    onSetABNTReference(ref);
+    setSaveToast(`Referência "${ref.title}" adicionada à lista ABNT!`);
+    setTimeout(() => setSaveToast(null), 4500);
+  }, [onSetABNTReference]);
 
   const abntContent = useMemo(
     () => (
@@ -411,7 +688,12 @@ export default function Home() {
         <ScrollStack peek={12} blur pinTop="4vh">
           <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6">
             <div id="abnt_section" className="scroll-mt-24">
-              <AbntReferenceFormatter isConnected />
+              <AbntReferenceFormatter
+                isConnected
+                references={abntReferences}
+                onSaveReference={onSetABNTReference}
+                onDeleteReference={onDeleteAbntReference}
+              />
             </div>
             <BibliografiaAutoDetectCard
               onReferenceSelected={handleReferenceSelected}
@@ -422,38 +704,52 @@ export default function Home() {
         </ScrollStack>
       </div>
     ),
-    [handleReferenceSelected],
+    [abntReferences, onSetABNTReference, onDeleteAbntReference, handleReferenceSelected]
   );
 
   const pesquisadorContent = useMemo(
     () => (
       <div className="w-full">
         <ScrollStack peek={12} blur pinTop="4vh">
-          <PesquisadorAgro isDark={isDark} />
+          <PesquisadorAgro
+            isDark={isDark}
+            pendingSearch={pesqSearchReq}
+            pendingArticle={pesqArticleReq}
+            onSourcesReport={onPesqSourcesReport}
+            onArticleReport={onPesqArticleReport}
+          />
         </ScrollStack>
       </div>
     ),
-    [isDark],
+    [isDark, pesqSearchReq, pesqArticleReq, onPesqSourcesReport, onPesqArticleReport],
   );
 
   const librasContent = useMemo(
     () => (
       <div className="w-full">
-        <LibrasNoAgro />
+        <LibrasNoAgro
+          activeSubTab={librasSubTab}
+          onSubTabChange={setLibrasSubTab}
+          pendingSearch={librasSearchReq}
+        />
       </div>
     ),
-    [],
+    [librasSubTab, librasSearchReq],
   );
 
   const redacaoContent = useMemo(
     () => (
       <div className="w-full">
         <ScrollStack peek={12} blur pinTop="4vh">
-          <PesquisadorRedacao isDark={isDark} />
+          <PesquisadorRedacao
+            isDark={isDark}
+            pendingAction={redacaoReq}
+            onReport={onRedacaoReport}
+          />
         </ScrollStack>
       </div>
     ),
-    [isDark],
+    [isDark, redacaoReq, onRedacaoReport],
   );
 
   const tutorContent = useMemo(
@@ -673,6 +969,9 @@ export default function Home() {
                 onPresetClick={handleLoadPreset}
                 isDark={isDark}
               />
+
+              {/* Saved scenarios (voice + button save/load) */}
+              <SavedScenariosCard onLoad={onCarregarCenario} />
 
               <div className="border-b border-[#F0EDE5] dark:border-[#2C3328] pb-4">
                 <h2 className="text-lg font-bold text-[#5A5A40] dark:text-[#E8E6DF] flex items-center gap-2">
@@ -1111,12 +1410,19 @@ export default function Home() {
                     liquidNeed={calculations.liquidNeed}
                     efficiency={useDirectInput && efficiencyAlreadyApplied ? 100 : efficiency}
                     efficiencyAlreadyApplied={useDirectInput && efficiencyAlreadyApplied}
+                    onSaveClick={() => onSalvarCenario(`Cenário ${yieldGoal} sc/ha`)}
                   />
                 </div>
               )}
               <div id="fonte_nitrogenada_section" className="col-span-2 sm:col-span-3">
                 <FonteNitrogenadaCard
                   liquidNeed={calculations.liquidNeed}
+                  selectedPreset={fontePreset}
+                  customTeorN={fonteTeorN}
+                  onChange={(patch) => {
+                    if (patch.preset !== undefined) setFontePreset(patch.preset);
+                    if (patch.customTeorN !== undefined) setFonteTeorN(patch.customTeorN);
+                  }}
                 />
               </div>
             </div>

@@ -34,6 +34,8 @@ interface PesquisadorFontesCardProps {
   onSendToAutomaticResearcher: (theme: string) => void;
   onSourcesLoaded?: (sources: ScientificSource[]) => void;
   isDark: boolean;
+  /** Pedido externo (voz) para disparar uma busca; seq monotônico evita re-execução. */
+  pendingSearch?: { seq: number; theme: string } | null;
 }
 
 interface ScoredSource extends ScientificSource {
@@ -117,6 +119,7 @@ export default function PesquisadorFontesCard({
   onThemeChange,
   onSendToAutomaticResearcher,
   onSourcesLoaded,
+  pendingSearch,
 }: PesquisadorFontesCardProps) {
   const [searchTerm, setSearchTerm] = usePersistedState<string>('pesq_fontes_search', '');
   const [prevTheme, setPrevTheme] = useState(currentTheme);
@@ -496,6 +499,23 @@ export default function PesquisadorFontesCard({
       executeLiveSearchRef.current(currentTheme);
     }
   }, [currentTheme]);
+
+  // Pedido externo (voz): dispara busca por um tema específico.
+  // Se o tema difere do atual, delega ao efeito de currentTheme acima;
+  // se for o mesmo tema (repetição), dispara direto.
+  const lastPendingSearchSeqRef = useRef(0);
+  useEffect(() => {
+    if (!pendingSearch || pendingSearch.seq === lastPendingSearchSeqRef.current) return;
+    lastPendingSearchSeqRef.current = pendingSearch.seq;
+    const theme = pendingSearch.theme.trim();
+    if (!theme) return;
+    setSearchTerm(theme);
+    if (theme === currentTheme) {
+      executeLiveSearchRef.current(theme);
+    } else {
+      onThemeChange(theme);
+    }
+  }, [pendingSearch, currentTheme, onThemeChange, setSearchTerm]);
 
   // Run live search when theme changes externally or on submit
   const handleSearchSubmit = (e: React.FormEvent) => {

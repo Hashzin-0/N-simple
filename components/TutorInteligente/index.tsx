@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   GraduationCap,
@@ -70,6 +70,24 @@ export default function TutorInteligente(props: TutorInteligenteProps) {
   const isSocratic = activeModo === 'socratico' && state.modo === 'socratico';
   const isConversar = activeModo === 'conversar' && state.status === 'conversando';
 
+  const sessionRef = useRef(session);
+  useEffect(() => {
+    sessionRef.current = session;
+  });
+
+  const selectModo = useCallback(
+    (m: TutorModo) => {
+      setModo(m);
+      try {
+        localStorage.setItem('n_calc_tutor_modo', m);
+      } catch {
+        // ignore
+      }
+      if (m === 'revisar_erros') session.ensureErrorQueueCount();
+    },
+    [session]
+  );
+
   const liveBridge = useMemo<TutorLiveBridgeContext>(
     () => ({
       startSession: async (tema, subtema) => {
@@ -95,24 +113,160 @@ export default function TutorInteligente(props: TutorInteligenteProps) {
       getTema: () =>
         state.tema ? [state.tema.tema, state.tema.subtema].filter(Boolean).join(' — ') : null,
       getUserId: () => user?.id ?? null,
+      setModo: (m) => selectModo(m),
+      pularQuestao: async () => {
+        setLastFeedback(null);
+        setPistaManual(null);
+        const av = await session.forceRecordCurrent();
+        if (av) setLastFeedback(av);
+        if (!av) {
+          return {
+            success: false,
+            message:
+              'Nada a registrar: a questão atual ainda não foi avaliada. Use advance para seguir direto.',
+          };
+        }
+        return {
+          success: true,
+          avaliacao: av,
+          message: `Questão registrada como pulada (${av.statusGeral}). ${av.feedbackOral || ''}`.trim(),
+        };
+      },
+      tentarNovamente: () => {
+        const s = sessionRef.current;
+        if (s.state.modo !== 'socratico' || !s.state.currentQuestion) {
+          return {
+            success: false,
+            message: 'Repetição disponível apenas no modo socrático com uma questão ativa.',
+          };
+        }
+        setLastFeedback(null);
+        setPistaManual(null);
+        s.retryAttempt();
+        return { success: true, message: 'Mesma questão de volta para o aluno tentar de novo.' };
+      },
+      novaSessao: () => {
+        setLastFeedback(null);
+        setPistaManual(null);
+        sessionRef.current.reset();
+        return {
+          success: true,
+          message:
+            'Sessão zerada. Pergunte qual tema estudar e inicie com startTutorSession quando ele escolher.',
+        };
+      },
+      getFilaErros: async () => {
+        let pendentes = sessionRef.current.errorQueueCount;
+        if (pendentes <= 0) {
+          sessionRef.current.ensureErrorQueueCount();
+          for (let i = 0; i < 6 && pendentes <= 0; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            pendentes = sessionRef.current.errorQueueCount;
+          }
+        }
+        return pendentes > 0
+          ? {
+              success: true,
+              pendentes,
+              message: `${pendentes} questão(ões) ainda não resolvida(s) na fila de erros. Ofereça o modo revisar_erros.`,
+            }
+          : {
+              success: true,
+              pendentes: 0,
+              message: 'Nenhuma questão na fila de erros — nada pendente para revisar.',
+            };
+      },
+      getResumo: () => {
+        const s = sessionRef.current.summary;
+        const resumo = {
+          tema: s.topic,
+          modo: s.modo,
+          respondidas: s.answered,
+          meta: s.meta,
+          percent: s.percent,
+          consolidados: s.consolidados,
+          parciais: s.parciais,
+          revisar: s.revisar,
+          filaErros: s.errorQueueCount,
+        };
+        return {
+          success: true,
+          resumo,
+          message:
+            s.answered === 0
+              ? 'Nenhuma questão respondida ainda nesta sessão.'
+              : `Sessão ${s.answered}/${s.meta} (${s.percent}%): ${s.consolidados} consolidada(s), ${s.parciais} parcial(is), ${s.revisar} para revisar${s.topic ? ` — ${s.topic}` : ''}.`,
+        };
+      },
+      getProgresso: async () => {
+        try {
+          const uid = user?.id;
+          const qs = uid ? `?userId=${encodeURIComponent(uid)}` : '';
+          const res = await fetch(`/api/tutor/progress${qs}`);
+          const data = (await res.json().catch(() => ({}))) as {
+            entries?: unknown[];
+            error?: string;
+          };
+          if (!res.ok) {
+            const error = data.error || 'Falha ao buscar o progresso.';
+            return {
+              success: false,
+              message: uid ? error : 'Faça login para ver o progresso salvo na nuvem.',
+              error,
+            };
+          }
+          const entries = data.entries ?? [];
+          return {
+            success: true,
+            entries,
+            message:
+              entries.length === 0
+                ? 'Nenhum progresso salvo ainda — responda questões para começar.'
+                : `${entries.length} tópico(s) com progresso salvo. Narre os principais pontos fortes e fracos, sem listar tudo.`,
+          };
+        } catch {
+          return {
+            success: false,
+            message: 'Falha de rede ao buscar o progresso.',
+            error: 'Falha de rede ao buscar o progresso.',
+          };
+        }
+      },
+      getDocumentos: async () => {
+        try {
+          const uid = user?.id;
+          const qs = uid ? `?userId=${encodeURIComponent(uid)}` : '';
+          const res = await fetch(`/api/tutor/documents${qs}`);
+          const data = (await res.json().catch(() => ({}))) as {
+            documents?: Array<{ id: string; name: string }>;
+            error?: string;
+          };
+          if (!res.ok) {
+            const error = data.error || 'Falha ao listar os documentos.';
+            return { success: false, message: error, error };
+          }
+          const documentos = (data.documents ?? []).map((d) => ({ id: d.id, name: d.name }));
+          return {
+            success: true,
+            documentos,
+            message:
+              documentos.length === 0
+                ? 'Nenhum material enviado até agora.'
+                : `${documentos.length} material(is) enviado(s): ${documentos.map((d) => d.name).join(', ')}.`,
+          };
+        } catch {
+          return {
+            success: false,
+            message: 'Falha de rede ao listar os documentos.',
+            error: 'Falha de rede ao listar os documentos.',
+          };
+        }
+      },
     }),
-    [session, modo, state.tema, user?.id]
+    [session, modo, state.tema, user, selectModo]
   );
 
   const tutorAgent = useTutorLiveAgent(liveBridge, state.modo || modo);
-
-  const selectModo = useCallback(
-    (m: TutorModo) => {
-      setModo(m);
-      try {
-        localStorage.setItem('n_calc_tutor_modo', m);
-      } catch {
-        // ignore
-      }
-      if (m === 'revisar_erros') session.ensureErrorQueueCount();
-    },
-    [session]
-  );
 
   const handleStart = useCallback(
     (tema: SessionTema) => {

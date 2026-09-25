@@ -6,59 +6,40 @@ import { BookOpen, Copy, Check, Search } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import { ABNTReference, ReferenceType } from '@/lib/abnt/types';
 import { REFERENCE_TYPES } from '@/lib/abnt/constants';
-import { formatReference, sortReferences, generateId, copyToClipboard } from '@/lib/abnt/utils';
+import { formatReference, copyToClipboard } from '@/lib/abnt/utils';
 import ReferenceTypeSelector from './ReferenceTypeSelector';
 import ReferenceForm from './ReferenceForm';
 import ReferenceList from './ReferenceList';
 import { cn } from '@/lib/utils';
 
-const STORAGE_KEY = 'abnt_references_v1';
-
-function loadReferences(): ABNTReference[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+interface AbntReferenceFormatterProps {
+  isConnected?: boolean;
+  references: ABNTReference[];
+  onSaveReference: (ref: ABNTReference) => void;
+  onDeleteReference: (id: string) => void;
 }
 
-function saveReferences(refs: ABNTReference[]): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(refs));
-}
-
-export default function AbntReferenceFormatter({ isConnected }: { isConnected?: boolean }) {
+export default function AbntReferenceFormatter({
+  isConnected,
+  references,
+  onSaveReference,
+  onDeleteReference,
+}: AbntReferenceFormatterProps) {
   const { isDark } = useTheme();
-  const [references, setReferences] = useState<ABNTReference[]>(() => loadReferences());
   const [selectedType, setSelectedType] = useState<ReferenceType | null>(null);
   const [editingRef, setEditingRef] = useState<ABNTReference | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const handleSave = useCallback((ref: ABNTReference) => {
-    setReferences(prev => {
-      const exists = prev.find(r => r.id === ref.id);
-      const next = exists
-        ? prev.map(r => r.id === ref.id ? ref : r)
-        : [...prev, ref];
-      saveReferences(next);
-      return sortReferences(next);
-    });
+    onSaveReference(ref);
     setSelectedType(null);
     setEditingRef(null);
-  }, []);
+  }, [onSaveReference]);
 
   const handleDelete = useCallback((id: string) => {
-    setReferences(prev => {
-      const next = prev.filter(r => r.id !== id);
-      saveReferences(next);
-      return next;
-    });
-  }, []);
+    onDeleteReference(id);
+  }, [onDeleteReference]);
 
   const handleEdit = useCallback((ref: ABNTReference) => {
     setSelectedType(ref.type);
