@@ -36,14 +36,61 @@ const SECTION_ELEMENT_MAP: Record<PageSection, string> = {
   itr: 'itr_section',
 };
 
+/** Id do DOM de uma seção (alias legado → id real; id do nav → ele mesmo). */
+export function resolveSectionElementId(section: PageSection | string): string {
+  return SECTION_ELEMENT_MAP[section as PageSection] || section;
+}
+
+/** true se a seção é um alias legado válido (PageSection). */
+export function isPageSection(section: string): boolean {
+  return section in SECTION_ELEMENT_MAP;
+}
+
 // Global active highlight tracker
 let currentHighlightedElement: HTMLElement | null = null;
 let currentHighlightTimeout: NodeJS.Timeout | null = null;
 
+/**
+ * Espera o elemento existir no DOM (usado após troca de aba — o conteúdo
+ * da aba destino só monta depois do re-render). Polling leve por rAF com
+ * fallback de timer; sem delay fixo: rola no primeiro frame em que a
+ * seção aparece.
+ */
+export function waitForElement(elementId: string, timeoutMs = 2000): Promise<HTMLElement | null> {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  const existing = document.getElementById(elementId);
+  if (existing) return Promise.resolve(existing);
+
+  return new Promise((resolve) => {
+    const start = performance.now();
+    let rafId = 0;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+
+    const finish = (el: HTMLElement | null) => {
+      if (rafId) cancelAnimationFrame(rafId);
+      if (timerId) clearTimeout(timerId);
+      resolve(el);
+    };
+
+    const tick = () => {
+      const el = document.getElementById(elementId);
+      if (el) return finish(el);
+      if (performance.now() - start >= timeoutMs) return finish(null);
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    // Fallback caso o browser pause rAF (aba em background).
+    timerId = setTimeout(() => {
+      finish(document.getElementById(elementId));
+    }, timeoutMs + 50);
+  });
+}
+
 export function smoothScrollToSection(section: PageSection | string, label?: string): boolean {
   if (typeof window === 'undefined') return false;
 
-  const elementId = SECTION_ELEMENT_MAP[section as PageSection] || section;
+  const elementId = resolveSectionElementId(section);
   let targetEl = document.getElementById(elementId);
 
   // Fallbacks if specific element ID is not found

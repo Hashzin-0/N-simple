@@ -35,9 +35,17 @@ const SECTIONS: {
 interface LibrasNoAgroProps {
   /** Pedido externo (voz) de busca de sinal; seq monotônico evita re-execução. */
   pendingSearch?: { seq: number; query: string } | null;
+  /** Pedido externo (voz) de prática de um sinal (DTW/câmera). */
+  pendingPractice?: { seq: number; templateId?: string } | null;
+  /** Pedido externo (voz) de quiz do mini-curso. */
+  pendingQuiz?: { seq: number; moduleId?: string } | null;
 }
 
-export default React.memo(function LibrasNoAgro({ pendingSearch }: LibrasNoAgroProps) {
+export default React.memo(function LibrasNoAgro({
+  pendingSearch,
+  pendingPractice,
+  pendingQuiz,
+}: LibrasNoAgroProps) {
   const { isDark } = useTheme();
   const progress = useLibrasProgress();
 
@@ -54,9 +62,9 @@ export default React.memo(function LibrasNoAgro({ pendingSearch }: LibrasNoAgroP
       case 'search':
         return <LibrasSearch maxResults={3} pendingSearch={pendingSearch ?? null} />;
       case 'course':
-        return <LibrasCourse progress={progress} />;
+        return <LibrasCourse progress={progress} pendingQuiz={pendingQuiz ?? null} />;
       case 'practice':
-        return <LibrasPractice />;
+        return <LibrasPractice pendingTemplate={pendingPractice ?? null} />;
       case 'tutor':
         return <LibrasTutor />;
       case 'capture-test':

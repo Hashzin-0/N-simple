@@ -1,7 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import { smoothScrollToSection, PageSection } from '@/lib/pageAutomator';
+import {
+  smoothScrollToSection,
+  waitForElement,
+  resolveSectionElementId,
+  isPageSection,
+} from '@/lib/pageAutomator';
+import {
+  describeSections,
+  resolveSection,
+  tabForSection,
+} from '@/lib/sectionNav';
 import type { ABNTReference, ReferenceType } from '@/lib/abnt/types';
 import { REFERENCE_TYPES } from '@/lib/abnt/constants';
 import { parseAuthorString } from '@/lib/abnt/parsers/author';
@@ -10,11 +20,18 @@ import { voiceHub, type VoiceAgentRuntime } from '@/lib/voiceHub';
 import type { TabId } from '@/components/GooeyTabPanel';
 import type { CornYieldFillParams } from '@/components/CornYieldCalculator';
 import type { PesqSourcesReport, PesqArticleReport } from '@/components/PesquisadorAgro';
+import type { FontesSearchProgress } from '@/components/PesquisadorAgro/PesquisadorFontesCard';
 import type { RedacaoVoiceReport } from '@/components/PesquisadorRedacao';
 import type { LibrasSubTab } from '@/components/LibrasNoAgro';
 import { PRESET_FERTILIZERS, resolveFertilizerId } from '@/lib/fertilizers';
 import { SQLikeCalculationDB, type CalculationRecord } from '@/lib/storage';
-import { ALL_MODULES } from '@/lib/libras-course-data';
+import { ALL_MODULES, MODULO_VOCABULARIO, MODULO_FRASES, AREAS } from '@/lib/libras-course-data';
+import { loadTemplates } from '@/lib/libras-templates';
+import type { Frase } from '@/lib/analiseMorfologica/types';
+import { gerarFraseLocal } from '@/lib/analiseMorfologica/gerarLocal';
+import { useTheme } from '@/components/ThemeProvider';
+import { toggleWidgetSetting, toggleRecognitionSetting } from '@/hooks/useLibrasSettings';
+import { applyNoiseGateToolArgs } from '@/lib/noiseGate';
 
 export interface LiveAgentState {
   isConnected: boolean;
@@ -85,6 +102,14 @@ export interface SimulatorContext {
   // Libras no Agro
   onAbrirLibras: (subTab: LibrasSubTab) => void;
   onBuscarSinal: (palavra: string) => void;
+  onIniciarPraticaLibras: (templateId?: string) => void;
+  onIniciarQuizLibras: (moduleId?: string) => void;
+  // Análise morfológica (aba ABNT) — recebe a frase já sorteada.
+  onGerarFraseMorfologica: (frase: Frase) => void;
+  // Pesquisador Agro — último progresso da busca (não expira)
+  pesqSearchSnapshot: FontesSearchProgress | null;
+  // Acessibilidade
+  onAbrirAcessibilidade: () => void;
 }
 
 const GLOBAL_SYSTEM_INSTRUCTION = `Você é o Engenheiro Agrônomo e Especialista em Nutrição de Milho Assistente por Voz do aplicativo 'Agronômica N-Pro'.
@@ -101,12 +126,21 @@ Capacidades:
 7. Referências ABNT com 'setABNTReference' (tipo, autor, título, ano, editor, local, URL) — adiciona à lista e abre a aba ABNT.
 8. Cenários salvos: 'salvarCenario' (nome + notas opcionais), 'listarCenarios', 'carregarCenario' (por id), 'excluirCenario'. Os cenários ficam salvos neste dispositivo.
 9. Utilitários: 'redefinirCalculadora' (zera tudo — só quando pedirem explicitamente) e 'imprimirTela' (abre a impressão/PDF).
-10. Rolagem com 'scrollToSection' nas seções: 'parametros', 'resultados', 'dose_total', 'parcelamento', 'balanco', 'presets', 'produtividade', 'solo', 'eficiencia', 'fonte_nitrogenada', 'estimativa_milho', 'itr', 'abnt', 'topo'. E troca de aba com 'mudarAba' ('nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao') — a aba do Tutor NÃO existe em 'mudarAba' (para lá é 'chamarAgente'); se a seção estiver em outra aba, mude de aba primeiro e aguarde um instante antes de rolar.
+10. Rolagem com 'scrollToSection' para QUALQUER seção do app: aceita o id do menu de navegação (SectionNavGooey) de qualquer aba — Adubação: 'preset_selector' (Cenários), 'form_section' (Parâmetros), 'results_section' (Resultados), 'parceling_section' (Parcelamento), 'balanco_section' (Balanço), 'detailed_math_panel' (Fórmulas); Produtividade: 'corn_yield_header', 'corn_yield_params', 'corn_yield_visual', 'corn_yield_results'; ITR: 'itr_section', 'itr_params_section', 'itr_results_section'; ABNT: 'abnt_section', 'bibliography_autodetect', 'analise_morfologica'; Pesquisador: 'pesquisador_fontes', 'pesquisador_portais', 'pesquisador_automatico'; Libras: 'libras_search', 'librascurso', 'libras_practice', 'libras_tutor', 'libras_capture_test'; Redação: 'redacao_tema', 'redacao_repertorio', 'redacao_expressoes', 'redacao_estrutura', 'redacao_resultado'; Tutor: 'tutor_tema', 'tutor_session', 'tutor_research', 'tutor_progress'. Também aceita os aliases legados: 'parametros', 'resultados', 'dose_total', 'parcelamento', 'balanco', 'presets', 'produtividade', 'solo', 'eficiencia', 'fonte_nitrogenada', 'estimativa_milho', 'itr', 'abnt', 'topo'. A tool troca de aba sozinha quando preciso — não chame 'mudarAba' antes de rolar. Se a seção for da aba do Tutor, a sessão é transferida automaticamente para o Tutor junto com o comando de rolagem: responda só com uma frase curta de despedida (ex: "Vou te chamar o Tutor!"). Troca manual de aba continua com 'mudarAba' ('nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao') — a aba do Tutor NÃO existe em 'mudarAba' (para lá é 'chamarAgente').
 11. Após cada alteração no simulador a tela rola automaticamente até o local afetado; quando o usuário pedir os resultados (dose total, parcelamento, balanço), role para 'resultados'/'dose_total'/'parcelamento'/'balanco'.
 12. Para revisar, estudar, treinar com questões, simulado, seminário, mapa mental, flashcards ou falar com o Tutor, use 'chamarAgente' com alvo 'tutor'. Ela abre a aba do Tutor e transfere a sessão de voz. Responda com uma frase curta de despedida (ex: "Vou te chamar o Tutor!") — de quem responde é ele. Se o usuário pedir para "voltar para o agente global", "falar com o Puck" ou "mudar para o agente de voz" enquanto VOCÊ já é o agente ativo, não chame nenhuma ferramenta: responda que você já é ele e siga a conversa. Alvo 'global' só se aplica quando a chamada vem do Tutor (devolvendo a conversa).
 13. Pesquisador Agro: 'pesquisarFontes' (busca fontes sobre um tema — demora; depois leia com 'lerResultadosFontes'), 'gerarArtigoABNT' (gera artigo ABNT — demora bastante; as referências ficam prontas para 'copiarCitacaoABNT'). Sempre avise que a ação foi iniciada e que o resultado pode ser lido depois.
 14. Pesquisador de Redação: fluxo = 'pesquisarRepertorio' (tema) → 'gerarRedacao' → 'lerRedacao' (lê o texto e a validação) → 'validarRedacao' (revalida) e 'recomecarRedacao' (zera). Não pule a pesquisa de repertório: sem contexto a geração falha.
 15. Libras no Agro: 'abrirSecaoLibras' (seções: buscar, curso, praticar, tutor, camera), 'buscarSinal' (busca o vídeo do sinal de uma palavra) e 'progressoLibras' (lê o progresso do mini-curso). NÃO existe um "agente Libras": Libras é uma aba — use 'mudarAba' com alvo 'libras' ou 'abrirSecaoLibras'.
+16. Prática e quiz de Libras: 'iniciarPraticaLibras' (sinal opcional, ex: "milho" — abre a prática e pede PERMISSÃO de câmera; sem sinal lista os sinais disponíveis) e 'iniciarQuizLibras' (módulo opcional: "vocabulario_basico", "frases_campo" ou um módulo de área; sem módulo inicia o vocabulário básico). Aviso sempre que abrir prática: a câmera será solicitada.
+17. Análise morfológica (aba ABNT): 'gerarFraseMorfologica' (sorteia uma frase nova, abre a aba ABNT e devolve o TEXTO da frase) e 'lerProgressoAnalise' (acertos, erros, frases resolvidas e sequências). Ao ditar a frase NUNCA revele as classes gramaticais — o aluno que classifica na tela.
+18. Clima da lavoura: 'consultarPrevisaoTempo' (parâmetro local = cidade, ex: "Lavras"; opcional dias de 1 a 7). Sem cidade usa a geolocalização do aparelho (se negada, peça a cidade). Devolve temperatura, chuva e probabilidade de precipitação.
+19. Memória de evidências: 'consultarMemoriaEvidencias' (tema) — consulta as fontes científicas já pesquisadas/indexadas e diz se há material para reuso. Pode demorar alguns segundos; use para "o que já temos sobre X?".
+20. Pesquisador Agro extras: 'lerProgressoPesquisa' (fase atual, portais e total da última busca) e 'copiarArtigo' (copia o artigo ABNT completo para a área de transferência e devolve um trecho).
+21. Redação extras: 'copiarRedacao' (copia o texto para a área de transferência) e 'baixarRedacao' (baixa um arquivo .txt com a redação).
+22. Interface: 'alternarTema' (alterna claro/escuro), 'abrirAcessibilidade' (abre o painel de acessibilidade Libras), 'alternarWidgetLibras' e 'alternarReconhecimentoLibras' (ligam/desligam o widget VLibras e o reconhecimento de sinais).
+23. Sessão: 'listarCapacidades' (lista tudo o que você sabe fazer — use quando perguntarem "o que você faz?"), 'iniciarRevisao' (transfere para o Tutor já com tema/formato), 'encerrarConversa' (se despede e encerra a sessão de voz em seguida) e 'alternarMudo' (liga/desliga o seu microfone).
+24. Supressor de ruído do microfone: 'setSupressorRuido' — modo 'automatico' (PADRÃO: sozinho detecta o ruído de fundo como trânsito, escola ou parque, se ajusta para ouvir só quem está perto do microfone ~30 cm), 'manual' (para de ajustar sozinho e fixa a distância em distancia_cm, ex: 30) e 'desligado' (microfone capta tudo normalmente). Use quando pedirem para ativar/desativar o supressor, "modo próximo", parar o ajuste automático (fixando a distância) ou mudar a distância de corte.
 
 Fórmulas do simulador de Adubação Nitrogenada:
 - Extração Total (kg N/ha) = Produtividade (sc/ha) × Exigência (ex: 1.35 kg N/sc)
@@ -126,7 +160,12 @@ Fórmulas da Calculadora de Estimativa de Produtividade de Milho:
 Regras gerais:
 - Responda de forma concisa e direta: é conversa falada em tempo real.
 - Nunca invente valores: leia com 'getCurrentSimulatorState' antes de afirmar resultados.
-- Ferramentas longas não existem aqui; alterações são imediatas.`;
+- Ferramentas longas não existem aqui; alterações são imediatas.
+- As respostas das ferramentas chegam de forma assíncrona: só afirme que uma ação
+  funcionou (ou falhou) DEPOIS de receber a resposta da ferramenta e ler o campo
+  'success' dela. Nunca diga "houve um erro técnico" ou "não consegui fazer" sem
+  ter recebido uma resposta com 'success: false' — se você não recebeu resposta
+  ainda, espere um instante e informe o resultado real.`;
 
 const GLOBAL_TOOLS = [
   {
@@ -269,15 +308,15 @@ const GLOBAL_TOOLS = [
       },
       {
         name: 'scrollToSection',
-        description: 'Rola suavemente a tela até uma seção específica para o usuário visualizar.',
+        description:
+          'Rola suavemente a tela até uma seção do aplicativo (ids do menu de navegação lateral/topo de qualquer aba ou aliases legados). Troca de aba automaticamente quando a seção está em outra aba; se a seção for da aba do Tutor, transfere a sessão para o Tutor com o comando de rolagem.',
         behavior: 'NON_BLOCKING',
         parameters: {
           type: 'OBJECT',
           properties: {
             section: {
               type: 'STRING',
-              description:
-                'Seção de destino: "parametros", "resultados", "dose_total", "parcelamento", "balanco", "presets", "produtividade", "solo", "eficiencia", "fonte_nitrogenada", "estimativa_milho", "itr", "abnt", "topo"',
+              description: `Seção de destino. Ids do menu de navegação — ${describeSections()}. Aliases legados: "parametros", "resultados", "dose_total", "parcelamento", "balanco", "presets", "produtividade", "solo", "eficiencia", "fonte_nitrogenada", "estimativa_milho", "itr", "abnt", "topo".`,
             },
             label: {
               type: 'STRING',
@@ -640,6 +679,165 @@ const GLOBAL_TOOLS = [
         parameters: { type: 'OBJECT', properties: {} },
       },
       {
+        name: 'listarCapacidades',
+        description:
+          'Lista tudo o que este assistente de voz sabe fazer, organizado por categoria (simulador, clima, pesquisa, redação, Libras, acessibilidade, sessão). Use quando perguntarem o que você faz.',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'consultarPrevisaoTempo',
+        description:
+          'Consulta a previsão do tempo (temperatura, chuva e probabilidade de precipitação) de uma cidade ou da localização atual do aparelho.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            local: {
+              type: 'STRING',
+              description: 'Cidade (ex: "Lavras", "Campinas"). Se omitido, usa a geolocalização do aparelho.',
+            },
+            dias: { type: 'NUMBER', description: 'Dias de previsão, de 1 a 7 (padrão 5).' },
+          },
+        },
+      },
+      {
+        name: 'consultarMemoriaEvidencias',
+        description:
+          'Consulta a memória de evidências científicas do app: diz se já existem fontes pesquisadas sobre um tema (reuso) e quais são. Pode demorar alguns segundos.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            tema: { type: 'STRING', description: 'Tema a consultar (ex: "gessagem do solo")' },
+          },
+          required: ['tema'],
+        },
+      },
+      {
+        name: 'gerarFraseMorfologica',
+        description:
+          'Sorteia uma frase nova para o exercício de análise morfológica (aba ABNT), abre a seção na tela e devolve o TEXTO da frase para você ditar. Não devolve as classes (respostas).',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'lerProgressoAnalise',
+        description:
+          'Lê o placar da análise morfológica: acertos, erros, frases resolvidas, sequência atual e melhor sequência.',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'iniciarPraticaLibras',
+        description:
+          'Abre a prática de sinais em Libras (DTW com câmera) e, quando informado, seleciona o sinal. Sem sinal, lista os sinais disponíveis. A câmera será solicitada ao usuário.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            sinal: {
+              type: 'STRING',
+              description: 'Sinal a praticar (ex: "milho", "gado", "trator"). Omitir para abrir a lista.',
+            },
+          },
+        },
+      },
+      {
+        name: 'iniciarQuizLibras',
+        description: 'Inicia o quiz do mini-curso de Libras no módulo pedido (padrão: vocabulário básico).',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            modulo: {
+              type: 'STRING',
+              description:
+                'Módulo: "vocabulario_basico", "frases_campo" ou módulo de área (ex: "area_agricultura"). Omitir = vocabulário básico.',
+            },
+          },
+        },
+      },
+      {
+        name: 'lerProgressoPesquisa',
+        description:
+          'Lê o andamento da última busca do Pesquisador Agro: fase atual, portais que já retornaram fontes e total de fontes.',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'copiarArtigo',
+        description:
+          'Copia o artigo científico ABNT completo (último gerado) para a área de transferência e devolve um trecho inicial.',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'copiarRedacao',
+        description: 'Copia a redação gerada para a área de transferência e devolve um trecho inicial.',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'baixarRedacao',
+        description: 'Baixa a redação gerada como arquivo .txt no aparelho do usuário.',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'alternarTema',
+        description: 'Alterna o tema do aplicativo entre claro e escuro.',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'abrirAcessibilidade',
+        description: 'Abre o painel de Acessibilidade Libras (reconhecimento de sinais e configurações do widget).',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'alternarWidgetLibras',
+        description: 'Liga ou desliga o widget VLibras (intérprete) exibido na tela.',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'alternarReconhecimentoLibras',
+        description: 'Liga ou desliga o reconhecimento de sinais em Libras.',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'iniciarRevisao',
+        description:
+          'Transfere a conversa para o Tutor de Revisão já informando o tema e/ou o formato desejado (ex: simulado, questões, flashcards).',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            tema: { type: 'STRING', description: 'O que o usuário quer revisar (ex: "calagem do solo")' },
+            formato: {
+              type: 'STRING',
+              description: 'Formato desejado (ex: "simulado", "questões", "flashcards", "resumo", "seminário")',
+            },
+          },
+        },
+      },
+      {
+        name: 'encerrarConversa',
+        description:
+          'Encerra a sessão de voz: você se despede e a conexão é fechada automaticamente em seguida.',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
+        name: 'alternarMudo',
+        description: 'Liga ou desliga o mudo do microfone da conversa.',
+        behavior: 'NON_BLOCKING',
+        parameters: { type: 'OBJECT', properties: {} },
+      },
+      {
         name: 'chamarAgente',
         description:
           'Transfere a conversa de voz para outro agente do aplicativo (ex: Tutor de Revisão). Use quando o usuário pedir para revisar, estudar, fazer questões, simulado ou falar com o tutor. A sessão continua viva e o novo agente assume a fala.',
@@ -662,22 +860,32 @@ const GLOBAL_TOOLS = [
           required: ['alvo'],
         },
       },
+      {
+        name: 'setSupressorRuido',
+        description:
+          'Ativa, desativa ou fixa o supressor de ruído do microfone (modo próximo). No modo automático o áudio se ajusta sozinho ao ruído de fundo (trânsito, escola, parque) e só deixa passar quem está perto (~30 cm); no manual para de ajustar e fixa a distância; desligado captura tudo normalmente.',
+        behavior: 'NON_BLOCKING',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            modo: {
+              type: 'STRING',
+              enum: ['automatico', 'manual', 'desligado'],
+              description:
+                '"automatico" = ajuste automático ao ruído de fundo (padrão); "manual" = para de ajustar e usa a distância fixa; "desligado" = sem supressão.',
+            },
+            distancia_cm: {
+              type: 'NUMBER',
+              description:
+                'Distância de corte em cm (5 a 120, padrão 30). Usada no modo manual e como referência do automático. Se omitida, mantém a distância atual.',
+            },
+          },
+          required: ['modo'],
+        },
+      },
     ],
   },
 ];
-
-/** Mapa seção → aba que a contém (seções não listadas ficam na aba nitrogen). */
-const SECTION_TAB_MAP: Record<string, TabId | null> = {
-  topo: null,
-  estimativa_milho: 'productivity',
-  itr: 'itr',
-  abnt: 'abnt',
-  libras_search: 'libras',
-  librascurso: 'libras',
-  libras_practice: 'libras',
-  libras_tutor: 'libras',
-  libras_capture_test: 'libras',
-};
 
 const TAB_LABELS: Record<string, string> = {
   nitrogen: 'Adubação Nitrogenada',
@@ -688,6 +896,192 @@ const TAB_LABELS: Record<string, string> = {
   libras: 'Libras no Agro',
   redacao: 'Pesquisador de Redação',
 };
+
+/**
+ * Categorias devolvidas por `listarCapacidades` — mantenha em sincronia com
+ * GLOBAL_TOOLS (declaração) e GLOBAL_SYSTEM_INSTRUCTION (descrição de uso).
+ */
+const CAPACIDADES: { categoria: string; descricao: string; tools: string[] }[] = [
+  {
+    categoria: 'Simulador de adubação nitrogenada',
+    descricao: 'Ler o estado, ajustar meta, solo, eficiência, parcelamento e fonte, cenários salvos, presets, imprimir e zerar.',
+    tools: [
+      'getCurrentSimulatorState',
+      'setYieldGoal',
+      'setSoilParameters',
+      'setFertilizerParceling',
+      'setNPorSaca',
+      'setNecessidadeLiquida',
+      'setSplitBase',
+      'setFonteNitrogenada',
+      'loadAgronomicPreset',
+      'salvarCenario',
+      'listarCenarios',
+      'carregarCenario',
+      'excluirCenario',
+      'redefinirCalculadora',
+      'imprimirTela',
+    ],
+  },
+  {
+    categoria: 'Navegação',
+    descricao: 'Trocar de aba e rolar até qualquer seção do aplicativo.',
+    tools: ['mudarAba', 'scrollToSection'],
+  },
+  {
+    categoria: 'Produtividade de milho e ITR',
+    descricao: 'Estimativa de produtividade (estande, grãos, PMG, quebra) e cálculo do ITR.',
+    tools: ['calculateCornYield', 'setITRParameters'],
+  },
+  {
+    categoria: 'Referências ABNT',
+    descricao: 'Adicionar referências bibliográficas e copiar as citações do artigo.',
+    tools: ['setABNTReference', 'copiarCitacaoABNT'],
+  },
+  {
+    categoria: 'Pesquisador Agro',
+    descricao: 'Buscar fontes científicas, acompanhar o progresso, gerar e copiar o artigo ABNT, consultar a memória de evidências.',
+    tools: [
+      'pesquisarFontes',
+      'lerResultadosFontes',
+      'lerProgressoPesquisa',
+      'gerarArtigoABNT',
+      'copiarArtigo',
+      'consultarMemoriaEvidencias',
+    ],
+  },
+  {
+    categoria: 'Redação ENEM',
+    descricao: 'Pesquisar repertório, gerar, ler, validar, reiniciar, copiar e baixar a redação.',
+    tools: [
+      'pesquisarRepertorio',
+      'gerarRedacao',
+      'lerRedacao',
+      'validarRedacao',
+      'recomecarRedacao',
+      'copiarRedacao',
+      'baixarRedacao',
+    ],
+  },
+  {
+    categoria: 'Libras no Agro',
+    descricao: 'Buscar sinais, mini-curso, progresso, prática com câmera (DTW) e quiz por módulo.',
+    tools: [
+      'abrirSecaoLibras',
+      'buscarSinal',
+      'progressoLibras',
+      'iniciarPraticaLibras',
+      'iniciarQuizLibras',
+    ],
+  },
+  {
+    categoria: 'Análise morfológica',
+    descricao: 'Sortear frases para classificar palavras nas 9 classes gramaticais e ler o placar.',
+    tools: ['gerarFraseMorfologica', 'lerProgressoAnalise'],
+  },
+  {
+    categoria: 'Acessibilidade e interface',
+    descricao: 'Tema claro/escuro, painel de acessibilidade Libras, widget VLibras e reconhecimento de sinais.',
+    tools: ['alternarTema', 'abrirAcessibilidade', 'alternarWidgetLibras', 'alternarReconhecimentoLibras'],
+  },
+  {
+    categoria: 'Clima e data',
+    descricao: 'Previsão do tempo por cidade ou localização atual e data/hora local.',
+    tools: ['consultarPrevisaoTempo', 'getUserLocalDateTime'],
+  },
+  {
+    categoria: 'Sessão de voz',
+    descricao:
+      'Transferir para o Tutor, encerrar a conversa, mudo do microfone, supressor de ruído (modo próximo) e listar capacidades.',
+    tools: [
+      'chamarAgente',
+      'iniciarRevisao',
+      'encerrarConversa',
+      'alternarMudo',
+      'setSupressorRuido',
+      'listarCapacidades',
+    ],
+  },
+];
+
+/** Códigos WMO do Open-Meteo → descrição em pt-BR. */
+const WEATHER_CODES_PT: Record<number, string> = {
+  0: 'céu limpo',
+  1: 'predominantemente limpo',
+  2: 'parcialmente nublado',
+  3: 'encoberto',
+  45: 'nevoeiro',
+  48: 'nevoeiro com geada',
+  51: 'garoa fraca',
+  53: 'garoa',
+  55: 'garoa forte',
+  56: 'garoa congelante fraca',
+  57: 'garoa congelante',
+  61: 'chuva fraca',
+  63: 'chuva',
+  65: 'chuva forte',
+  66: 'chuva congelante fraca',
+  67: 'chuva congelante forte',
+  71: 'neve fraca',
+  73: 'neve',
+  75: 'neve forte',
+  77: 'grãos de neve',
+  80: 'pancadas de chuva fracas',
+  81: 'pancadas de chuva',
+  82: 'pancadas de chuva fortes',
+  85: 'pancadas de neve fracas',
+  86: 'pancadas de neve',
+  95: 'trovoada',
+  96: 'trovoada com granizo',
+  99: 'trovoada forte com granizo',
+};
+
+const weatherLabel = (code?: number) =>
+  (typeof code === 'number' ? WEATHER_CODES_PT[code] : undefined) ?? ' condição não informada';
+
+/** Resposta do endpoint de geocoding do Open-Meteo (direto e reverso). */
+interface OpenMeteoGeoResult {
+  results?: Array<{ latitude: number; longitude: number; name: string; admin1?: string; country?: string }>;
+}
+
+/** Resposta do endpoint de previsão do Open-Meteo. */
+interface OpenMeteoForecast {
+  current?: {
+    temperature_2m?: number;
+    precipitation?: number;
+    weather_code?: number;
+    wind_speed_10m?: number;
+  };
+  daily?: {
+    time?: string[];
+    weather_code?: number[];
+    temperature_2m_max?: number[];
+    temperature_2m_min?: number[];
+    precipitation_probability_max?: (number | null)[];
+    precipitation_sum?: (number | null)[];
+  };
+}
+
+/** Resposta de POST /api/evidence/search (memória de evidências). */
+interface EvidenceSearchResponse {
+  decision?: string;
+  coverage?: number;
+  sources?: Array<{ title?: string; sourceName?: string; year?: number }>;
+  stats?: { totalSourcesFound?: number };
+}
+
+/** Monta o texto de uma frase da análise morfológica (sem as respostas). */
+const fraseParaTexto = (f: Frase): string => {
+  let out = '';
+  f.tokens.forEach((t, i) => {
+    if (t.pontuacao) out += t.palavra;
+    else out += (i === 0 ? '' : ' ') + t.palavra;
+  });
+  return out.trim();
+};
+
+const normalizar = (s: string) =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 const GLOBAL_CONFIG = {
   systemInstruction: GLOBAL_SYSTEM_INSTRUCTION,
@@ -707,30 +1101,49 @@ const GLOBAL_CONFIG = {
 
 export function useGeminiLiveAgent(simContext: SimulatorContext) {
   const simContextRef = useRef(simContext);
+  const { toggleTheme, isDark } = useTheme();
+  const themeRef = useRef({ toggleTheme, isDark });
+
+  // Controles de sessão usados pelas tools encerrarConversa / alternarMudo.
+  const sessionControlsRef = useRef<{
+    disconnect?: () => void;
+    toggleMute?: () => void;
+    isMuted?: boolean;
+  }>({});
 
   useEffect(() => {
     simContextRef.current = simContext;
   }, [simContext]);
 
+  useEffect(() => {
+    themeRef.current = { toggleTheme, isDark };
+  }, [toggleTheme, isDark]);
+
   const executeTool: ExecuteToolFn = useCallback(async (name, args, setActionLabel) => {
     const ctx = simContextRef.current;
 
-    // Rola para uma seção, trocando de aba antes se necessário (o conteúdo
-    // das abas só monta depois da troca — por isso o delay).
+    // Rola para uma seção (id do SectionNavGooey ou alias legado), trocando
+    // de aba antes se necessário. Sem delay fixo: espera o elemento montar
+    // (waitForElement) e rola no primeiro frame em que ele existe.
     const scrollTo = (section: string, label?: string) => {
-      const targetTab: TabId | null =
-        section in SECTION_TAB_MAP ? SECTION_TAB_MAP[section] : 'nitrogen';
+      const targetTab = tabForSection(section);
       if (targetTab === null) {
         smoothScrollToSection(section, label);
         return;
       }
       const current = simContextRef.current;
-      if (targetTab !== current.activeTab) {
-        current.onNavigateTab(targetTab);
-        setTimeout(() => smoothScrollToSection(section, label), 400);
-      } else {
+      if (targetTab === current.activeTab) {
         smoothScrollToSection(section, label);
+        return;
       }
+      current.onNavigateTab(targetTab);
+      void waitForElement(resolveSectionElementId(section)).then((el) => {
+        if (el) {
+          smoothScrollToSection(section, label);
+        } else {
+          console.warn('[GeminiLive] Seção não montou após trocar de aba:', section);
+        }
+      });
     };
 
     const scrollLater = (section: string, label: string, ms: number) =>
@@ -984,11 +1397,47 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
       }
 
       case 'scrollToSection': {
-        const section = String(args.section) as PageSection;
+        const input = String(args.section ?? '').trim();
         const label = args.label ? String(args.label) : undefined;
-        setActionLabel(`Rolando para: ${section}`);
-        scrollTo(section, label);
-        return { success: true, section };
+        if (!input) {
+          return { success: false, error: 'Informe a seção de destino (parâmetro section).' };
+        }
+        const resolved = resolveSection(input);
+        if (!resolved && !isPageSection(input)) {
+          return {
+            success: false,
+            error: `Seção "${input}" não existe. Seções válidas: ${describeSections()}.`,
+          };
+        }
+        const sectionId = resolved?.id ?? input;
+        const sectionLabel = label ?? resolved?.label ?? sectionId;
+
+        // Seção na aba do Tutor: transfere a sessão com o comando de rolagem —
+        // trocar para a aba tutor desmontaria este agente e cortaria a fala.
+        if (resolved?.tab === 'tutor') {
+          setActionLabel(`Tutor: ${resolved.label}`);
+          const res = voiceHub.callAgent('tutor', {
+            transitionText: `Comando transferido do assistente principal: o aluno pediu para rolar a tela até a seção "${resolved.label}" (id: ${resolved.id}) na aba Tutor. Assuma a conversa e execute AGORA a tool scrollToSection(section="${resolved.id}") sem perguntar nada; depois confirme o scroll em uma frase curta.`,
+          });
+          if (!res.ok) return { success: false, error: res.message };
+          return {
+            success: true,
+            section: resolved.id,
+            aba: 'tutor',
+            transferido: true,
+            message: `A seção "${resolved.label}" fica na aba do Tutor: a sessão foi transferida com o comando de rolagem. Diga uma frase curta de despedida (ex: "Vou te chamar o Tutor!") — quem rola a tela e continua é ele.`,
+          };
+        }
+
+        const tab = tabForSection(sectionId);
+        setActionLabel(`Rolando para: ${sectionLabel}`);
+        scrollTo(sectionId, sectionLabel);
+        return {
+          success: true,
+          section: sectionId,
+          ...(resolved ? { label: resolved.label } : {}),
+          ...(tab ? { aba: tab } : {}),
+        };
       }
 
       case 'calculateCornYield': {
@@ -1399,8 +1848,552 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
         };
       }
 
+      case 'listarCapacidades': {
+        setActionLabel('Listando capacidades');
+        const total = GLOBAL_TOOLS[0].functionDeclarations.length;
+        return {
+          success: true,
+          total_ferramentas: total,
+          categorias: CAPACIDADES,
+          message: `${total} ferramentas em ${CAPACIDADES.length} categorias: ${CAPACIDADES.map(
+            (c) => c.categoria
+          ).join(', ')}.`,
+        };
+      }
+
+      case 'consultarPrevisaoTempo': {
+        const localArg = args.local ? String(args.local).trim() : '';
+        const diasRaw = Number(args.dias ?? 5);
+        const dias = Math.min(7, Math.max(1, Number.isFinite(diasRaw) && diasRaw > 0 ? Math.round(diasRaw) : 5));
+        setActionLabel('Consultando previsão do tempo…');
+
+        const fetchJson = async (url: string, ms = 10000): Promise<unknown> => {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), ms);
+          try {
+            const r = await fetch(url, { signal: ctrl.signal });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return await r.json();
+          } finally {
+            clearTimeout(timer);
+          }
+        };
+
+        let lat: number;
+        let lon: number;
+        let nomeLocal: string;
+
+        try {
+          if (localArg) {
+            const geo = (await fetchJson(
+              `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+                localArg
+              )}&count=1&language=pt&format=json`
+            )) as OpenMeteoGeoResult;
+            const place = geo?.results?.[0];
+            if (!place) {
+              return {
+                success: false,
+                error: `Não encontrei "${localArg}". Use o nome da cidade (ex: "Lavras").`,
+              };
+            }
+            lat = place.latitude;
+            lon = place.longitude;
+            nomeLocal = [place.name, place.admin1, place.country].filter(Boolean).join(', ');
+          } else {
+            const pos = await new Promise<GeolocationPosition | null>((resolve) => {
+              if (typeof navigator === 'undefined' || !navigator.geolocation) {
+                resolve(null);
+                return;
+              }
+              navigator.geolocation.getCurrentPosition(
+                (p) => resolve(p),
+                () => resolve(null),
+                { timeout: 8000, maximumAge: 600000 }
+              );
+            });
+            if (!pos) {
+              return {
+                success: false,
+                error:
+                  'Não consegui usar a geolocalização. Diga a cidade (ex: local "Lavras") e tente de novo.',
+              };
+            }
+            lat = pos.coords.latitude;
+            lon = pos.coords.longitude;
+            nomeLocal = 'sua localização';
+            try {
+              const rev = (await fetchJson(
+                `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=pt&format=json`
+              )) as OpenMeteoGeoResult;
+              const place = rev?.results?.[0];
+              if (place?.name) nomeLocal = [place.name, place.admin1].filter(Boolean).join(', ');
+            } catch {
+              // mantém "sua localização"
+            }
+          }
+
+          const fc = (await fetchJson(
+            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+              `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum` +
+              `&current=temperature_2m,precipitation,weather_code,wind_speed_10m&timezone=auto&forecast_days=${dias}`,
+            12000
+          )) as OpenMeteoForecast;
+
+          const daily = fc.daily ?? {};
+          const diasList = (daily.time ?? []).map((data, i) => ({
+            data,
+            condicao: weatherLabel(daily.weather_code?.[i]),
+            temp_max_c: daily.temperature_2m_max?.[i] ?? null,
+            temp_min_c: daily.temperature_2m_min?.[i] ?? null,
+            prob_chuva_pct: daily.precipitation_probability_max?.[i] ?? null,
+            chuva_mm: daily.precipitation_sum?.[i] ?? null,
+          }));
+
+          if (diasList.length === 0) {
+            return { success: false, error: 'A previsão do tempo não retornou dados agora.' };
+          }
+
+          const agora = fc.current
+            ? {
+                temp_c: fc.current.temperature_2m ?? null,
+                condicao: weatherLabel(fc.current.weather_code),
+                vento_kmh: fc.current.wind_speed_10m ?? null,
+                chuva_agora_mm: fc.current.precipitation ?? null,
+              }
+            : null;
+
+          const resumo = diasList
+            .slice(0, 3)
+            .map((d) => {
+              const prob =
+                d.prob_chuva_pct !== null ? `, ${Math.round(Number(d.prob_chuva_pct))}% de chuva` : '';
+              const chuva = d.chuva_mm ? `, ${d.chuva_mm} mm` : '';
+              return `${d.data}: ${d.condicao}, mín ${d.temp_min_c}°C, máx ${d.temp_max_c}°C${prob}${chuva}`;
+            })
+            .join('; ');
+
+          return {
+            success: true,
+            local: nomeLocal,
+            agora,
+            dias: diasList,
+            message: `Previsão para ${nomeLocal}. ${resumo}.`,
+          };
+        } catch {
+          return {
+            success: false,
+            error: 'Não consegui consultar a previsão do tempo agora (rede ou serviço indisponível).',
+          };
+        }
+      }
+
+      case 'consultarMemoriaEvidencias': {
+        const tema = String(args.tema || '').trim();
+        if (!tema) return { success: false, error: 'Informe o tema (parâmetro tema).' };
+        setActionLabel('Consultando memória de evidências…');
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 45000);
+        try {
+          const res = await fetch('/api/evidence/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: tema }),
+            signal: ctrl.signal,
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = (await res.json()) as EvidenceSearchResponse;
+          const fontes = (data.sources ?? []).slice(0, 10);
+          const decisao =
+            data.decision === 'reuse'
+              ? 'reuso'
+              : data.decision === 'complementary'
+                ? 'complementar'
+                : 'nova_busca';
+          const cobertura = typeof data.coverage === 'number' ? data.coverage : 0;
+          return {
+            success: true,
+            tema,
+            decisao,
+            cobertura,
+            total_disponivel: data.stats?.totalSourcesFound ?? fontes.length,
+            fontes: fontes.map((s) => ({
+              titulo: s.title ?? '',
+              portal: s.sourceName ?? null,
+              ano: s.year ?? null,
+            })),
+            message:
+              fontes.length > 0
+                ? `Memória de evidências sobre "${tema}": decisão ${decisao}, cobertura ${(cobertura * 100).toFixed(0)}%, ${fontes.length} fonte(s) já indexada(s) (até 10 na resposta). Use pesquisarFontes se quiser fontes novas.`
+                : `Ainda não há fontes indexadas sobre "${tema}" (decisão ${decisao}). Use pesquisarFontes para buscar novas fontes.`,
+          };
+        } catch {
+          return {
+            success: false,
+            error: 'Não consegui consultar a memória de evidências agora (rede ou servidor lento).',
+          };
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      case 'gerarFraseMorfologica': {
+        setActionLabel('Sorteando frase para análise morfológica');
+        const frase = gerarFraseLocal();
+        const texto = fraseParaTexto(frase);
+        const palavras = frase.tokens.filter((t) => !t.pontuacao && t.classe).length;
+        ctx.onGerarFraseMorfologica(frase);
+        return {
+          success: true,
+          frase: texto,
+          palavras_para_classificar: palavras,
+          origem: frase.origem,
+          message: `Nova frase exibida na seção Análise Morfológica (aba ABNT): "${texto}". Dite a frase e peça para classificar ${palavras} palavras. NÃO revele as classes — quem responde é o aluno, na tela.`,
+        };
+      }
+
+      case 'lerProgressoAnalise': {
+        setActionLabel('Lendo placar da análise morfológica');
+        try {
+          const raw =
+            typeof window !== 'undefined'
+              ? localStorage.getItem('n_calc_analise_morfologica_v1')
+              : null;
+          const p = raw
+            ? (JSON.parse(raw) as {
+                acertos?: number;
+                erros?: number;
+                frasesResolvidas?: number;
+                sequenciaAtual?: number;
+                melhorSequencia?: number;
+              })
+            : null;
+          const acertos = Number(p?.acertos) || 0;
+          const erros = Number(p?.erros) || 0;
+          const total = acertos + erros;
+          const aproveitamento = total ? Math.round((acertos / total) * 100) : 0;
+          const frases = Number(p?.frasesResolvidas) || 0;
+          const sequencia = Number(p?.sequenciaAtual) || 0;
+          const melhor = Number(p?.melhorSequencia) || 0;
+          return {
+            success: true,
+            acertos,
+            erros,
+            aproveitamento_pct: aproveitamento,
+            frases_resolvidas: frases,
+            sequencia_atual: sequencia,
+            melhor_sequencia: melhor,
+            message:
+              total === 0
+                ? 'Nenhuma resposta registrada ainda na análise morfológica.'
+                : `Análise morfológica: ${acertos} acertos e ${erros} erros (${aproveitamento}% de aproveitamento), ${frases} frases resolvidas, sequência atual ${sequencia} e melhor sequência ${melhor}.`,
+          };
+        } catch {
+          return { success: false, error: 'Não foi possível ler o placar da análise morfológica.' };
+        }
+      }
+
+      case 'iniciarPraticaLibras': {
+        const sinal = args.sinal ? String(args.sinal).trim() : '';
+        const templates = loadTemplates();
+        if (!sinal) {
+          setActionLabel('Abrindo prática de sinais');
+          ctx.onIniciarPraticaLibras(undefined);
+          return {
+            success: true,
+            sinais: templates.map((t) => ({ id: t.id, nome: t.label })),
+            message: `Prática aberta na seção Praticar (aba Libras), com ${templates.length} sinais: ${templates
+              .map((t) => t.label)
+              .join(', ')}. Escolha um com iniciarPraticaLibras — a câmera será solicitada.`,
+          };
+        }
+        const n = normalizar(sinal);
+        const alvo =
+          templates.find((t) => normalizar(t.id) === n || normalizar(t.label) === n) ??
+          templates.find((t) => normalizar(t.label).includes(n));
+        if (!alvo) {
+          return {
+            success: false,
+            error: `Sinal "${sinal}" não existe na prática. Disponíveis: ${templates
+              .map((t) => t.label)
+              .join(', ')}.`,
+          };
+        }
+        setActionLabel(`Praticando sinal: ${alvo.label}`);
+        ctx.onIniciarPraticaLibras(alvo.id);
+        return {
+          success: true,
+          sinal: alvo.label,
+          message: `Prática de "${alvo.label}" aberta na seção Praticar (aba Libras). A câmera será pedida ao usuário — avise antes que ela apareça.`,
+        };
+      }
+
+      case 'iniciarQuizLibras': {
+        const moduloArg = args.modulo ? String(args.modulo).trim() : '';
+        const modulos = [MODULO_VOCABULARIO, MODULO_FRASES, ...AREAS.flatMap((a) => a.modules)];
+        let alvo = MODULO_VOCABULARIO;
+        if (moduloArg) {
+          const n = normalizar(moduloArg);
+          const found =
+            modulos.find((m) => normalizar(m.id) === n || normalizar(m.title) === n) ??
+            modulos.find(
+              (m) => normalizar(m.title).includes(n) || normalizar(m.id).includes(n)
+            );
+          if (!found) {
+            return {
+              success: false,
+              error: `Módulo "${moduloArg}" não encontrado. Opções: ${modulos
+                .map((m) => `${m.id} (${m.title})`)
+                .join(', ')}.`,
+            };
+          }
+          alvo = found;
+        }
+        setActionLabel(`Iniciando quiz: ${alvo.title}`);
+        ctx.onIniciarQuizLibras(alvo.id);
+        return {
+          success: true,
+          modulo: alvo.title,
+          message: `Quiz do módulo "${alvo.title}" iniciado na seção Mini-Curso (aba Libras).`,
+        };
+      }
+
+      case 'lerProgressoPesquisa': {
+        setActionLabel('Lendo progresso da pesquisa');
+        const snap = ctx.pesqSearchSnapshot;
+        const rep = ctx.pesqSourcesReport;
+        if (!snap && !rep) {
+          return { success: false, error: 'Nenhuma busca iniciada ainda. Use pesquisarFontes antes.' };
+        }
+        const portais = snap
+          ? Object.entries(snap.counts)
+              .filter(([, n]) => n > 0)
+              .sort((a, b) => b[1] - a[1])
+              .map(([nome, n]) => `${nome}: ${n}`)
+          : [];
+        const fase =
+          !snap
+            ? 'sem dados'
+            : snap.phase === 'searching'
+              ? 'buscando'
+              : snap.phase === 'done'
+                ? 'concluída'
+                : 'com erro';
+        const total = snap?.total || rep?.total || 0;
+        return {
+          success: true,
+          fase,
+          tema: rep?.tema ?? null,
+          total_fontes: total,
+          portais: portais.slice(0, 8),
+          message:
+            fase === 'buscando'
+              ? `Busca em andamento (${portais.slice(0, 5).join(', ') || 'iniciando'}). Depois peça lerResultadosFontes.`
+              : `Busca ${fase} com ${total} fonte(s)${rep?.tema ? ` sobre "${rep.tema}"` : ''}. Use lerResultadosFontes para ouvir as principais.`,
+        };
+      }
+
+      case 'copiarArtigo': {
+        const art = ctx.pesqArticleReport;
+        if (!art || !(art.textoCompleto || art.referencias.length > 0)) {
+          return { success: false, error: 'Nenhum artigo gerado ainda. Use gerarArtigoABNT antes.' };
+        }
+        setActionLabel('Copiando artigo ABNT');
+        const texto = art.textoCompleto ?? art.referencias.join('\n\n');
+        try {
+          await navigator.clipboard.writeText(texto);
+        } catch {
+          return { success: false, error: 'Não foi possível copiar para a área de transferência.' };
+        }
+        const trecho = texto.slice(0, 1500);
+        return {
+          success: true,
+          titulo: art.titulo,
+          caracteres: texto.length,
+          trecho,
+          truncado: texto.length > trecho.length,
+          message: `Artigo "${art.titulo}" copiado para a área de transferência (${texto.length} caracteres).`,
+        };
+      }
+
+      case 'copiarRedacao': {
+        const rep = ctx.redacaoReport;
+        if (!rep || !rep.redacao) {
+          return {
+            success: false,
+            error: 'Nenhuma redação gerada ainda. Use pesquisarRepertorio e gerarRedacao antes.',
+          };
+        }
+        setActionLabel('Copiando redação');
+        try {
+          await navigator.clipboard.writeText(rep.redacao);
+        } catch {
+          return { success: false, error: 'Não foi possível copiar para a área de transferência.' };
+        }
+        const trecho = rep.redacao.slice(0, 1500);
+        return {
+          success: true,
+          tema: rep.tema,
+          caracteres: rep.redacaoLength,
+          trecho,
+          truncado: rep.redacaoLength > trecho.length,
+          message: `Redação sobre "${rep.tema}" copiada (${rep.redacaoLength} caracteres).`,
+        };
+      }
+
+      case 'baixarRedacao': {
+        const rep = ctx.redacaoReport;
+        if (!rep || !rep.redacao) {
+          return {
+            success: false,
+            error: 'Nenhuma redação gerada ainda. Use pesquisarRepertorio e gerarRedacao antes.',
+          };
+        }
+        setActionLabel('Baixando redação');
+        try {
+          const blob = new Blob([rep.redacao], { type: 'text/plain;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          const nome = (rep.tema || 'redacao')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-zA-Z0-9 ]/g, '')
+            .replace(/\s+/g, '_')
+            .slice(0, 60);
+          link.href = url;
+          link.download = `Redacao_${nome || 'redacao'}.txt`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        } catch {
+          return { success: false, error: 'Não foi possível baixar o arquivo da redação.' };
+        }
+        return {
+          success: true,
+          message: `Arquivo .txt da redação sobre "${rep.tema}" baixado no aparelho.`,
+        };
+      }
+
+      case 'alternarTema': {
+        const antes = themeRef.current.isDark;
+        themeRef.current.toggleTheme();
+        const escuro = !antes;
+        setActionLabel(escuro ? 'Tema escuro' : 'Tema claro');
+        return {
+          success: true,
+          tema: escuro ? 'escuro' : 'claro',
+          message: `Tema alterado para ${escuro ? 'escuro' : 'claro'}.`,
+        };
+      }
+
+      case 'abrirAcessibilidade': {
+        setActionLabel('Abrindo acessibilidade');
+        ctx.onAbrirAcessibilidade();
+        return {
+          success: true,
+          message:
+            'Painel de Acessibilidade Libras aberto (reconhecimento de sinais e configurações do widget VLibras).',
+        };
+      }
+
+      case 'alternarWidgetLibras': {
+        const ativo = toggleWidgetSetting();
+        setActionLabel(ativo ? 'Widget VLibras ligado' : 'Widget VLibras desligado');
+        return {
+          success: true,
+          widget_ativo: ativo,
+          message: `Widget VLibras ${ativo ? 'ligado' : 'desligado'}.`,
+        };
+      }
+
+      case 'alternarReconhecimentoLibras': {
+        const ativo = toggleRecognitionSetting();
+        setActionLabel(
+          ativo ? 'Reconhecimento de sinais ligado' : 'Reconhecimento de sinais desligado'
+        );
+        return {
+          success: true,
+          reconhecimento_ativo: ativo,
+          message: `Reconhecimento de sinais em Libras ${ativo ? 'ligado' : 'desligado'}.`,
+        };
+      }
+
+      case 'iniciarRevisao': {
+        const tema = args.tema ? String(args.tema).trim() : '';
+        const formato = args.formato ? String(args.formato).trim() : '';
+        const contexto = [formato ? `Formato pedido: ${formato}.` : '', tema ? `Tema: ${tema}.` : '']
+          .filter(Boolean)
+          .join(' ');
+        setActionLabel('Transferindo para o Tutor…');
+        const res = voiceHub.callAgent('tutor', {
+          transitionText: contexto
+            ? `Atenção: a sessão foi transferida de outro assistente. ${contexto} Cumprimente e comece já por esse formato/tema.`
+            : 'Atenção: a sessão foi transferida de outro assistente. Cumprimente o aluno e pergunte o que ele quer revisar.',
+        });
+        if (!res.ok) return { success: false, error: res.message };
+        return {
+          success: true,
+          message:
+            'Tutor de Revisão ativado com o contexto pedido. Diga uma frase curta de despedida (ex: "Vou te chamar o Tutor!") — quem responde daqui para frente é o Tutor.',
+        };
+      }
+
+      case 'encerrarConversa': {
+        const controls = sessionControlsRef.current;
+        if (!controls.disconnect) {
+          return { success: false, error: 'Não há sessão de voz ativa para encerrar.' };
+        }
+        setActionLabel('Encerrando conversa');
+        // Espera a despedida sair no socket antes de fechar a conexão.
+        setTimeout(() => {
+          try {
+            sessionControlsRef.current.disconnect?.();
+          } catch {
+            // conexão já caiu — nada a fazer
+          }
+        }, 3000);
+        return {
+          success: true,
+          message:
+            'Despeça-se do usuário em uma frase curta: a conexão de voz será encerrada automaticamente cerca de 3 segundos depois. Não chame mais nenhuma ferramenta.',
+        };
+      }
+
+      case 'alternarMudo': {
+        const controls = sessionControlsRef.current;
+        if (!controls.toggleMute) {
+          return { success: false, error: 'Não há sessão de voz ativa.' };
+        }
+        const antes = controls.isMuted ?? false;
+        controls.toggleMute();
+        const mudo = !antes;
+        setActionLabel(mudo ? 'Microfone em mudo' : 'Microfone ativo');
+        return {
+          success: true,
+          mudo,
+          message: mudo
+            ? 'Microfone em mudo: você não será ouvido até reativar.'
+            : 'Microfone ativo: pode falar.',
+        };
+      }
+
+      case 'setSupressorRuido': {
+        const result = applyNoiseGateToolArgs(args);
+        if (!result.ok) {
+          return { success: false, error: result.error };
+        }
+        setActionLabel(result.label);
+        return {
+          success: true,
+          modo: result.state.modo,
+          distancia_cm: result.state.distancia_cm,
+          message: result.message,
+        };
+      }
+
       default:
-        return { error: `Ferramenta ${name} não reconhecida.` };
+        return { success: false, error: `Ferramenta ${name} não reconhecida.` };
     }
   }, []);
 
@@ -1433,6 +2426,11 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
       switchPersona: session.switchPersona,
       getResumptionHandle: session.getResumptionHandle,
       toggleMute: session.toggleMute,
+    };
+    sessionControlsRef.current = {
+      disconnect: session.disconnect,
+      toggleMute: session.toggleMute,
+      isMuted: state.isMuted,
     };
     const prev = lastNotifiedStateRef.current;
     const changed =

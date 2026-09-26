@@ -7,6 +7,7 @@ import LiveVoiceOrb3D from './LiveVoiceOrb3D';
 import AsciiSphere from './AsciiSphere';
 import { useAnimationLock } from '@/lib/useAnimationLock';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { useVoiceNoiseState } from '@/lib/noiseGate';
 
 /** Estado mínimo que a HUD precisa (compatível com global e tutor). */
 export interface VoiceHUDState {
@@ -40,6 +41,9 @@ export default function VoiceAssistantHUD({
 }: VoiceAssistantHUDProps) {
   const { withLock } = useAnimationLock(400);
   const { islandVisible, islandHeight } = useAuth();
+  // Supressor de ruído ativo (automático/manual) → partículas roxas na orbe.
+  const noiseState = useVoiceNoiseState();
+  const nearModeActive = noiseState.modo !== 'desligado';
   const {
     isConnected,
     isConnecting,
@@ -193,6 +197,7 @@ export default function VoiceAssistantHUD({
                 status={status}
                 userVolume={userVolume}
                 agentVolume={agentVolume}
+                nearModeActive={nearModeActive}
                 size={orbSize}
                 className="drop-shadow-[0_0_20px_rgba(90,90,64,0.3)]"
               />

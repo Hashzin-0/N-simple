@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTheme } from '@/components/ThemeProvider';
 import { ChevronRight, CheckCircle, BookOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -12,11 +12,13 @@ import type { useLibrasProgress } from '@/hooks/useLibrasProgress';
 
 interface LibrasCourseProps {
   progress: ReturnType<typeof useLibrasProgress>;
+  /** Pedido externo (voz) para iniciar o quiz de um módulo; seq monotônico evita re-execução. */
+  pendingQuiz?: { seq: number; moduleId?: string } | null;
 }
 
 type ViewMode = 'modules' | 'module' | 'quiz';
 
-export default React.memo(function LibrasCourse({ progress }: LibrasCourseProps) {
+export default React.memo(function LibrasCourse({ progress, pendingQuiz }: LibrasCourseProps) {
   const { isDark } = useTheme();
   const [view, setView] = useState<ViewMode>('modules');
   const [activeModule, setActiveModule] = useState<LibrasModule | null>(null);
@@ -34,6 +36,17 @@ export default React.memo(function LibrasCourse({ progress }: LibrasCourseProps)
       setView('quiz');
     }
   }, []);
+
+  // Pedido externo (voz): inicia o quiz do módulo pedido. O setState sai do
+  // corpo do efeito (microtask) para não causar re-render em cascata.
+  const lastPendingQuizSeqRef = useRef(0);
+  useEffect(() => {
+    if (!pendingQuiz || pendingQuiz.seq === lastPendingQuizSeqRef.current) return;
+    lastPendingQuizSeqRef.current = pendingQuiz.seq;
+    const moduleId = pendingQuiz.moduleId;
+    if (!moduleId) return;
+    setTimeout(() => handleStartQuiz(moduleId), 0);
+  }, [pendingQuiz, handleStartQuiz]);
 
   const handleBackToModules = useCallback(() => {
     setView('modules');

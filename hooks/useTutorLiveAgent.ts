@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useLiveSession, type ExecuteToolFn } from '@/lib/liveSession';
 import { voiceHub, type VoiceAgentRuntime, type HubAgentState } from '@/lib/voiceHub';
+import { smoothScrollToSection, isPageSection } from '@/lib/pageAutomator';
+import { describeSections, resolveSection, tabForSection } from '@/lib/sectionNav';
 import type { AvaliacaoResultado, TutorModo } from '@/lib/tutor/types';
+import { applyNoiseGateToolArgs } from '@/lib/noiseGate';
 
 export interface TutorLiveState {
   isConnected: boolean;
@@ -129,6 +132,8 @@ REGRAS DE COMPORTAMENTO:
 20. Quando perguntar quais materiais ele já enviou, use 'listarDocumentos' e cite os nomes.
 21. Quando quiser abrir um material já gerado antes (simulado, quiz, flashcards, resumo, plano, mapa mental ou seminário), use 'carregarRevisao(tipo)' e narre o resumo curto retornado — não leia o material inteiro.
 22. Quando pedir para pesquisar/criar mais questões sobre um tema, use 'pesquisarQuestoes(tema?)' — a pesquisa roda em segundo plano; avise que o resultado vai aparecer na tela e continue a conversa.
+23. Rolagem de tela com 'scrollToSection(secao?)': se a seção for da aba do Tutor ('tutor_tema' Sessão, 'tutor_session' Progresso, 'tutor_research' Questões, 'tutor_progress' Desempenho), a tela rola até ela na hora. Se for uma seção de qualquer outra aba (ex: 'results_section', 'pesquisador_fontes', 'redacao_resultado'), a tool transfere a conversa automaticamente para o assistente principal junto com o comando de rolagem — responda apenas com uma frase curta de despedida (ex: "Voltando pro simulador!") e quem troca a aba e rola a tela é ele.
+24. Supressor de ruído do microfone: 'setSupressorRuido' — modo 'automatico' (PADRÃO: sozinho detecta o ruído de fundo como trânsito, escola ou parque e só deixa passar quem está perto ~30 cm), 'manual' (para de ajustar sozinho e fixa a distância em distancia_cm, ex: 30) ou 'desligado' (capta tudo normalmente). Use quando o aluno pedir para ativar/desativar o supressor, "modo próximo", parar o ajuste automático ou mudar a distância.
 
 Fluxo típico:
 - Usuário: "Quero revisar calagem" → startTutorSession(tema="Fertilidade do Solo", subtema="Calagem") → leia a questão devolvida e faça a pergunta.
@@ -415,6 +420,49 @@ function buildTools(modo?: TutorModo) {
           },
         },
         required: ['id', 'qualidade'],
+      },
+    },
+    {
+      name: 'scrollToSection',
+      description:
+        'Rola a tela até uma seção do aplicativo (id do menu de navegação lateral/topo). Seções da aba do Tutor rolam na hora; seções de outras abas transferem a conversa automaticamente para o assistente principal com o comando de rolagem.',
+      behavior: 'NON_BLOCKING',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          section: {
+            type: 'STRING',
+            description: `Id da seção. Da aba do Tutor: "tutor_tema" (Sessão), "tutor_session" (Progresso), "tutor_research" (Questões), "tutor_progress" (Desempenho). Outras abas: ${describeSections()}.`,
+          },
+          label: {
+            type: 'STRING',
+            description: 'Texto descritivo curto do que está sendo exibido',
+          },
+        },
+        required: ['section'],
+      },
+    },
+    {
+      name: 'setSupressorRuido',
+      description:
+        'Ativa, desativa ou fixa o supressor de ruído do microfone (modo próximo). No modo automático o áudio se ajusta sozinho ao ruído de fundo (trânsito, escola, parque) e só deixa passar quem está perto (~30 cm); no manual para de ajustar e fixa a distância; desligado captura tudo normalmente.',
+      behavior: 'NON_BLOCKING',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          modo: {
+            type: 'STRING',
+            enum: ['automatico', 'manual', 'desligado'],
+            description:
+              '"automatico" = ajuste automático ao ruído de fundo (padrão); "manual" = para de ajustar e usa a distância fixa; "desligado" = sem supressão.',
+          },
+          distancia_cm: {
+            type: 'NUMBER',
+            description:
+              'Distância de corte em cm (5 a 120, padrão 30). Usada no modo manual e como referência do automático. Se omitida, mantém a distância atual.',
+          },
+        },
+        required: ['modo'],
       },
     },
   ];
@@ -821,6 +869,48 @@ export function useTutorLiveAgent(bridge: TutorLiveBridgeContext, modo?: TutorMo
           return { success: false, error: 'Falha de rede ao registrar o flashcard.' };
         }
       }
+      case 'scrollToSection': {
+        const input = String(args.section ?? '').trim();
+        const label = args.label ? String(args.label) : undefined;
+        if (!input) return { success: false, error: 'Informe a seção de destino (parâmetro section).' };
+        const resolved = resolveSection(input);
+        if (!resolved && !isPageSection(input)) {
+          return {
+            success: false,
+            error: `Seção "${input}" não existe. Seções válidas: ${describeSections()}.`,
+          };
+        }
+        const sectionId = resolved?.id ?? input;
+        const sectionLabel = label ?? resolved?.label ?? sectionId;
+        const targetTab = tabForSection(sectionId);
+
+        // Seção da aba do Tutor (ou elemento de página como 'topo'): rola direto.
+        if (targetTab === null || targetTab === 'tutor') {
+          setActionLabel(`Rolando para: ${sectionLabel}`);
+          const ok = smoothScrollToSection(sectionId, sectionLabel);
+          if (!ok) return { success: false, error: `Seção "${sectionId}" não encontrada na tela.` };
+          return { success: true, section: sectionId, message: `Rolando até "${sectionLabel}".` };
+        }
+
+        // Outra aba: transfere a sessão para o assistente principal com o
+        // comando de rolagem. delayNavigation preserva a despedida antes de
+        // desmontar o Tutor; tab leva direto à aba da seção.
+        setActionLabel(`Assistente principal: ${sectionLabel}`);
+        const res = voiceHub.callAgent('global', {
+          transitionText: `Comando transferido do Tutor: o aluno pediu para rolar a tela até a seção "${sectionLabel}" (id: ${sectionId}, aba ${targetTab}). Assuma a conversa e execute AGORA a tool scrollToSection(section="${sectionId}") sem perguntar nada; depois confirme o scroll em uma frase curta.`,
+          delayNavigation: true,
+          tab: targetTab,
+        });
+        if (!res.ok) return { success: false, error: res.message };
+        return {
+          success: true,
+          section: sectionId,
+          aba: targetTab,
+          transferido: true,
+          message: `A seção "${sectionLabel}" fica na aba ${targetTab}: a sessão foi transferida para o assistente principal com o comando de rolagem. Diga uma frase curta de despedida (ex: "Voltando pro simulador!") — quem troca a aba e rola a tela é ele.`,
+        };
+      }
+
       case 'chamarAgente': {
         const alvo = String(args.alvo || 'global');
         if (alvo !== 'global') {
@@ -839,8 +929,22 @@ export function useTutorLiveAgent(bridge: TutorLiveBridgeContext, modo?: TutorMo
             'Assistente principal ativado. Diga uma frase curta de despedida (ex: "Voltando pro simulador!") — quem responde daqui para frente é o assistente principal.',
         };
       }
+      case 'setSupressorRuido': {
+        const result = applyNoiseGateToolArgs(args);
+        if (!result.ok) {
+          return { success: false, error: result.error };
+        }
+        setActionLabel(result.label);
+        return {
+          success: true,
+          modo: result.state.modo,
+          distancia_cm: result.state.distancia_cm,
+          message: result.message,
+        };
+      }
+
       default:
-        return { error: `Ferramenta ${name} não reconhecida.` };
+        return { success: false, error: `Ferramenta ${name} não reconhecida.` };
     }
   }, []);
 

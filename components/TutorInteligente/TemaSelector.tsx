@@ -11,6 +11,7 @@ const TEMAS_SUGERIDOS: Array<{ tema: string; subtema?: string }> = [
   { tema: 'Solo', subtema: 'Acidez e Bases' },
   { tema: 'Manejo do Solo' },
   { tema: 'Agronegócio', subtema: 'Sustentabilidade' },
+  { tema: 'Ética Profissional', subtema: 'Moral e Ética' },
 ];
 
 interface TemaSelectorProps {

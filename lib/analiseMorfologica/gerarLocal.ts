@@ -1,6 +1,7 @@
 import type { Frase, Token } from './types';
 import { BANCOS } from './bancos';
 import { TEMPLATES, type Template } from './templates';
+import { FRASES_SEED } from './frasesSeed';
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -63,9 +64,14 @@ function montarTokens(tpl: Template): Token[] {
 /**
  * Monta uma frase nova na hora a partir dos templates.
  * `recentes` recebe os fingerprints das últimas frases para evitar repetição.
+ * As frases-semente de prova real entram primeiro (uma por sessão).
  */
 export function gerarFraseLocal(recentes: string[] = []): Frase {
   const recentesSet = new Set(recentes);
+
+  const seed = FRASES_SEED.find((f) => !recentesSet.has(fingerprintFrase(f)));
+  if (seed) return { ...seed };
+
   const ordenados = shuffle(TEMPLATES);
 
   let ultimo: { tpl: Template; tokens: Token[] } | null = null;

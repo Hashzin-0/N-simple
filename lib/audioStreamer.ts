@@ -4,6 +4,13 @@
 // Input audio to Gemini: 16kHz 16-bit PCM Mono
 // Output audio from Gemini: 24kHz 16-bit PCM Mono (Puck voice)
 
+import {
+  NoiseGateProcessor,
+  getVoiceNoiseState,
+  subscribeVoiceNoise,
+  type VoiceNoiseState,
+} from '@/lib/noiseGate';
+
 function isContextClosed(ctx: AudioContext): boolean {
   return ctx.state === 'closed';
 }
@@ -29,6 +36,9 @@ export class AudioStreamer {
   private isRecording: boolean = false;
   private isStarting: boolean = false;
   private startAbort: boolean = false;
+
+  private noiseGate: NoiseGateProcessor | null = null;
+  private noiseUnsub: (() => void) | null = null;
 
   private onAudioChunkCallback: ((base64Pcm: string) => void) | null = null;
   private onUserVolumeCallback: ((vol: number) => void) | null = null;
@@ -104,6 +114,12 @@ export class AudioStreamer {
       inputAnalyser.smoothingTimeConstant = 0.5;
       this.inputAnalyser = inputAnalyser;
 
+      // Supressor de ruído "modo próximo": com ele ativo o AGC fica OFF —
+      // ele amplificaria o ruído de fundo junto com a fala e anularia a
+      // leitura de distância do gate (o gate em si roda no DSP em JS).
+      const noiseState = getVoiceNoiseState();
+      const gateActive = noiseState.modo !== 'desligado';
+
       let mediaStream: MediaStream;
       try {
         mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -112,7 +128,7 @@ export class AudioStreamer {
             sampleRate: { ideal: 16000 },
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true,
+            autoGainControl: !gateActive,
           },
         });
       } catch {
@@ -132,6 +148,7 @@ export class AudioStreamer {
         return;
       }
       this.mediaStream = mediaStream;
+      this.initNoiseGate(ctx.sampleRate);
 
       const inputSource = ctx.createMediaStreamSource(mediaStream);
       inputSource.connect(inputAnalyser);
@@ -154,6 +171,7 @@ export class AudioStreamer {
         if (this.inputSource === inputSource) this.inputSource = null;
         mediaStream.getTracks().forEach((track) => track.stop());
         if (this.mediaStream === mediaStream) this.mediaStream = null;
+        this.teardownNoiseGate();
         closeContext(ctx);
         if (this.inputCtx === ctx) this.inputCtx = null;
         return;
@@ -193,8 +211,52 @@ export class AudioStreamer {
     }
   }
 
+  /**
+   * Cria o gate de proximidade com o estado atual e assina mudanças da store
+   * (tool de voz liga/desliga em plena sessão: reprocessa o DSP na hora e
+   * tenta trocar o AGC do track ao vivo).
+   */
+  private initNoiseGate(sampleRate: number): void {
+    this.teardownNoiseGate();
+    const state = getVoiceNoiseState();
+    this.noiseGate = new NoiseGateProcessor(sampleRate, state);
+    this.noiseUnsub = subscribeVoiceNoise((next) => this.onNoiseState(next));
+    // Fecha a janela de corrida: o estado pode ter mudado enquanto o
+    // getUserMedia estava em andamento.
+    this.onNoiseState(state);
+  }
+
+  private teardownNoiseGate(): void {
+    if (this.noiseUnsub) {
+      this.noiseUnsub();
+      this.noiseUnsub = null;
+    }
+    this.noiseGate = null;
+  }
+
+  private onNoiseState(state: VoiceNoiseState): void {
+    this.noiseGate?.setConfig(state.modo, state.distancia_cm);
+    const track = this.mediaStream?.getAudioTracks()[0];
+    if (!track) return;
+    track
+      .applyConstraints({
+        autoGainControl: state.modo === 'desligado',
+        noiseSuppression: true,
+        echoCancellation: true,
+      })
+      .catch(() => {
+        // Alguns navegadores recusam troca de constraint ao vivo — o gate em
+        // JS continua valendo; só o AGC pode ficar no valor da abertura.
+      });
+  }
+
   private processAudioChunk(inputData: Float32Array): void {
-    // Calculate instantaneous volume for visualization
+    // Supressor de ruído: gate de proximidade in-place (quando desligado ele
+    // só mantém o piso de ruído estimado — sinal passa intacto).
+    this.noiseGate?.process(inputData);
+
+    // Calculate instantaneous volume for visualization (sobre o áudio já
+    // filtrado: o fundo cortado não acende a orbe)
     let sum = 0;
     for (let i = 0; i < inputData.length; i++) {
       sum += inputData[i] * inputData[i];
@@ -230,6 +292,7 @@ export class AudioStreamer {
   public stopRecording(): void {
     this.startAbort = true;
     this.isRecording = false;
+    this.teardownNoiseGate();
 
     if (this.inputWorkletNode) {
       this.inputWorkletNode.disconnect();

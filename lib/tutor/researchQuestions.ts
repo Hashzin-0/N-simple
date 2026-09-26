@@ -6,10 +6,13 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 import { decideReuse, ReuseDecision } from '@/lib/reuseDecision';
 import {
   countQuestionsForTopic,
+  fetchQuestionIdsByHash,
   insertQuestions,
+  questionHash,
   searchQuestions,
 } from './questionBank';
 import { buildExtractQuestionsPrompt } from './prompts';
+import { seedsForTema, SEED_SIMILARITY } from './seeds';
 import type {
   QuestionDificuldade,
   QuestionOrigem,
@@ -72,7 +75,8 @@ function normalizeDificuldade(value: unknown): QuestionDificuldade {
 
 function normalizeOrigem(value: unknown, fallback: QuestionOrigem): QuestionOrigem {
   const v = String(value || '').toLowerCase();
-  if (v === 'pesquisada' || v === 'gerada' || v === 'artigo' || v === 'documento') return v;
+  if (v === 'pesquisada' || v === 'gerada' || v === 'artigo' || v === 'documento' || v === 'prova_real')
+    return v;
   return fallback;
 }
 
@@ -123,7 +127,49 @@ async function llmExtractQuestions(args: {
 }
 
 /**
+ * Prepara as seeds de prova real do tema: persiste no banco (para ganhar
+ * embedding e reuso futuro) e resolve o id UUID real. Se o insert falhar
+ * (ex.: migration `prova_real` ainda não aplicada), segue com id local.
+ */
+async function prepareSeedQuestions(
+  tema: string,
+  subtema: string | undefined,
+  topics: string[]
+): Promise<TutorQuestion[]> {
+  const raw = seedsForTema(tema, subtema);
+  if (raw.length === 0) return [];
+
+  let questions: TutorQuestion[] = raw.map((q, i) => ({
+    ...q,
+    id: `seed_${i + 1}`,
+    similarity: SEED_SIMILARITY,
+  }));
+
+  if (isSupabaseConfigured()) {
+    try {
+      const hashes = raw.map((q) => questionHash(q.enunciado));
+      let ids = await fetchQuestionIdsByHash(hashes);
+      if (Object.keys(ids).length < hashes.length) {
+        // Ainda não persistidas (ou insert parcial) → grava para ganhar embedding.
+        await insertQuestions(raw, topics);
+        ids = await fetchQuestionIdsByHash(hashes);
+      }
+      questions = questions.map((q, i) => {
+        const realId = ids[hashes[i]];
+        return realId ? { ...q, id: realId } : q;
+      });
+    } catch {
+      // mantém ids locais — só o log de tutor_attempts pode degradar
+    }
+  }
+
+  return questions;
+}
+
+/**
  * Cascata de questões:
+ * S. Seeds de prova real (temas de ética/moral) → origem "prova_real"
+ *    (sempre entram, deduplicadas contra o restante — ver lib/tutor/seeds.ts).
  * 0. Material enviado pelo aluno (PDFs) → origem "documento" (fonte primária).
  * 1. Reuso do banco salvo (questions).
  * 2. Artigos/fontes já pesquisados (evidence memory) → origem "artigo".
@@ -150,7 +196,23 @@ export async function researchQuestions(
   const canExtract = () =>
     llmExtractsUsed < MAX_LLM_EXTRACTS && !overHard();
 
+  // ── 0. Seeds de prova real (temas de ética/moral) ──
+  const seeds = await prepareSeedQuestions(tema, subtema, topics);
+
   if (!isSupabaseConfigured()) {
+    if (seeds.length > 0) {
+      return {
+        ok: true,
+        decision: 'reuse',
+        questions: shuffled(seeds),
+        reusedCount: 0,
+        researchedCount: 0,
+        generatedCount: 0,
+        seedsCount: seeds.length,
+        errors: ['Supabase não configurado — usando apenas questões de prova real locais.'],
+        message: `${seeds.length} questões de prova real disponíveis sem banco.`,
+      };
+    }
     return {
       ok: false,
       decision: 'unavailable',
@@ -177,6 +239,7 @@ export async function researchQuestions(
   }
 
   const seen = new Set(reused.map((q) => q.enunciado.toLowerCase().slice(0, 80)));
+  for (const s of seeds) seen.add(s.enunciado.toLowerCase().slice(0, 80));
   const novel: Array<Omit<TutorQuestion, 'id' | 'similarity'>> = [];
 
   const pushExtracted = (
@@ -222,16 +285,17 @@ export async function researchQuestions(
   }
 
   if (reused.length >= REUSE_MIN_QUESTIONS && novel.length === 0) {
+    const reuseAll = dedupeQuestions([...seeds, ...reused]);
     return {
       ok: true,
       decision: 'reuse',
-      questions: shuffled(reused),
-      reusedCount: reused.length,
+      questions: shuffled(reuseAll),
+      reusedCount: reuseAll.filter((q) => q.origem !== 'prova_real').length,
       researchedCount: 0,
       generatedCount: 0,
-      artigoCount: 0,
+      seedsCount: reuseAll.filter((q) => q.origem === 'prova_real').length,
       errors,
-      message: `${reused.length} questões reutilizadas da memória acadêmica.`,
+      message: `${reuseAll.length} questões reutilizadas da memória acadêmica (${reuseAll.filter((q) => q.origem === 'prova_real').length} de prova real).`,
     };
   }
 
@@ -383,30 +447,43 @@ export async function researchQuestions(
         })
       : [];
 
-  const all = dedupeQuestions([...reused, ...insertedQuestions]);
+  const seedKeys = new Set(seeds.map((q) => q.enunciado.toLowerCase().slice(0, 80)));
+  const rest = dedupeQuestions([...reused, ...insertedQuestions]).filter(
+    (q) => !seedKeys.has(q.enunciado.toLowerCase().slice(0, 80))
+  );
+  const all = [...seeds, ...rest];
 
   const generatedCount = all.filter((q) => q.origem === 'gerada').length;
   const researchedCount = all.filter((q) => q.origem === 'pesquisada').length;
   const artigoCount = all.filter((q) => q.origem === 'artigo').length;
   const documentoCount = all.filter((q) => q.origem === 'documento').length;
+  const seedsCount = all.filter((q) => q.origem === 'prova_real').length;
 
   if (all.length === 0) {
     errors.push('Nenhuma questão encontrada ou gerada para este tema.');
   }
 
+  // Seeds sempre entram (fica o corte sobre as demais).
+  const demais = shuffled(rest).slice(
+    0,
+    Math.max(0, MAX_QUESTIONS_PER_RESEARCH - seeds.length)
+  );
+  const finalList = shuffled([...seeds, ...demais]);
+
   return {
     ok: all.length > 0,
     decision: 'new_search',
-    questions: shuffled(all).slice(0, MAX_QUESTIONS_PER_RESEARCH),
-    reusedCount: reused.length,
+    questions: finalList,
+    reusedCount: reused.filter((q) => q.origem !== 'prova_real').length,
     researchedCount,
     generatedCount,
     artigoCount,
     documentoCount,
+    seedsCount,
     errors,
     message:
       all.length > 0
-        ? `${all.length} questões prontas (${reused.length} reaproveitadas, ${documentoCount} do seu material, ${artigoCount} de artigos, ${insertedCount} novas).`
+        ? `${all.length} questões prontas (${reused.filter((q) => q.origem !== 'prova_real').length} reaproveitadas, ${seedsCount} de prova real, ${documentoCount} do seu material, ${artigoCount} de artigos, ${insertedCount} novas).`
         : 'Não foi possível obter questões para este tema.',
   };
 }

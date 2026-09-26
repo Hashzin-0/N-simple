@@ -35,6 +35,57 @@ const DEFAULT_RESEARCH_TOPICS: string[] = [
   'Análise Comparativa Direta (Práticas Tradicionais vs. Contemporâneas)',
 ];
 
+/** Monta o texto completo (ABNT) do artigo — usado no copiar e no report da voz. */
+function formatArticleText(article: ScientificArticleABNT): string {
+  return `${article.title}
+${article.subtitle ? `${article.subtitle}\n` : ''}
+${article.titleEn}
+
+${article.authors.map((a) => `${a.name} (${a.titulation} - ${a.affiliation}${a.email ? ` - ${a.email}` : ''})`).join('\n')}
+
+RESUMO
+${article.resumo}
+
+Palavras-chave: ${article.palavrasChave.join('; ')}.
+
+ABSTRACT
+${article.abstractEn}
+
+Keywords: ${article.keywordsEn.join('; ')}.
+
+1 INTRODUÇÃO
+${article.introducao}
+
+2 METODOLOGIA DE REVISÃO SISTEMÁTICA
+${article.metodologia}
+
+3 DESENVOLVIMENTO E ANÁLISE DOS TÓPICOS
+${article.topicosDesenvolvimento
+  .map(
+    (t) =>
+      `${t.number} ${t.title}\n\n${t.content}\n\nFontes Consultadas neste Tópico (${t.fontesConsultadas.length} fontes):\n${t.fontesConsultadas
+        .map((f, idx) => `  [${idx + 1}] ${f.citationABNT} (${f.repository}) - Contribuição: ${f.contribution}`)
+        .join('\n')}`
+  )
+  .join('\n\n')}
+
+${
+  article.analiseComparativaDireta && article.analiseComparativaDireta.length > 0
+    ? `ANÁLISE COMPARATIVA DIRETA: PRÁTICAS TRADICIONAIS SUPERADAS VS. RECOMENDAÇÕES CONTEMPORÂNEAS\n${article.analiseComparativaDireta
+        .map(
+          (c, idx) =>
+            `Item ${idx + 1}: ${c.parametroComparado}\n- Prática Tradicional Superada: ${c.praticaSuperadaOuTradicional}\n- Prática Contemporânea Recomendada: ${c.praticaContemporaneaRecomendada}\n- Impacto Agroecológico e Econômico: ${c.impactoAgroeconomico}\n- Evidências Científicas: ${c.evidenciaCientifica}`
+        )
+        .join('\n\n')}\n\n`
+    : ''
+}4 CONSIDERAÇÕES FINAIS
+${article.consideracoesFinais}
+
+REFERÊNCIAS
+${article.referenciasABNT.join('\n\n')}
+`;
+}
+
 interface PesquisadorAutomaticoSectionProps {
   currentTheme: string;
   onThemeChange: (theme: string) => void;
@@ -44,7 +95,13 @@ interface PesquisadorAutomaticoSectionProps {
   /** Pedido externo (voz) para gerar o artigo; seq monotônico evita re-execução. */
   pendingRun?: { seq: number; theme?: string; mode?: 'padrao' | 'aprofundado' } | null;
   /** Reporta o artigo finalizado para a voz (ler/copiar citação). */
-  onArticleReport?: (report: { titulo: string; tema: string; resumo: string; referencias: string[] }) => void;
+  onArticleReport?: (report: {
+    titulo: string;
+    tema: string;
+    resumo: string;
+    referencias: string[];
+    textoCompleto?: string;
+  }) => void;
 }
 
 export default function PesquisadorAutomaticoSection({
@@ -298,6 +355,7 @@ export default function PesquisadorAutomaticoSection({
           tema: themeToUse,
           resumo: reportable.resumo || '',
           referencias: reportable.referenciasABNT || [],
+          textoCompleto: formatArticleText(reportable),
         });
       }
 
@@ -330,53 +388,7 @@ export default function PesquisadorAutomaticoSection({
   const handleCopyABNT = () => {
     if (!article) return;
 
-    const fullText = `${article.title}
-${article.subtitle ? `${article.subtitle}\n` : ''}
-${article.titleEn}
-
-${article.authors.map((a) => `${a.name} (${a.titulation} - ${a.affiliation}${a.email ? ` - ${a.email}` : ''})`).join('\n')}
-
-RESUMO
-${article.resumo}
-
-Palavras-chave: ${article.palavrasChave.join('; ')}.
-
-ABSTRACT
-${article.abstractEn}
-
-Keywords: ${article.keywordsEn.join('; ')}.
-
-1 INTRODUÇÃO
-${article.introducao}
-
-2 METODOLOGIA DE REVISÃO SISTEMÁTICA
-${article.metodologia}
-
-3 DESENVOLVIMENTO E ANÁLISE DOS TÓPICOS
-${article.topicosDesenvolvimento
-  .map(
-    (t) =>
-      `${t.number} ${t.title}\n\n${t.content}\n\nFontes Consultadas neste Tópico (${t.fontesConsultadas.length} fontes):\n${t.fontesConsultadas
-        .map((f, idx) => `  [${idx + 1}] ${f.citationABNT} (${f.repository}) - Contribuição: ${f.contribution}`)
-        .join('\n')}`
-  )
-  .join('\n\n')}
-
-${
-  article.analiseComparativaDireta && article.analiseComparativaDireta.length > 0
-    ? `ANÁLISE COMPARATIVA DIRETA: PRÁTICAS TRADICIONAIS SUPERADAS VS. RECOMENDAÇÕES CONTEMPORÂNEAS\n${article.analiseComparativaDireta
-        .map(
-          (c, idx) =>
-            `Item ${idx + 1}: ${c.parametroComparado}\n- Prática Tradicional Superada: ${c.praticaSuperadaOuTradicional}\n- Prática Contemporânea Recomendada: ${c.praticaContemporaneaRecomendada}\n- Impacto Agroecológico e Econômico: ${c.impactoAgroeconomico}\n- Evidências Científicas: ${c.evidenciaCientifica}`
-        )
-        .join('\n\n')}\n\n`
-    : ''
-}4 CONSIDERAÇÕES FINAIS
-${article.consideracoesFinais}
-
-REFERÊNCIAS
-${article.referenciasABNT.join('\n\n')}
-`;
+    const fullText = formatArticleText(article);
 
     navigator.clipboard.writeText(fullText);
     setCopied(true);

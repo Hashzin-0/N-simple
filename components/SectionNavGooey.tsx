@@ -5,98 +5,8 @@ import { useTheme } from './ThemeProvider';
 import { useScrollSpy } from '@/hooks/useScrollSpy';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MultiButton, type MultiButtonItem } from './godui/multi-button';
-import {
-  FolderGit2,
-  Sliders,
-  Sparkles,
-  Layers,
-  Scale,
-  Calculator,
-  LayoutDashboard,
-  AlertTriangle,
-  Eye,
-  Trophy,
-  Landmark,
-  FileText,
-  BookOpen,
-  ScanSearch,
-  Search,
-  Globe,
-  Hand,
-  Camera,
-  PenTool,
-  GraduationCap,
-  MessagesSquare,
-  Library,
-  Languages,
-} from 'lucide-react';
-
-interface SectionConfig {
-  id: string;
-  label: string;
-  shortLabel: string;
-  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-  color: string;
-  colorDark: string;
-}
-
-const NITROGEN_SECTIONS: SectionConfig[] = [
-  { id: 'preset_selector', label: 'Cenários', shortLabel: 'Cenários', icon: FolderGit2, color: '#5A5A40', colorDark: '#9CB386' },
-  { id: 'form_section', label: 'Parâmetros', shortLabel: 'Parâmetros', icon: Sliders, color: '#5A5A40', colorDark: '#9CB386' },
-  { id: 'results_section', label: 'Resultados', shortLabel: 'Resultados', icon: Sparkles, color: '#2E6F40', colorDark: '#86efac' },
-  { id: 'parceling_section', label: 'Parcelamento', shortLabel: 'Parcelamento', icon: Layers, color: '#D4A373', colorDark: '#D4A373' },
-  { id: 'balanco_section', label: 'Balanço', shortLabel: 'Balanço', icon: Scale, color: '#2E6F40', colorDark: '#86efac' },
-  { id: 'detailed_math_panel', label: 'Fórmulas', shortLabel: 'Fórmulas', icon: Calculator, color: '#8D6E63', colorDark: '#CBB5A1' },
-];
-
-const CORN_SECTIONS: SectionConfig[] = [
-  { id: 'corn_yield_header', label: 'Visão Geral', shortLabel: 'Visão', icon: LayoutDashboard, color: '#C19262', colorDark: '#D4A373' },
-  { id: 'corn_yield_params', label: 'Parâmetros', shortLabel: 'Parâmetros', icon: Sliders, color: '#5A5A40', colorDark: '#9CB386' },
-  { id: 'corn_yield_alerts', label: 'Alertas', shortLabel: 'Alertas', icon: AlertTriangle, color: '#D4A373', colorDark: '#E0A96D' },
-  { id: 'corn_yield_visual', label: 'Visual 3D', shortLabel: 'Visual', icon: Eye, color: '#C19262', colorDark: '#D4A373' },
-  { id: 'corn_yield_results', label: 'Resultados', shortLabel: 'Resultados', icon: Trophy, color: '#2E6F40', colorDark: '#86efac' },
-];
-
-const ITR_SECTIONS: SectionConfig[] = [
-  { id: 'itr_section', label: 'Cálculo ITR', shortLabel: 'ITR', icon: Landmark, color: '#5A5A40', colorDark: '#9CB386' },
-  { id: 'itr_params_section', label: 'Parâmetros VTN', shortLabel: 'Parâmetros', icon: Sliders, color: '#5A5A40', colorDark: '#9CB386' },
-  { id: 'itr_results_section', label: 'Demonstrativo', shortLabel: 'Demonstrativo', icon: FileText, color: '#2E6F40', colorDark: '#86efac' },
-];
-
-const ABNT_SECTIONS: SectionConfig[] = [
-  { id: 'abnt_section', label: 'Referências ABNT', shortLabel: 'ABNT', icon: BookOpen, color: '#5A5A40', colorDark: '#9CB386' },
-  { id: 'bibliography_autodetect', label: 'Detector Fontes', shortLabel: 'Detector', icon: ScanSearch, color: '#2E6F40', colorDark: '#86efac' },
-  { id: 'analise_morfologica', label: 'Análise Morfológica', shortLabel: 'Morfologia', icon: Languages, color: '#D4A373', colorDark: '#D4A373' },
-];
-
-const PESQUISADOR_SECTIONS: SectionConfig[] = [
-  { id: 'pesquisador_fontes', label: 'Pesquisador de Fontes', shortLabel: 'Fontes', icon: Search, color: '#2E6F40', colorDark: '#86efac' },
-  { id: 'pesquisador_portais', label: 'Portais Confiáveis', shortLabel: 'Portais', icon: Globe, color: '#D4A373', colorDark: '#D4A373' },
-  { id: 'pesquisador_automatico', label: 'Pesquisador Automático', shortLabel: 'Artigo ABNT', icon: Sparkles, color: '#5A5A40', colorDark: '#9CB386' },
-];
-
-const LIBRAS_SECTIONS: SectionConfig[] = [
-  { id: 'libras_search', label: 'Buscar Sinais', shortLabel: 'Buscar', icon: Search, color: '#2E6F40', colorDark: '#86efac' },
-  { id: 'librascurso', label: 'Mini-Curso', shortLabel: 'Curso', icon: BookOpen, color: '#D4A373', colorDark: '#D4A373' },
-  { id: 'libras_practice', label: 'Praticar', shortLabel: 'Praticar', icon: Hand, color: '#9CB386', colorDark: '#86efac' },
-  { id: 'libras_tutor', label: 'Tutor', shortLabel: 'Tutor', icon: Sparkles, color: '#5A5A40', colorDark: '#9CB386' },
-  { id: 'libras_capture_test', label: 'Teste Câmera', shortLabel: 'Câmera', icon: Camera, color: '#5A5A40', colorDark: '#9CB386' },
-];
-
-const REDACAO_SECTIONS: SectionConfig[] = [
-  { id: 'redacao_tema', label: 'Tema', shortLabel: 'Tema', icon: PenTool, color: '#5A5A40', colorDark: '#9CB386' },
-  { id: 'redacao_repertorio', label: 'Repertório', shortLabel: 'Repertório', icon: BookOpen, color: '#2E6F40', colorDark: '#86efac' },
-  { id: 'redacao_expressoes', label: 'Expressões', shortLabel: 'Expressões', icon: Sparkles, color: '#D4A373', colorDark: '#D4A373' },
-  { id: 'redacao_estrutura', label: 'Estrutura', shortLabel: 'Estrutura', icon: Layers, color: '#5A5A40', colorDark: '#9CB386' },
-  { id: 'redacao_resultado', label: 'Resultado', shortLabel: 'Resultado', icon: FileText, color: '#2E6F40', colorDark: '#86efac' },
-];
-
-const TUTOR_SECTIONS: SectionConfig[] = [
-  { id: 'tutor_tema', label: 'Sessão', shortLabel: 'Sessão', icon: GraduationCap, color: '#2E6F40', colorDark: '#86efac' },
-  { id: 'tutor_session', label: 'Progresso', shortLabel: 'Progresso', icon: Trophy, color: '#5A5A40', colorDark: '#9CB386' },
-  { id: 'tutor_research', label: 'Questões', shortLabel: 'Questões', icon: Library, color: '#D4A373', colorDark: '#D4A373' },
-  { id: 'tutor_progress', label: 'Desempenho', shortLabel: 'Desempenho', icon: MessagesSquare, color: '#2E6F40', colorDark: '#9CB386' },
-];
+import { SECTIONS_BY_TAB } from '@/lib/sectionNav';
+import type { TabId } from '@/components/GooeyTabPanel';
 
 interface SectionNavGooeyProps {
   activeTab: string;
@@ -108,19 +18,10 @@ export default React.memo(function SectionNavGooey({ activeTab, activeSectionIds
   const { isDark } = useTheme();
   const isMobile = useIsMobile();
 
-  const sections = useMemo(() => {
-    switch (activeTab) {
-      case 'nitrogen': return NITROGEN_SECTIONS;
-      case 'productivity': return CORN_SECTIONS;
-      case 'itr': return ITR_SECTIONS;
-      case 'abnt': return ABNT_SECTIONS;
-      case 'pesquisador': return PESQUISADOR_SECTIONS;
-      case 'libras': return LIBRAS_SECTIONS;
-      case 'redacao': return REDACAO_SECTIONS;
-      case 'tutor': return TUTOR_SECTIONS;
-      default: return NITROGEN_SECTIONS;
-    }
-  }, [activeTab]);
+  const sections = useMemo(
+    () => SECTIONS_BY_TAB[activeTab as TabId] ?? SECTIONS_BY_TAB.nitrogen,
+    [activeTab]
+  );
 
   const sectionIds = useMemo(() => sections.map((s) => s.id), [sections]);
 
@@ -215,4 +116,3 @@ export default React.memo(function SectionNavGooey({ activeTab, activeSectionIds
     </div>
   );
 });
-

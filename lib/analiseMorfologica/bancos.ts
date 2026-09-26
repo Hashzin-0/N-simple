@@ -112,6 +112,20 @@ export const DICT: Record<string, ClasseGramatical> = {
   foram: 'verbo',
   tem: 'verbo',
   tinha: 'verbo',
+
+  // Numerais cardinais/ordinais (classe única inequívoca; "um"/"uma" já
+  // estão em DICT como artigo)
+  dois: 'numeral',
+  três: 'numeral',
+  quatro: 'numeral',
+  cinco: 'numeral',
+  seis: 'numeral',
+  sete: 'numeral',
+  oito: 'numeral',
+  nove: 'numeral',
+  dez: 'numeral',
+  primeiro: 'numeral',
+  segunda: 'numeral',
 };
 
 export const BANCOS: Record<string, Banco> = {

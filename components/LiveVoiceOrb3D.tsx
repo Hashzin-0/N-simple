@@ -11,16 +11,21 @@ interface LiveVoiceOrb3DProps {
   userVolume: number;
   agentVolume: number;
   audioFrequencyData?: Uint8Array;
+  /** Supressor de ruído (modo próximo) ativo → partículas roxas. */
+  nearModeActive?: boolean;
   className?: string;
   size?: number;
 }
 
 const MAX_SETUP_ATTEMPTS = 3;
+/** Roxo do modo próximo (supressor de ruído ativo). */
+const NEAR_MODE_COLOR = '#8B5CF6';
 
 export default function LiveVoiceOrb3D({
   status,
   userVolume,
   agentVolume,
+  nearModeActive = false,
   className = '',
   size = 180,
 }: LiveVoiceOrb3DProps) {
@@ -42,6 +47,7 @@ export default function LiveVoiceOrb3D({
 
   const targetColorCore = useRef<THREE.Color>(new THREE.Color('#5A5A40'));
   const targetColorGlow = useRef<THREE.Color>(new THREE.Color('#C5A880'));
+  const targetColorParticles = useRef<THREE.Color>(new THREE.Color(0xffffff));
 
   const mousePos = useRef({ x: 0, y: 0, targetX: 0, targetY: 0 });
   const isDragging = useRef(false);
@@ -72,6 +78,11 @@ export default function LiveVoiceOrb3D({
       targetColorGlow.current.set('#C5A880');
     }
   }, [status]);
+
+  // Modo próximo (supressor de ruído) → partículas roxas.
+  useEffect(() => {
+    targetColorParticles.current.set(nearModeActive ? NEAR_MODE_COLOR : 0xffffff);
+  }, [nearModeActive]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -207,7 +218,7 @@ export default function LiveVoiceOrb3D({
     }
     particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
     const particleMat = new THREE.PointsMaterial({
-      color: 0xffffff,
+      color: targetColorParticles.current,
       size: 0.05,
       transparent: true,
       opacity: 0.75,
@@ -292,6 +303,8 @@ export default function LiveVoiceOrb3D({
       }
 
       if (particlesRef.current) {
+        const particleMat = particlesRef.current.material as THREE.PointsMaterial;
+        particleMat.color.lerp(targetColorParticles.current, 0.06);
         particlesRef.current.rotation.y += 0.003;
         particlesRef.current.rotation.x = Math.sin(elapsedTime * 0.5) * 0.1;
       }
@@ -351,6 +364,7 @@ export default function LiveVoiceOrb3D({
 
   if (!webglSupported || rendererFailed) {
     const glowColor =
+      nearModeActive && status !== 'error' ? NEAR_MODE_COLOR :
       status === 'speaking' ? '#2E6F40' :
       status === 'listening' ? '#D4A373' :
       status === 'thinking' ? '#319795' :

@@ -153,6 +153,30 @@ export interface InsertQuestionsResult {
 }
 
 /**
+ * Resolve hash_dedup → id (UUID) para questões já existentes.
+ * Usado para dar id real às seeds locais (tutor_attempts.question_id é UUID FK).
+ */
+export async function fetchQuestionIdsByHash(
+  hashes: string[]
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  if (!isSupabaseConfigured() || hashes.length === 0) return out;
+  try {
+    const { data, error } = await supabase!
+      .from('questions')
+      .select('id,hash_dedup')
+      .in('hash_dedup', hashes);
+    if (error || !data) return out;
+    for (const row of data as Array<{ id: string; hash_dedup: string }>) {
+      out[row.hash_dedup] = row.id;
+    }
+  } catch (err) {
+    console.warn('[QuestionBank] Falha ao buscar ids por hash:', err);
+  }
+  return out;
+}
+
+/**
  * Insere questões com dedup por hash + gera embedding + indexa tópicos.
  */
 export async function insertQuestions(

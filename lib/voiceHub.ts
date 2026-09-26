@@ -59,6 +59,12 @@ export interface CallAgentOptions {
    * despedida.
    */
   delayNavigation?: boolean;
+  /**
+   * Aba de destino da navegação (padrão: TAB_FOR_AGENT do agente).
+   * Use para ir direto à aba da seção pedida (ex: handoff de scroll para
+   * a aba "pesquisador") sem passar pela aba padrão antes.
+   */
+  tab?: string;
 }
 
 /** Espera antes de fechar o socket antigo (resposta da ferramenta + despedida). */
@@ -256,8 +262,9 @@ class VoiceHub {
     this.pendingArmed = false;
 
     this.update({ activeAgentId: target, handoff: true });
+    const navTab = options.tab ?? TAB_FOR_AGENT[target];
     if (!options.delayNavigation) {
-      this.navigator?.(target, TAB_FOR_AGENT[target]);
+      this.navigator?.(target, navTab);
     }
 
     const finish = () => {
@@ -269,7 +276,7 @@ class VoiceHub {
         }
       }
       if (options.delayNavigation) {
-        this.navigator?.(target, TAB_FOR_AGENT[target]);
+        this.navigator?.(target, navTab);
       }
       this.applyPendingSwitch(target);
     };
@@ -293,7 +300,7 @@ class VoiceHub {
       // grace (nenhuma sessão para transferir), navega já — senão a tool
       // responderia "agente ativado" sem trocar de aba.
       if (options.delayNavigation) {
-        this.navigator?.(target, TAB_FOR_AGENT[target]);
+        this.navigator?.(target, navTab);
       }
     }
 

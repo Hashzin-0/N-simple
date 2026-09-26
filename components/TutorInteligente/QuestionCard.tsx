@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { BookOpen, ExternalLink, Sparkles, Target } from 'lucide-react';
-import type { TutorQuestion } from '@/lib/tutor/types';
+import type { QuestionOrigem, TutorQuestion } from '@/lib/tutor/types';
 
 interface QuestionCardProps {
   question: TutorQuestion;
@@ -14,6 +14,26 @@ const DIFICULDADE_LABEL: Record<string, string> = {
   basica: 'Básica',
   aplicacao: 'Aplicação',
   detalhamento: 'Detalhamento',
+};
+
+const ORIGEM_BADGE: Record<QuestionOrigem, { label: string; cls: string }> = {
+  pesquisada: { label: 'Questão pesquisada', cls: 'bg-[#D4A373]/15 text-[#C19262]' },
+  artigo: {
+    label: 'De artigo',
+    cls: 'bg-[#2E6F40]/15 text-[#2E6F40] dark:bg-[#86efac]/15 dark:text-[#86efac]',
+  },
+  documento: {
+    label: 'Do seu material',
+    cls: 'bg-[#6B5B95]/15 text-[#6B5B95] dark:bg-[#B3A5E0]/15 dark:text-[#B3A5E0]',
+  },
+  prova_real: {
+    label: 'Prova real',
+    cls: 'bg-[#4A6FA5]/15 text-[#4A6FA5] dark:bg-[#93B7D8]/15 dark:text-[#93B7D8]',
+  },
+  gerada: {
+    label: 'Questão gerada',
+    cls: 'bg-[#5A5A40]/10 text-[#5A5A40] dark:bg-[#9CB386]/10 dark:text-[#9CB386]',
+  },
 };
 
 export default function QuestionCard({ question, questionNumber, total }: QuestionCardProps) {
@@ -39,19 +59,9 @@ export default function QuestionCard({ question, questionNumber, total }: Questi
             {DIFICULDADE_LABEL[question.dificuldade] || question.dificuldade}
           </span>
           <span
-            className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-              question.origem === 'pesquisada'
-                ? 'bg-[#D4A373]/15 text-[#C19262]'
-                : question.origem === 'artigo'
-                  ? 'bg-[#2E6F40]/15 text-[#2E6F40] dark:bg-[#86efac]/15 dark:text-[#86efac]'
-                  : 'bg-[#5A5A40]/10 text-[#5A5A40] dark:bg-[#9CB386]/10 dark:text-[#9CB386]'
-            }`}
+            className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${ORIGEM_BADGE[question.origem]?.cls ?? ORIGEM_BADGE.gerada.cls}`}
           >
-            {question.origem === 'pesquisada'
-              ? 'Questão pesquisada'
-              : question.origem === 'artigo'
-                ? 'De artigo'
-                : 'Questão gerada'}
+            {ORIGEM_BADGE[question.origem]?.label ?? ORIGEM_BADGE.gerada.label}
           </span>
         </div>
       </div>
@@ -105,10 +115,10 @@ export default function QuestionCard({ question, questionNumber, total }: Questi
         </a>
       )}
 
-      {!question.gabarito && question.origem === 'gerada' && (
+      {alts.length === 0 && (
         <p className="flex items-center gap-1.5 text-[11px] text-[#8C897E] dark:text-[#9EA399]">
           <Sparkles className="size-3" />
-          Questão discursiva — responda com suas palavras.
+          Questão discursiva — responda com suas palavras respeitando as restrições do enunciado.
         </p>
       )}
     </div>

@@ -6,6 +6,7 @@ type ClasseKey =
   | 'adjetivo'
   | 'adverbio'
   | 'artigo'
+  | 'numeral'
   | 'preposicao'
   | 'conjuncao'
   | 'pronome'
@@ -17,6 +18,7 @@ const MAP: Record<ClasseKey, ClasseGramatical> = {
   adjetivo: 'adjetivo',
   adverbio: 'advérbio',
   artigo: 'artigo',
+  numeral: 'numeral',
   preposicao: 'preposição',
   conjuncao: 'conjunção',
   pronome: 'pronome',
@@ -29,6 +31,7 @@ const KEYS: ClasseKey[] = [
   'adjetivo',
   'adverbio',
   'artigo',
+  'numeral',
   'preposicao',
   'conjuncao',
   'pronome',
@@ -84,7 +87,7 @@ export function montarPromptIA(): string {
     'Regras:',
     '1. A frase deve ter entre 6 e 9 palavras que possuem classe gramatical.',
     '2. Cada "palavra" é UM único token: sem espaços e sem pontuação (a pontuação é opcional e pode ser um token separado como "," ou "." com "classe": "pontuacao").',
-    '3. "classe" deve ser EXATAMENTE um de: substantivo, verbo, adjetivo, advérbio, artigo, preposição, conjunção, pronome, interjeição.',
+    '3. "classe" deve ser EXATAMENTE um de: substantivo, verbo, adjetivo, advérbio, artigo, numeral, preposição, conjunção, pronome, interjeição.',
     '4. Inclua pelo menos um verbo, um advérbio e uma preposição ou conjunção, além de artigo ou pronome.',
     '5. Use apenas palavras cuja classe seja inequívoca no contexto (evite "que", "muito", "antes", "a" como preposição e "se" reflexivo).',
     '6. A frase deve ser gramaticalmente correta, natural e com sentido completo.',

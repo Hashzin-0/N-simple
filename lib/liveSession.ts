@@ -410,34 +410,90 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
               setActionLabel(labelsNow.listening ?? DEFAULT_LABELS.listening);
             }
 
+            if (msg.toolCallCancellation?.ids?.length) {
+              const prefixCancel = configRef.current.logPrefix || 'Live';
+              console.warn(`[${prefixCancel}] toolCallCancellation:`, msg.toolCallCancellation.ids);
+            }
+
             if (msg.toolCall?.functionCalls) {
+              const prefix = configRef.current.logPrefix || 'Live';
               setStatus('thinking');
               toolBusyRef.current = true;
-              const functionResponses = [];
-              for (const call of msg.toolCall.functionCalls) {
-                const { name, args, id } = call;
-                // Uma tool que lança exceção SEMPRE precisa devolver resposta:
-                // sem functionResponse o modelo fica sem retorno e inventa
-                // um "houve um erro técnico" para o usuário.
-                let output: unknown;
-                try {
-                  output = await executeToolRef.current(name, args || {}, setActionLabel);
-                } catch (toolErr) {
-                  const prefix = configRef.current.logPrefix || 'Live';
-                  console.error(`[${prefix}] Tool ${name} falhou:`, toolErr);
-                  output = {
-                    success: false,
-                    error:
-                      toolErr instanceof Error
-                        ? toolErr.message
-                        : 'Erro interno ao executar a ferramenta.',
-                  };
+              const functionResponses: Array<{
+                id?: string;
+                name?: string;
+                response: unknown;
+              }> = [];
+              try {
+                for (const call of msg.toolCall.functionCalls) {
+                  const { name, args, id } = call;
+                  if (!name) {
+                    console.error(
+                      `[${prefix}] toolCall sem "name"; a resposta será descartada pelo servidor`
+                    );
+                  }
+                  // Uma tool que lança exceção SEMPRE precisa devolver resposta:
+                  // sem functionResponse o modelo fica sem retorno e inventa
+                  // um "houve um erro técnico" para o usuário.
+                  let output: unknown;
+                  try {
+                    console.debug(`[${prefix}] toolCall`, { name, id, args });
+                    output = await executeToolRef.current(name, args || {}, setActionLabel);
+                  } catch (toolErr) {
+                    console.error(`[${prefix}] Tool ${name} falhou:`, toolErr);
+                    output = {
+                      success: false,
+                      error:
+                        toolErr instanceof Error
+                          ? toolErr.message
+                          : 'Erro interno ao executar a ferramenta.',
+                    };
+                  }
+                  // `name` é OBRIGATÓRIO no FunctionResponse: sem ele o servidor
+                  // descarta o retorno e o modelo responde "houve um erro técnico"
+                  // (reproduzido com BidiGenerateContent: sem name → "Ocorreu um
+                  // erro no sistema"; com name → lê o output normalmente).
+                  // NÃO enviar `scheduling`: este modelo responde WS 1007
+                  // "Function response scheduling is not supported for this model".
+                  functionResponses.push({ id, name, response: { output } });
                 }
-                functionResponses.push({ response: { output }, id });
+              } finally {
+                toolBusyRef.current = false;
               }
-              toolBusyRef.current = false;
               setActionLabel(labelsNow.thinking ?? DEFAULT_LABELS.thinking);
-              ws.send(JSON.stringify({ toolResponse: { functionResponses } }));
+
+              let payload: string;
+              try {
+                payload = JSON.stringify({ toolResponse: { functionResponses } });
+              } catch (stringErr) {
+                // Nunca deixe uma tool sem resposta: um stringify que falha cai no
+                // catch externo (que só loga) e o modelo inventa o "erro técnico".
+                console.error(`[${prefix}] Falha ao serializar toolResponse:`, stringErr);
+                payload = JSON.stringify({
+                  toolResponse: {
+                    functionResponses: functionResponses.map((r) => ({
+                      id: r.id,
+                      name: r.name,
+                      response: {
+                        output: {
+                          success: false,
+                          error: 'Falha ao serializar a resposta da ferramenta.',
+                        },
+                      },
+                    })),
+                  },
+                });
+              }
+
+              if (ws.readyState === WebSocket.OPEN) {
+                console.debug(
+                  `[${prefix}] toolResponse enviado`,
+                  functionResponses.map((r) => r.name)
+                );
+                ws.send(payload);
+              } else {
+                console.warn(`[${prefix}] toolResponse não enviado: socket já fechado`);
+              }
             }
           } catch (err) {
             const prefix = configRef.current.logPrefix || 'Live';

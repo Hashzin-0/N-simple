@@ -19,9 +19,11 @@ import type { GestureTemplate } from '@/lib/libras-types';
 
 interface LibrasPracticeProps {
   onBack?: () => void;
+  /** Pedido externo (voz); seq monotônico evita re-execução. */
+  pendingTemplate?: { seq: number; templateId?: string } | null;
 }
 
-export default React.memo(function LibrasPractice({ onBack }: LibrasPracticeProps) {
+export default React.memo(function LibrasPractice({ onBack, pendingTemplate }: LibrasPracticeProps) {
   const { isDark } = useTheme();
   const {
     isReady,
@@ -131,6 +133,17 @@ export default React.memo(function LibrasPractice({ onBack }: LibrasPracticeProp
   const handleReset = useCallback(() => {
     reset();
   }, [reset]);
+
+  // Pedido externo (voz): abre o sinal na prática (abre a câmera).
+  const lastPendingSeqRef = useRef(0);
+  useEffect(() => {
+    if (!pendingTemplate || pendingTemplate.seq === lastPendingSeqRef.current) return;
+    if (templates.length === 0) return; // aguarda os templates carregarem
+    lastPendingSeqRef.current = pendingTemplate.seq;
+    if (!pendingTemplate.templateId) return;
+    const tpl = templates.find((t) => t.id === pendingTemplate.templateId);
+    if (tpl) handleSelectTemplate(tpl);
+  }, [pendingTemplate, templates, handleSelectTemplate]);
 
   const handleNext = useCallback(() => {
     const nextIdx = (currentIndex + 1) % templates.length;

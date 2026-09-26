@@ -18,6 +18,8 @@ export interface PesqArticleReport {
   tema: string;
   resumo: string;
   referencias: string[];
+  /** Texto completo (ABNT) do artigo — usado pela voz para copiar o artigo. */
+  textoCompleto?: string;
 }
 
 interface PesquisadorAgroProps {

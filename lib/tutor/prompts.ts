@@ -1,4 +1,6 @@
-export const TUTOR_PROMPT_VERSION = '1.1.0';
+import type { QuestionOrigem } from './types';
+
+export const TUTOR_PROMPT_VERSION = '1.2.0';
 
 export interface EvaluateAnswerArgs {
   enunciado: string;
@@ -98,6 +100,7 @@ REGRAS:
 7. Use o contexto de fontes quando houver; se contradisser o gabarito, prefira o gabarito+fontes e mencione a fonte.
 8. Se a resposta for vazia, muito curta ou irrelevante: statusGeral="revisar", conteudo="errado".
 9. No modo socrático, "pista" é obrigatória quando tentativa < 3 e statusGeral !== "dominou"; caso contrário null.
+10. Se o enunciado impõe restrição de formato (ex.: "no máximo 2 parágrafos", "texto crítico", "com suas palavras", limite de palavras), avalie também o cumprimento dessa restrição em completude e coerencia — e registre o descumprimento em "omissoes".
 
 Retorne APENAS JSON no formato:
 {
@@ -120,7 +123,7 @@ export interface ExtractQuestionsArgs {
   tema: string;
   subtema?: string;
   fontesContext: string;
-  origemPadrao?: 'pesquisada' | 'gerada' | 'artigo' | 'documento';
+  origemPadrao?: QuestionOrigem;
 }
 
 /**
@@ -141,11 +144,28 @@ ${args.fontesContext}
 ---
 
 TAREFA: Extraia ou elabore questões de prova sobre o tema acima, usando o conteúdo das fontes.
+Misture os DOIS formatos de prova real de agronegócio:
+- OBJETIVA: múltipla escolha com 4 ou 5 alternativas plausíveis e apenas uma correta.
+- DISCURSIVA: pergunta aberta de prova real, com a restrição já escrita no enunciado
+  (ex.: "Discorra com suas palavras...", "Desenvolva um texto crítico (de no máximo 2 parágrafos)",
+  "Explique a relação entre X e Y"). Discursiva tem "alternativas": null e "gabarito" = RESPOSTA
+  ESPERADA em tópicos (é a referência da rubrica de avaliação do aluno, não uma alternativa).
+
+EXEMPLO DE FORMATO (apenas o formato — não copie o conteúdo):
+{
+  "enunciado": "Discorra com suas palavras a respeito dos conceitos X e Y (obs.: no máximo 2 parágrafos).",
+  "alternativas": null,
+  "gabarito": "X: ideia central em um tópico.\\nY: ideia central em um tópico.\\nContraste: como se relacionam.",
+  "explicacao": "O que a banca espera no texto do candidato.",
+  "assunto": "Tema geral", "subassunto": "Subtema", "disciplina": "Disciplina",
+  "instituicao": null, "ano": null, "tipo_prova": "questão didática",
+  "fonte": null, "fonte_url": null, "origem": "${origem}", "dificuldade": "detalhamento"
+}
 
 Para cada questão, defina:
 - enunciado: texto completo da questão (aberta ou com alternativas)
 - alternativas: objeto com chaves "A".."E" quando houver múltipla escolha; null para questão aberta
-- gabarito: letra ("A".."E") ou resposta esperada; null se for discursiva sem gabarito fechado
+- gabarito: letra ("A".."E") para objetivas; para discursivas, a RESPOSTA ESPERADA em tópicos (não deixe null)
 - explicacao: explicação pedagógica curta da resposta
 - assunto: tema geral (ex: "Fertilidade do Solo")
 - subassunto: subtema específico (ex: "Calagem")
@@ -160,11 +180,13 @@ Para cada questão, defina:
 
 REGRAS:
 1. Gere de 4 a 8 questões, misturando dificuldades (pelo menos 1 de cada).
-2. Pelo menos 2 questões devem ser de aplicação prática (contexto de campo/fazenda).
-3. Não invente instituição/ano — se não estiver nas fontes, use null.
-4. Questões de múltipla escolha devem ter 4 ou 5 alternativas plausíveis, com apenas uma correta.
-5. Prefira questões cujo conteúdo apareça nas fontes (origem conforme definida acima).
-6. Seja fiel à ciência agronômica brasileira (Embrapa, normas técnicas, terminologia pt-BR).
+2. Pelo menos 2 discursivas (com restrição de formato no enunciado) e pelo menos 2 objetivas.
+3. Pelo menos 2 questões devem ser de aplicação prática (contexto de campo/fazenda).
+4. Não invente instituição/ano — se não estiver nas fontes, use null.
+5. Questões de múltipla escolha devem ter 4 ou 5 alternativas plausíveis, com apenas uma correta.
+6. Discursivas: "alternativas": null e "gabarito" = resposta esperada em tópicos; em "explicacao", liste os pontos que a banca avalia no texto do candidato.
+7. Prefira questões cujo conteúdo apareça nas fontes (origem conforme definida acima).
+8. Seja fiel à ciência agronômica brasileira (Embrapa, normas técnicas, terminologia pt-BR).
 
 Retorne APENAS JSON válido:
 {

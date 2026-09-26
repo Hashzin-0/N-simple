@@ -4,6 +4,7 @@ export type ClasseGramatical =
   | 'adjetivo'
   | 'advérbio'
   | 'artigo'
+  | 'numeral'
   | 'preposição'
   | 'conjunção'
   | 'pronome'
@@ -54,6 +55,13 @@ export const CLASSES: ClasseInfo[] = [
     corDark: '#9CB386',
   },
   {
+    id: 'numeral',
+    label: 'Numeral',
+    dica: 'Indica quantidade ou ordem (um, dois, três, primeiro...).',
+    cor: '#5B5BD6',
+    corDark: '#A5B4FC',
+  },
+  {
     id: 'preposição',
     label: 'Preposição',
     dica: 'Liga palavras ou orações (de, em, com, para...).',
@@ -95,12 +103,20 @@ export interface Token {
   palavra: string;
   classe?: ClasseGramatical;
   pontuacao?: boolean;
+  /**
+   * Tokens consecutivos com o mesmo `grupo` são renderizados num único bloco
+   * (ex.: contração "às" = preposição "a" + artigo "as"). Cada parte continua
+   * clicável e corrigida separadamente.
+   */
+  grupo?: string;
+  /** Forma original escrita no texto (ex.: "às") — só exibição/título. */
+  grupoLabel?: string;
 }
 
 export interface Frase {
   id: string;
   tokens: Token[];
-  origem: 'local' | 'ia';
+  origem: 'local' | 'ia' | 'prova';
 }
 
 export interface ProgressoAnalise {

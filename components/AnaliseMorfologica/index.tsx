@@ -52,7 +52,12 @@ function HudItem({ icon: Icon, valor, label, cor }: HudItemProps) {
   );
 }
 
-export default function AnaliseMorfologica() {
+interface AnaliseMorfologicaProps {
+  /** Pedido externo (voz) de frase nova; seq monotônico evita re-execução. */
+  pendingReq?: { seq: number; frase: Frase } | null;
+}
+
+export default function AnaliseMorfologica({ pendingReq }: AnaliseMorfologicaProps) {
   const { isDark } = useTheme();
   const [showCalc, setShowCalc] = useState(false);
   const [frase, setFrase] = useState<Frase | null>(null);
@@ -103,6 +108,16 @@ export default function AnaliseMorfologica() {
   useEffect(() => {
     novaLocal();
   }, [novaLocal]);
+
+  // Pedido externo (voz): aplica a frase já sorteada pelo agente (o texto vai
+  // no retorno da tool — aqui só entramos com ela na tela).
+  const lastPendingSeqRef = useRef(0);
+  useEffect(() => {
+    if (!pendingReq || pendingReq.seq === lastPendingSeqRef.current) return;
+    lastPendingSeqRef.current = pendingReq.seq;
+    recentesRef.current = [...recentesRef.current, fingerprintFrase(pendingReq.frase)].slice(-11);
+    aplicarFrase(pendingReq.frase);
+  }, [pendingReq, aplicarFrase]);
 
   const gerarComIA = useCallback(async () => {
     if (gerandoIA) return;
@@ -217,7 +232,8 @@ export default function AnaliseMorfologica() {
           </div>
           <p className="text-xs text-[#8C897E] dark:text-[#9EA399]">
             A frase é montada na hora. Clique em cada palavra e informe a classe:
-            substantivo, verbo, adjetivo, advérbio, artigo, preposição, conjunção, pronome ou interjeição.
+            substantivo, verbo, adjetivo, advérbio, artigo, numeral, preposição,
+            conjunção, pronome ou interjeição.
           </p>
         </div>
 
@@ -340,13 +356,21 @@ export default function AnaliseMorfologica() {
                   ? isDark
                     ? 'bg-[#232821] border-[#9CB386]/40 text-[#9CB386]'
                     : 'bg-[#F0EDE5] border-[#5A5A40]/40 text-[#5A5A40]'
-                  : isDark
-                    ? 'bg-[#161A14] border-[#3D3D3D] text-[#9EA399]'
-                    : 'bg-white border-[#D5D4D0] text-[#8C897E]'
+                  : frase.origem === 'prova'
+                    ? isDark
+                      ? 'bg-[#161A14] border-[#93B7D8]/50 text-[#93B7D8]'
+                      : 'bg-[#4A6FA5]/10 border-[#4A6FA5]/40 text-[#4A6FA5]'
+                    : isDark
+                      ? 'bg-[#161A14] border-[#3D3D3D] text-[#9EA399]'
+                      : 'bg-white border-[#D5D4D0] text-[#8C897E]'
               )}
             >
               <Sparkles className="h-3 w-3" />
-              {frase.origem === 'ia' ? 'Gerada com IA' : 'Frase local'}
+              {frase.origem === 'ia'
+                ? 'Gerada com IA'
+                : frase.origem === 'prova'
+                  ? 'Prova real'
+                  : 'Frase local'}
             </span>
 
             <SentenceExercise
@@ -456,9 +480,10 @@ export default function AnaliseMorfologica() {
               A frase é montada na hora a partir de templates e bancos de palavras locais
               (rápido, offline e com correção garantida), ou gerada por IA pelo botão
               “Gerar com IA”. Cada palavra é um token clicável: ao escolher a classe, o
-              sistema valida na hora e mostra a resposta correta. As 9 classes cobrem as
-              variáveis (substantivo, verbo, adjetivo, advérbio) e as invariáveis
-              (artigo, preposição, conjunção, pronome, interjeição). A pontuação e a
+              sistema valida na hora e mostra a resposta correta. As 10 classes cobrem as
+              variáveis (substantivo, verbo, adjetivo, advérbio, numeral) e as invariáveis
+              (artigo, preposição, conjunção, pronome, interjeição); contrações entram como
+              blocos com mais de uma parte (ex.: “às” = preposição + artigo). A pontuação e a
               sequência de frases perfeitas ficam salvas neste dispositivo.
             </p>
           </div>

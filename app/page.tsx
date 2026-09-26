@@ -21,6 +21,7 @@ import Input3D from '@/components/Input3D';
 import Select3D from '@/components/Select3D';
 import { CssGooeyStack } from '@/components/godui/css-gooey-stack';
 import { useGeminiLiveAgent } from '@/hooks/useGeminiLiveAgent';
+import { useVoiceSettingsSync } from '@/hooks/useVoiceSettings';
 import { voiceHub } from '@/lib/voiceHub';
 import type { VoiceHUDState } from '@/components/VoiceAssistantHUD';
 import { useTheme } from '@/components/ThemeProvider';
@@ -49,7 +50,8 @@ import type { PesqSourcesReport, PesqArticleReport } from '@/components/Pesquisa
 import type { FontesSearchProgress } from '@/components/PesquisadorAgro/PesquisadorFontesCard';
 import type { RedacaoVoiceReport } from '@/components/PesquisadorRedacao';
 import type { LibrasSubTab } from '@/components/LibrasNoAgro';
-import { smoothScrollToSection } from '@/lib/pageAutomator';
+import type { Frase } from '@/lib/analiseMorfologica/types';
+import { smoothScrollToSection, waitForElement } from '@/lib/pageAutomator';
 
 /** Âncoras das sessões de Libras (ids no DOM de LibrasNoAgro). */
 const LIBRAS_SECTION_IDS: Record<LibrasSubTab, string> = {
@@ -370,8 +372,11 @@ export default function Home() {
   const [pesqArticleReport, setPesqArticleReport] = useState<PesqArticleReport | null>(null);
   // Progresso da busca de fontes (portal a portal) — alimenta o card do header.
   const [pesqSearchProgress, setPesqSearchProgress] = useState<FontesSearchProgress | null>(null);
+  // Último progresso SEM expirar — é o que a tool lerProgressoPesquisa lê.
+  const [pesqSearchSnapshot, setPesqSearchSnapshot] = useState<FontesSearchProgress | null>(null);
   const onPesqSearchProgress = useCallback((p: FontesSearchProgress) => {
     setPesqSearchProgress(p);
+    setPesqSearchSnapshot(p);
   }, []);
   // Fases finais ficam uns segundos no header e depois somem.
   useEffect(() => {
@@ -382,6 +387,9 @@ export default function Home() {
   const [redacaoReq, setRedacaoReq] = useState<{ seq: number; action: 'pesquisar' | 'gerar' | 'validar' | 'recomecar'; tema?: string } | null>(null);
   const [redacaoReport, setRedacaoReport] = useState<RedacaoVoiceReport | null>(null);
   const [librasSearchReq, setLibrasSearchReq] = useState<{ seq: number; query: string } | null>(null);
+  const [librasPracticeReq, setLibrasPracticeReq] = useState<{ seq: number; templateId?: string } | null>(null);
+  const [librasQuizReq, setLibrasQuizReq] = useState<{ seq: number; moduleId?: string } | null>(null);
+  const [analiseReq, setAnaliseReq] = useState<{ seq: number; frase: Frase } | null>(null);
   const voiceReqSeqRef = useRef(0);
 
 
@@ -533,6 +541,7 @@ export default function Home() {
     (tema: string) => {
       voiceReqSeqRef.current += 1;
       setPesqSearchReq({ seq: voiceReqSeqRef.current, theme: tema });
+      setPesqSearchSnapshot(null);
       setActiveTab('pesquisador');
     },
     [setActiveTab]
@@ -572,11 +581,14 @@ export default function Home() {
 
   // ---- Voice callbacks: Libras no Agro ----
   // As sessões ficam empilhadas na mesma página; a voz troca de aba e rola
-  // até a âncora (conteúdo só monta depois da troca — por isso o delay).
+  // até a âncora (waitForElement espera a aba montar — sem delay fixo).
   const onAbrirLibras = useCallback(
     (subTab: LibrasSubTab) => {
       setActiveTab('libras');
-      setTimeout(() => smoothScrollToSection(LIBRAS_SECTION_IDS[subTab]), 400);
+      const sectionId = LIBRAS_SECTION_IDS[subTab];
+      void waitForElement(sectionId).then((el) => {
+        if (el) smoothScrollToSection(sectionId);
+      });
     },
     [setActiveTab]
   );
@@ -586,10 +598,53 @@ export default function Home() {
       voiceReqSeqRef.current += 1;
       setLibrasSearchReq({ seq: voiceReqSeqRef.current, query: palavra });
       setActiveTab('libras');
-      setTimeout(() => smoothScrollToSection(LIBRAS_SECTION_IDS.search), 400);
+      const sectionId = LIBRAS_SECTION_IDS.search;
+      void waitForElement(sectionId).then((el) => {
+        if (el) smoothScrollToSection(sectionId);
+      });
     },
     [setActiveTab]
   );
+
+  // ---- Voice callbacks: prática e quiz de Libras ----
+  const onIniciarPraticaLibras = useCallback(
+    (templateId?: string) => {
+      voiceReqSeqRef.current += 1;
+      setLibrasPracticeReq({
+        seq: voiceReqSeqRef.current,
+        ...(templateId ? { templateId } : {}),
+      });
+      onAbrirLibras('practice');
+    },
+    [onAbrirLibras]
+  );
+
+  const onIniciarQuizLibras = useCallback(
+    (moduleId?: string) => {
+      voiceReqSeqRef.current += 1;
+      setLibrasQuizReq({ seq: voiceReqSeqRef.current, ...(moduleId ? { moduleId } : {}) });
+      onAbrirLibras('course');
+    },
+    [onAbrirLibras]
+  );
+
+  // ---- Voice callbacks: análise morfológica (aba ABNT) ----
+  const onGerarFraseMorfologica = useCallback(
+    (frase: Frase) => {
+      voiceReqSeqRef.current += 1;
+      setAnaliseReq({ seq: voiceReqSeqRef.current, frase });
+      setActiveTab('abnt');
+      void waitForElement('analise_morfologica').then((el) => {
+        if (el) smoothScrollToSection('analise_morfologica');
+      });
+    },
+    [setActiveTab]
+  );
+
+  // ---- Voice callbacks: acessibilidade ----
+  const onAbrirAcessibilidade = useCallback(() => {
+    setIsAccessibilityPanelOpen(true);
+  }, []);
 
   const voiceAgent = useGeminiLiveAgent({
     yieldGoal,
@@ -644,6 +699,11 @@ export default function Home() {
     onRedacaoAction,
     onAbrirLibras,
     onBuscarSinal,
+    onIniciarPraticaLibras,
+    onIniciarQuizLibras,
+    onGerarFraseMorfologica,
+    onAbrirAcessibilidade,
+    pesqSearchSnapshot,
   });
 
   // Memoized tab contents to avoid unneeded re-renders when nitrogen parameters update
@@ -723,12 +783,18 @@ export default function Home() {
               onReferenceSelected={handleReferenceSelected}
               initialUrl=""
             />
-            <AnaliseMorfologica />
+            <AnaliseMorfologica pendingReq={analiseReq} />
           </div>
         </ScrollStack>
       </div>
     ),
-    [abntReferences, onSetABNTReference, onDeleteAbntReference, handleReferenceSelected]
+    [
+      abntReferences,
+      onSetABNTReference,
+      onDeleteAbntReference,
+      handleReferenceSelected,
+      analiseReq,
+    ]
   );
 
   const pesquisadorContent = useMemo(
@@ -753,11 +819,15 @@ export default function Home() {
     () => (
       <div className="w-full">
         <ScrollStack peek={12} blur pinTop="4vh">
-          <LibrasNoAgro pendingSearch={librasSearchReq} />
+          <LibrasNoAgro
+            pendingSearch={librasSearchReq}
+            pendingPractice={librasPracticeReq}
+            pendingQuiz={librasQuizReq}
+          />
         </ScrollStack>
       </div>
     ),
-    [librasSearchReq]
+    [librasSearchReq, librasPracticeReq, librasQuizReq]
   );
 
   const redacaoContent = useMemo(
@@ -789,6 +859,9 @@ export default function Home() {
   );
 
   // ---- Hub de agentes de voz (global ↔ tutor) ----
+  // Preferência do supressor de ruído: local-first + sync de nuvem (logado).
+  useVoiceSettingsSync();
+
   // Navegação disparada pelo hub (ex: ferramenta chamarAgente do agente de voz).
   useEffect(() => {
     voiceHub.setNavigator((_agentId, tab) => {

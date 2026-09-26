@@ -72,6 +72,20 @@ function persistSettings(settings: LibrasSettings): void {
   }
 }
 
+/** Alterna o widget VLibras fora de componentes React (ex: tool de voz). */
+export function toggleWidgetSetting(): boolean {
+  const next = !getSettingsSnapshot().widgetEnabled;
+  persistSettings({ ...getSettingsSnapshot(), widgetEnabled: next });
+  return next;
+}
+
+/** Alterna o reconhecimento de sinais fora de componentes React (ex: tool de voz). */
+export function toggleRecognitionSetting(): boolean {
+  const next = !getSettingsSnapshot().recognitionEnabled;
+  persistSettings({ ...getSettingsSnapshot(), recognitionEnabled: next });
+  return next;
+}
+
 export function useLibrasSettings() {
   const settings = useSyncExternalStore(subscribeToSettings, getSettingsSnapshot, getSettingsSnapshot);
 
@@ -81,12 +95,12 @@ export function useLibrasSettings() {
   }, []);
 
   const toggleWidget = useCallback(() => {
-    updateSettings({ widgetEnabled: !getSettingsSnapshot().widgetEnabled });
-  }, [updateSettings]);
+    toggleWidgetSetting();
+  }, []);
 
   const toggleRecognition = useCallback(() => {
-    updateSettings({ recognitionEnabled: !getSettingsSnapshot().recognitionEnabled });
-  }, [updateSettings]);
+    toggleRecognitionSetting();
+  }, []);
 
   const setWidgetPosition = useCallback((position: WidgetPosition) => {
     updateSettings({ widgetPosition: position });
