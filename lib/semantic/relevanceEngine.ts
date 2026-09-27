@@ -49,17 +49,6 @@ export interface UnderstoodSource extends ScientificSource {
   shouldPersist: boolean;
 }
 
-// Embeddings do descritor de domínio — cache por DomainKey (padrão: agro).
-const domainAnchorPromises = new Map<string, Promise<number[]>>();
-function getDomainAnchorEmbedding(domain: DomainKey = 'agro'): Promise<number[]> {
-  const descriptor = DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR;
-  let promise = domainAnchorPromises.get(domain);
-  if (!promise) {
-    promise = embedText(descriptor, 'RETRIEVAL_DOCUMENT');
-    domainAnchorPromises.set(domain, promise);
-  }
-  return promise;
-}
 
 function buildAnalysisText(source: ScientificSource, fullText: string, hasFullText: boolean): string {
   if (hasFullText) return fullText;
