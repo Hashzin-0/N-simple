@@ -72,6 +72,17 @@ function persistSettings(settings: LibrasSettings): void {
   }
 }
 
+/** Lê as configurações fora de componentes React (ex: tool de voz). */
+export function getLibrasSettings(): LibrasSettings {
+  return getSettingsSnapshot();
+}
+
+/** Liga/desliga o widget VLibras fora de componentes React. */
+export function setWidgetEnabled(enabled: boolean): void {
+  if (getSettingsSnapshot().widgetEnabled === enabled) return;
+  persistSettings({ ...getSettingsSnapshot(), widgetEnabled: enabled });
+}
+
 /** Alterna o widget VLibras fora de componentes React (ex: tool de voz). */
 export function toggleWidgetSetting(): boolean {
   const next = !getSettingsSnapshot().widgetEnabled;

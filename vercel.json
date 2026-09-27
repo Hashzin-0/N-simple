@@ -29,6 +29,9 @@
     },
     "app/api/evidence/search/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/inngest/route.ts": {
+      "maxDuration": 300
     }
   },
   "headers": [

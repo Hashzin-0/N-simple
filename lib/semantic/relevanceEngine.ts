@@ -46,11 +46,22 @@ export interface UnderstoodSource extends ScientificSource {
   domainScore: number;
   inAgroDomain: boolean;
   shouldPersist: boolean;
+  /**
+   * Estágio da pipeline em duas fases:
+   *  - 'light' (fase 1, foreground): score/domínio por embedding em lote,
+   *    gravado na hora; ainda NÃO é reutilizável pela memória de evidências.
+   *  - 'full' (fase 2, Inngest): understandOne completo (full-text +
+   *    cross-encoder + categorias) — só então vira reutilizável.
+   * Ausente = o chamador não declara estágio (evidence/index legado).
+   */
+  semanticStatus?: 'light' | 'full';
+  /** Query que descobriu a fonte — contexto da fase 2 para understandOne. */
+  semanticQuery?: string;
 }
 
 // Embeddings do descritor de domínio — cache por DomainKey (padrão: agro).
 const domainAnchorPromises = new Map<string, Promise<number[]>>();
-function getDomainAnchorEmbedding(domain: DomainKey = 'agro'): Promise<number[]> {
+export function getDomainAnchorEmbedding(domain: DomainKey = 'agro'): Promise<number[]> {
   const descriptor = DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR;
   let promise = domainAnchorPromises.get(domain);
   if (!promise) {
@@ -77,7 +88,7 @@ function buildAnalysisText(source: ScientificSource, fullText: string, hasFullTe
     .join('\n\n');
 }
 
-function angleQuality(pct: number): 'Excepcional' | 'Muito Alta' | 'Alta' | 'Moderada' {
+export function angleQuality(pct: number): 'Excepcional' | 'Muito Alta' | 'Alta' | 'Moderada' {
   if (pct >= 90) return 'Excepcional';
   if (pct >= 80) return 'Muito Alta';
   if (pct >= 68) return 'Alta';
@@ -155,7 +166,6 @@ async function understandOne(
   query: string,
   queryEmbedding: number[],
   source: ScientificSource,
-  retrievalScore: number,
   domain: DomainKey = 'agro',
 ): Promise<UnderstoodSource> {
   const { text: fullText, ok: hasFullText } = await fetchFullText(source.directUrl);
@@ -308,6 +318,53 @@ async function understandOneLight(
   };
 }
 
+/**
+ * Entenda uma fonte com a cascata completa de fallbacks:
+ * understandOne (full-text + cross-encoder + categorias) →
+ * understandOneLight (só abstract/título) → stub técnico.
+ *
+ * Usado pelo worker de `understandSources` e pela FASE 2 da pipeline em
+ * duas fases (Inngest, `lib/semantic/phase2.ts`) — nunca lança: falha de
+ * infraestrutura vira fonte stub com shouldPersist=true.
+ */
+export async function understandFullOne(
+  query: string,
+  queryEmbedding: number[],
+  source: ScientificSource,
+  domain: DomainKey = 'agro',
+): Promise<UnderstoodSource> {
+  try {
+    const full = await understandOne(query, queryEmbedding, source, domain);
+    return { ...full, semanticStatus: 'full', semanticQuery: query };
+  } catch (err) {
+    console.warn('[SemanticEngine] Pipeline completo falhou, fallback leve:', source.title, err);
+    try {
+      const light = await understandOneLight(queryEmbedding, source, domain);
+      // Fallback leve NÃO é 'full' — fica 'light' e a fase 2/backfill
+      // tenta de novo mais tarde (indexSource nunca rebaixa 'full').
+      return { ...light, semanticStatus: 'light', semanticQuery: query };
+    } catch (lightErr) {
+      console.warn('[SemanticEngine] Fallback leve também falhou:', lightErr);
+      return {
+        ...source,
+        semanticScore: 0,
+        semanticCategories: [],
+        bestExcerpt: (source.abstract || '').slice(0, 600),
+        discarded: true,
+        docEmbedding: [],
+        usedFullText: false,
+        domainScore: 0,
+        inAgroDomain: false,
+        // Não descarta por erro de infra: tenta salvar mesmo assim.
+        shouldPersist: true,
+        chunks: [],
+        semanticStatus: 'light',
+        semanticQuery: query,
+      };
+    }
+  }
+}
+
 export interface UnderstandSourcesOptions {
   /**
    * Chamado após cada fonte terminar de ser entendida (sucesso ou
@@ -369,45 +426,12 @@ export async function understandSources(
   async function worker() {
     while (cursor < total) {
       const i = cursor++;
-      let understood: UnderstoodSource;
-      try {
-        understood = await understandOne(
-          query,
-          queryEmbedding,
-          reranked[i].source,
-          reranked[i].retrievalScore,
-          domain,
-        );
-      } catch (err) {
-        console.warn(
-          '[SemanticEngine] Pipeline completo falhou, fallback leve:',
-          reranked[i]?.source.title,
-          err,
-        );
-        try {
-          understood = await understandOneLight(
-            queryEmbedding,
-            reranked[i].source,
-            domain,
-          );
-        } catch (lightErr) {
-          console.warn('[SemanticEngine] Fallback leve também falhou:', lightErr);
-          understood = {
-            ...reranked[i].source,
-            semanticScore: 0,
-            semanticCategories: [],
-            bestExcerpt: (reranked[i].source.abstract || '').slice(0, 600),
-            discarded: true,
-            docEmbedding: [],
-            usedFullText: false,
-            domainScore: 0,
-            inAgroDomain: false,
-            // Não descarta por erro de infra: tenta salvar mesmo assim.
-            shouldPersist: true,
-            chunks: [],
-          };
-        }
-      }
+      const understood = await understandFullOne(
+        query,
+        queryEmbedding,
+        reranked[i].source,
+        domain,
+      );
       results[i] = understood;
       completed += 1;
       if (options?.onSourceComplete) {
@@ -427,98 +451,6 @@ export async function understandSources(
   void completed;
 
   return results;
-}
-
-/**
- * Classifica fontes que ficaram FORA do top-K do rerank para persistência:
- * embedding do texto residual vs âncora de domínio. Salva apenas se
- * pertencerem ao domínio (ex.: agro) — mesmo com score de consulta baixo.
- * Fontes fora do domínio ficam com shouldPersist=false e nunca vão ao banco.
- *
- * Processa em lotes para não estourar a memória com centenas de vetores
- * de uma vez (causa clássica de SIGKILL em funções longas).
- */
-export async function classifyOutOfTopKForPersistence(
-  query: string,
-  sources: ScientificSource[],
-  understood: UnderstoodSource[],
-  domain: DomainKey = 'agro',
-): Promise<UnderstoodSource[]> {
-  if (sources.length === 0) return [];
-
-  const seen = new Set(understood.map((s) => (s.title || '').trim().toLowerCase()));
-  const remaining = sources.filter((s) => {
-    const t = (s.title || '').trim().toLowerCase();
-    return t && !seen.has(t);
-  });
-  if (remaining.length === 0) return [];
-
-  const CLASSIFY_BATCH = 40;
-  const out: UnderstoodSource[] = [];
-
-  try {
-    const anchor = await getDomainAnchorEmbedding(domain);
-
-    for (let i = 0; i < remaining.length; i += CLASSIFY_BATCH) {
-      const batch = remaining.slice(i, i + CLASSIFY_BATCH);
-      const texts = batch.map((s) =>
-        [s.title, s.abstract, (s.keywords || []).join(' ')].filter(Boolean).join(' ')
-      );
-
-      let docEmbeddings: number[][] = [];
-      try {
-        docEmbeddings = await embedTexts(texts, 'RETRIEVAL_DOCUMENT');
-      } catch (err) {
-        console.warn('[SemanticEngine] classify batch embed falhou:', err);
-        docEmbeddings = texts.map(() => []);
-      }
-
-      batch.forEach((s, j) => {
-        const docEmbedding = docEmbeddings[j] || [];
-        const domainScore =
-          docEmbedding.length > 0
-            ? cosineToPercentage(cosineSimilarity(docEmbedding, anchor))
-            : 0;
-        const inDomain =
-          docEmbedding.length === 0
-            ? true // sem embedding: mantém candidata (não perder progresso)
-            : domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
-        out.push({
-          ...s,
-          semanticScore: 0,
-          semanticCategories: [],
-          bestExcerpt: (s.abstract || '').slice(0, 600),
-          discarded: true,
-          docEmbedding,
-          usedFullText: false,
-          domainScore,
-          inAgroDomain: inDomain,
-          shouldPersist: inDomain,
-          chunks: [],
-        } satisfies UnderstoodSource);
-      });
-    }
-  } catch (err) {
-    console.warn('[SemanticEngine] classifyOutOfTopKForPersistence falhou:', err);
-    // Fallback: persiste o restante como candidatas de domínio.
-    for (const s of remaining) {
-      out.push({
-        ...s,
-        semanticScore: 0,
-        semanticCategories: [],
-        bestExcerpt: (s.abstract || '').slice(0, 600),
-        discarded: true,
-        docEmbedding: [],
-        usedFullText: false,
-        domainScore: 0,
-        inAgroDomain: true,
-        shouldPersist: true,
-        chunks: [],
-      } satisfies UnderstoodSource);
-    }
-  }
-
-  return out;
 }
 
 /** Aplica a regra de descarte e ordena por relevância. */

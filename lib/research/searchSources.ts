@@ -3,12 +3,9 @@ import { decideReuse, ReuseDecision } from '@/lib/reuseDecision';
 import { indexSources, logSearchQuery } from '@/lib/evidenceIndex';
 import { extractTopics, TopicExtractorConfig } from '@/lib/topicExtractor';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import {
-  understandSources,
-  filterAndRankRelevant,
-  classifyOutOfTopKForPersistence,
-  UnderstoodSource,
-} from '@/lib/semantic/relevanceEngine';
+import { filterAndRankRelevant, UnderstoodSource } from '@/lib/semantic/relevanceEngine';
+import { runLightPhase, roundRobinQueueItems } from '@/lib/semantic/portalQueues';
+import { enqueueFullSemantic } from '@/lib/semantic/phase2';
 import { embedText } from '@/lib/semantic/embeddings';
 import { DomainKey } from '@/lib/semantic/config';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
@@ -58,9 +55,15 @@ export interface SourceSearchProgress {
   onProcessingStart?: (totalSources: number, message: string) => void;
   onProcessingComplete?: (processedCount: number, relevantCount: number) => void;
   /**
+   * Filas por portal prontas (fase 1): cada portal tem seu semântico
+   * dedicado com fontes ordenadas 1→2→3.
+   */
+  onPortalQueuesReady?: (portals: Array<{ portal: string; total: number }>) => void;
+  /**
    * Progresso incremental da análise semântica + persistência.
    * Emitido a cada fonte processada (e salva ou tentada) para o cliente
-   * mostrar badge azul e contador de verificadas.
+   * mostrar badge azul e contador de verificadas. Carrega o detalhe da
+   * fila por portal (portal/queueIndex/queueTotal) além do global.
    */
   onSourceVerified?: (update: {
     sourceId?: string;
@@ -70,7 +73,12 @@ export interface SourceSearchProgress {
     persistedCount: number;
     percentage: number;
     status: 'analyzed' | 'persisted' | 'error';
+    portal?: string;
+    queueIndex?: number;
+    queueTotal?: number;
   }) => void;
+  /** Fase 2 (full em 2º plano) enfileirada com N fontes. */
+  onPhase2Enqueued?: (count: number) => void;
 }
 
 export interface SourceSearchResult {
@@ -161,35 +169,160 @@ async function persistSearchOutcome(
 
 /**
  * Persiste um lote parcial de fontes já analisadas (incremental).
- * Não registra search_queries (só no final). Retorna stats agregadas.
+ * Não registra search_queries (só no final). Retorna stats agregadas
+ * + os ids gravados (alimento da fila da fase 2).
  */
 async function persistPartialBatch(
   topics: string[],
   batch: UnderstoodSource[],
-): Promise<{ indexed: number; errors: number } | null> {
+): Promise<{ indexed: number; errors: number; ids: string[] } | null> {
   if (!isSupabaseConfigured() || batch.length === 0) return null;
   try {
     const stats = await indexSources(batch, topics);
-    return { indexed: stats.indexed + stats.archivedOffTopic, errors: stats.errors };
+    return {
+      indexed: stats.indexed + stats.archivedOffTopic,
+      errors: stats.errors,
+      ids: stats.indexedIds,
+    };
   } catch (err) {
     console.warn('[ResearchService] Falha ao indexar lote parcial:', err);
-    return { indexed: 0, errors: batch.length };
+    return { indexed: 0, errors: batch.length, ids: [] };
   }
+}
+
+interface ProcessLightResult {
+  understood: UnderstoodSource[];
+  queues: Map<string, UnderstoodSource[]>;
+  persistedCount: number;
+  indexedIds: string[];
+}
+
+/**
+ * FASE 1 — semântico dedicado por portal.
+ *
+ * 1. `runLightPhase` analisa TODAS as fontes em lote (1 embed por fonte,
+ *    sem full-text) e monta as filas por portal ordenadas 1→2→3;
+ * 2. percorre as filas em round-robin justo (portal 1, portal 2, ...
+ *    depois posição 2 de cada) emitindo progresso global + por portal;
+ * 3. persiste incrementalmente em lotes de 25 (`semantic_status='light'`);
+ * 4. enfileira a FASE 2 (Inngest) com os ids gravados — lá o
+ *    understandOne completo roda em 2º plano e vira 'full' (reutilizável).
+ */
+async function processLightPhase(opts: {
+  query: string;
+  sources: ScientificSource[];
+  topics: string[];
+  domain: DomainKey;
+  queryEmbedding?: number[];
+  onProgress?: SourceSearchProgress;
+}): Promise<ProcessLightResult> {
+  const { query, sources, topics, domain, queryEmbedding, onProgress } = opts;
+  const result = await runLightPhase(query, sources, queryEmbedding, domain);
+
+  const portalList = [...result.queues.entries()].map(([portal, list]) => ({
+    portal,
+    total: list.length,
+  }));
+  onProgress?.onPortalQueuesReady?.(portalList);
+
+  const items = roundRobinQueueItems(result.queues);
+  const total = items.length;
+  let verifiedCount = 0;
+  let persistedCount = 0;
+  const indexedIds: string[] = [];
+
+  const PERSIST_BATCH = 25;
+  let pending: typeof items = [];
+  let toPersist: UnderstoodSource[] = [];
+
+  const flush = async () => {
+    if (pending.length === 0) return;
+    const emitting = pending;
+    const batch = toPersist;
+    pending = [];
+    toPersist = [];
+
+    let stats: { indexed: number; errors: number; ids: string[] } | null = null;
+    if (batch.length > 0) {
+      stats = await persistPartialBatch(topics, batch);
+      if (stats) {
+        persistedCount += stats.indexed;
+        indexedIds.push(...stats.ids);
+      }
+    }
+
+    for (const item of emitting) {
+      verifiedCount += 1;
+      const pct = Math.min(100, Math.round((verifiedCount / Math.max(1, total)) * 100));
+      let status: 'analyzed' | 'persisted' | 'error' = 'analyzed';
+      if (item.source.shouldPersist) {
+        status = stats
+          ? stats.errors > 0
+            ? 'error'
+            : 'persisted'
+          : 'analyzed';
+      }
+      onProgress?.onSourceVerified?.({
+        sourceId: item.source.id,
+        title: item.source.title,
+        verifiedCount,
+        totalSources: total,
+        persistedCount,
+        percentage: pct,
+        status,
+        portal: item.portal,
+        queueIndex: item.index + 1,
+        queueTotal: item.total,
+      });
+    }
+  };
+
+  for (const item of items) {
+    if (item.source.shouldPersist) toPersist.push(item.source);
+    pending.push(item);
+    if (pending.length >= PERSIST_BATCH) await flush();
+  }
+  await flush();
+
+  // Fase 2: enfileira o understandOne completo em 2º plano (retomável).
+  const uniqueIds = [...new Set(indexedIds)];
+  if (uniqueIds.length > 0) {
+    const enqueued = await enqueueFullSemantic({ query, sourceIds: uniqueIds });
+    onProgress?.onPhase2Enqueued?.(enqueued ? uniqueIds.length : 0);
+  }
+
+  return {
+    understood: result.understood,
+    queues: result.queues,
+    persistedCount,
+    indexedIds: uniqueIds,
+  };
+}
+
+/** Dedup por título preservando a prioridade do pool de reuso. */
+function dedupeByTitle(sources: ScientificSource[]): ScientificSource[] {
+  const seen = new Set<string>();
+  const out: ScientificSource[] = [];
+  for (const src of sources) {
+    const title = (src.title || '').trim();
+    if (!title || seen.has(title)) continue;
+    seen.add(title);
+    out.push(src);
+  }
+  return out;
 }
 
 /**
  * Orquestrador unificado de pesquisa de fontes.
  *
- * Encapsula o pipeline completo:
- *   extractTopics → decideReuse → searchAllSources → understandSources
- *   → filterAndRankRelevant → indexSources
+ * Pipeline em duas fases:
+ *   extractTopics → decideReuse → searchAllSources (scrapers) →
+ *   FASE 1 `processLightPhase` (embed lote + filas por portal + persist
+ *   'light') → FASE 2 enqueue Inngest (understandOne completo em 2º plano)
+ *   → filterAndRankRelevant → persistSearchOutcome.
  *
- * Consome os mesmos serviços usados pelo pesquisador-fontes e pesquisador-artigo,
- * eliminando duplicação de lógica entre as duas rotas.
- *
- * O embedding da query é gerado UMA vez e compartilhado entre o
- * re-entendimento das fontes reutilizadas e o das novas (e pelo cache LRU
- * de embeddings, repete 0 chamadas HTTP repetidas entre calls do mesmo request).
+ * `decideReuse` devolve também `pendingFullSemanticIds` (matches 'light'
+ * que ainda não são reutilizáveis) — são enfileirados na fase 2 logo aqui.
  *
  * Callers avançados (tutor research) podem passar `priorDecision`,
  * `priorQueryEmbedding` e `light` para reaproveitar trabalho já feito e
@@ -216,7 +349,7 @@ export async function searchSources(
     ? customTopics
     : extractTopics(query, topicExtractorConfig);
 
-  // 1 única embed da query, reutilizada em todos os understandSources deste request.
+  // 1 única embed da query, reutilizada na fase 1 (runLightPhase) deste request.
   const sharedQueryEmbedding =
     priorQueryEmbedding ??
     (light
@@ -231,6 +364,16 @@ export async function searchSources(
         ? await decideReuse(query, topics.length > 0 ? topics : undefined)
         : null;
   onProgress?.onMemoryDecision?.(decision);
+
+  // Matches 'light' da memória (decideReuse não os conta como reuso):
+  // enfileira na fase 2 AGORA — quando voltarem 'full' numa próxima
+  // busca, já entram no coverage.
+  if (decision && decision.pendingFullSemanticIds.length > 0) {
+    await enqueueFullSemantic({
+      query,
+      sourceIds: decision.pendingFullSemanticIds,
+    });
+  }
 
   // Pool de candidatas já conhecidas (memória Supabase + existingSources
   // do cliente). Deduplica por título.
@@ -267,38 +410,17 @@ export async function searchSources(
         errors: [],
       };
     }
-    const understood = await understandSources(
+    // Re-entendimento leve por portal (fila 1→2→3) + persistência
+    // incremental + enfileiramento da fase 2.
+    const processed = await processLightPhase({
       query,
-      priorPool,
-      sharedQueryEmbedding,
+      sources: priorPool,
+      topics,
       domain,
-      {
-        onSourceComplete: async (src, meta) => {
-          if (src.shouldPersist) {
-            const partial = await persistPartialBatch(topics, [src]);
-            onProgress?.onSourceVerified?.({
-              sourceId: src.id,
-              title: src.title,
-              verifiedCount: meta.index + 1,
-              totalSources: meta.total,
-              persistedCount: partial?.indexed ?? 0,
-              percentage: Math.round(((meta.index + 1) / Math.max(1, meta.total)) * 100),
-              status: partial && partial.errors === 0 && partial.indexed > 0 ? 'persisted' : 'analyzed',
-            });
-          } else {
-            onProgress?.onSourceVerified?.({
-              sourceId: src.id,
-              title: src.title,
-              verifiedCount: meta.index + 1,
-              totalSources: meta.total,
-              persistedCount: 0,
-              percentage: Math.round(((meta.index + 1) / Math.max(1, meta.total)) * 100),
-              status: 'analyzed',
-            });
-          }
-        },
-      },
-    );
+      queryEmbedding: sharedQueryEmbedding,
+      onProgress,
+    });
+    const understood = processed.understood;
     const relevant = filterAndRankRelevant(understood);
 
     // Fontes vindas só do localStorage (existingSources) podem não estar no
@@ -331,22 +453,13 @@ export async function searchSources(
     topicsToSearch = topicsToSearch.slice(0, Math.max(1, maxTopicsForSearch));
   }
 
-  // Re-entendimento completo das candidatas prévias (decisão do produto:
-  // nunca reaproveitar vetor salvo sem passar pelo motor com a query atual).
-  // Caminho light: retorna o pool cru sem understandSources.
+  // Candidatas prévias (memória + localStorage) entram na FASE 1 junto
+  // com as novas dos scrapers — todas as fontes passam pelo semântico,
+  // particionadas por portal (nunca reaproveitar vetor salvo sem repassar
+  // pela fase 1 com a query atual). Caminho light do Tutor: pool cru.
   let reusedUnderstood: UnderstoodSource[] = [];
-  if (priorPool.length > 0) {
-    if (light) {
-      reusedUnderstood = priorPool.filter((s) => !s.discarded);
-    } else {
-      onProgress?.onProcessingStart?.(
-        priorPool.length,
-        `Reutilizando ${priorPool.length} fontes da memória...`,
-      );
-      reusedUnderstood = filterAndRankRelevant(
-        await understandSources(query, priorPool, sharedQueryEmbedding, domain)
-      );
-    }
+  if (light && priorPool.length > 0) {
+    reusedUnderstood = priorPool.filter((s) => !s.discarded);
   }
 
   // Scrapers sempre rodam neste ponto (o early-return de `reuse` com pool
@@ -371,7 +484,13 @@ export async function searchSources(
     // Caminho light do Tutor: ainda persiste o que os scrapers acharam
     // (formatado/documentado), para não perder o progresso da pesquisa.
     // shouldPersist=true força gravação mesmo sem score semântico cheio.
-    const lightToPersist = lightNew.map((s) => ({ ...s, shouldPersist: true }));
+    // Nasce 'light' — a fase 2 (backfill) completa o understandOne.
+    const lightToPersist = lightNew.map((s) => ({
+      ...s,
+      shouldPersist: true,
+      semanticStatus: 'light' as const,
+      semanticQuery: query,
+    }));
     const lightStats = await persistPartialBatch(topics, lightToPersist);
 
     return {
@@ -392,152 +511,86 @@ export async function searchSources(
     };
   }
 
-  const totalToAnalyze = result.sources.length;
+  // ── FASE 1: semântico dedicado por portal (filas 1→2→3) ──
+  // Memória (priorPool) + novas dos scrapers entram juntas: TODAS as
+  // fontes de TODOS os portais passam pelo semântico (nada fica de fora —
+  // tudo é candidato a reuso futuro), só que em modo light agora.
+  const combinedSources = dedupeByTitle([...priorPool, ...result.sources]);
   onProgress?.onProcessingStart?.(
-    totalToAnalyze,
-    'Processando relevância semântica...',
+    combinedSources.length,
+    'Analisando filas por portal (fase leve)...',
   );
 
-  // Persistência INCREMENTAL: cada fonte entendida pelo motor é gravada
-  // assim que pronta (via onSourceComplete). Se o processo morrer no
-  // meio (SIGKILL/OOM), o que já passou já está no banco.
-  //
-  // Contador global: o understandSources só emite para o top-K do rerank
-  // (RERANK_TOP_K), mas o usuário espera ver o progresso sobre o total
-  // de fontes dos scrapers (ex.: 430). O classifyOutOfTopK continua o
-  // restante — ambos incrementam `verifiedCount`.
-  let verifiedCount = 0;
-  let persistedCount = 0;
-  const emitVerified = (
-    src: UnderstoodSource,
-    status: 'analyzed' | 'persisted' | 'error',
-  ) => {
-    verifiedCount += 1;
-    const pct = Math.min(
-      100,
-      Math.round((verifiedCount / Math.max(1, totalToAnalyze)) * 100)
-    );
-    onProgress?.onSourceVerified?.({
-      sourceId: src.id,
-      title: src.title,
-      verifiedCount,
-      totalSources: totalToAnalyze,
-      persistedCount,
-      percentage: pct,
-      status,
+  let processed: ProcessLightResult;
+  try {
+    processed = await processLightPhase({
+      query,
+      sources: combinedSources,
+      topics,
+      domain,
+      queryEmbedding: sharedQueryEmbedding,
+      onProgress,
     });
-  };
-
-  let understood: UnderstoodSource[] = [];
-  try {
-    understood = await understandSources(
-      query,
-      result.sources,
-      sharedQueryEmbedding,
-      domain,
-      {
-        onSourceComplete: async (src) => {
-          if (src.shouldPersist) {
-            const partial = await persistPartialBatch(topics, [src]);
-            if (partial && partial.indexed > 0) {
-              persistedCount += partial.indexed;
-              emitVerified(src, partial.errors > 0 ? 'error' : 'persisted');
-            } else {
-              emitVerified(src, partial ? 'error' : 'analyzed');
-            }
-          } else {
-            emitVerified(src, 'analyzed');
-          }
-        },
-      },
-    );
   } catch (err) {
-    // Se o motor morrer no meio (quota, erro de embed, OOM parcial),
-    // tenta um segundo passe "leve" para não perder a corrida dos scrapers.
-    console.warn('[ResearchService] understandSources falhou, retry light:', err);
-    onProgress?.onProcessingStart?.(
-      result.sources.length,
-      'Análise semântica interrompida — retomando com modo leve...',
-    );
-    try {
-      understood = await understandSources(
+    // Fallback: se a fase 1 morrer no meio (quota/OOM), envolve tudo como
+    // light e persiste — nada do scraper se perde; fase 2 completa depois.
+    console.warn('[ResearchService] fase 1 falhou, fallback light puro:', err);
+    const fallbackSources = combinedSources.map((s) => ({
+      ...toLightUnderstood(s),
+      shouldPersist: true,
+      semanticStatus: 'light' as const,
+      semanticQuery: query,
+    }));
+    const partial = await persistPartialBatch(topics, fallbackSources);
+    fallbackSources.forEach((src, i) => {
+      onProgress?.onSourceVerified?.({
+        sourceId: src.id,
+        title: src.title,
+        verifiedCount: i + 1,
+        totalSources: fallbackSources.length,
+        persistedCount: partial?.indexed ?? 0,
+        percentage: Math.round(
+          ((i + 1) / Math.max(1, fallbackSources.length)) * 100
+        ),
+        status: 'persisted',
+      });
+    });
+    if (partial && partial.ids.length > 0) {
+      const enqueued = await enqueueFullSemantic({
         query,
-        result.sources,
-        sharedQueryEmbedding,
-        domain,
-        {
-          onSourceComplete: async (src) => {
-            if (src.shouldPersist) {
-              const partial = await persistPartialBatch(topics, [src]);
-              if (partial) persistedCount += partial.indexed;
-            }
-            emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
-          },
-        },
-      );
-    } catch (retryErr) {
-      console.warn('[ResearchService] retry light também falhou:', retryErr);
-      // Fallback final: envolve as fontes cruas como light e persiste.
-      understood = result.sources.map(toLightUnderstood).map((s) => ({
-        ...s,
-        shouldPersist: true,
-      }));
-      const partial = await persistPartialBatch(topics, understood);
-      if (partial) persistedCount += partial.indexed;
-      for (const src of understood) {
-        emitVerified(src, 'persisted');
-      }
+        sourceIds: partial.ids,
+      });
+      onProgress?.onPhase2Enqueued?.(enqueued ? partial.ids.length : 0);
     }
+    processed = {
+      understood: fallbackSources,
+      queues: new Map(),
+      persistedCount: partial?.indexed ?? 0,
+      indexedIds: partial?.ids ?? [],
+    };
   }
 
-  const relevantNew = filterAndRankRelevant(understood);
-  onProgress?.onProcessingComplete?.(understood.length, relevantNew.length);
+  // Separa reutilizadas (vinham do pool de memória/localStorage) das novas.
+  const priorTitles = new Set(priorPool.map((s) => (s.title || '').trim()));
+  reusedUnderstood = filterAndRankRelevant(
+    processed.understood.filter((s) => priorTitles.has((s.title || '').trim())),
+  );
+  const relevantNew = filterAndRankRelevant(
+    processed.understood.filter((s) => !priorTitles.has((s.title || '').trim())),
+  );
 
-  // Fontes fora do top-K do rerank: classifica só por domínio (ex.: agro)
-  // e persiste se pertencerem ao domínio — descarta as não correspondidas
-  // que não têm relação com agronegócio/agropecuária.
-  let outOfTopK: UnderstoodSource[] = [];
-  try {
-    outOfTopK = await classifyOutOfTopKForPersistence(
-      query,
-      result.sources,
-      understood,
-      domain,
-    );
-    // Persiste o restante em lotes (fora do top-K) — incremental também.
-    const OUT_BATCH = 25;
-    for (let i = 0; i < outOfTopK.length; i += OUT_BATCH) {
-      const slice = outOfTopK.slice(i, i + OUT_BATCH);
-      const partial = await persistPartialBatch(topics, slice);
-      if (partial) persistedCount += partial.indexed;
-      for (const src of slice) {
-        // Emite para TODAS as classificadas (inclusive fora de domínio)
-        // para o chegar a 100% quando a fila terminar.
-        emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
-      }
-    }
-  } catch (err) {
-    console.warn('[ResearchService] Falha ao classificar fontes fora do top-K:', err);
-  }
+  const combined = filterAndRankRelevant(processed.understood);
+  onProgress?.onProcessingComplete?.(processed.understood.length, combined.length);
 
-  // Indexa novas entendidas + fora do top-K do domínio + reutilizadas que
-  // podem ter vindo só do localStorage do cliente. Upsert idempotente —
-  // fontes já salvas incrementalmente são atualizadas.
-  const toIndex = [...understood, ...outOfTopK, ...reusedUnderstood];
+  // Upsert final idempotente — fontes já salvas incrementalmente são
+  // atualizadas (sem rebaixar status 'full' — regra em evidenceIndex).
   const indexingStats = await persistSearchOutcome(
     query,
     topics,
-    toIndex,
+    processed.understood,
     decision,
     result.sources.length + priorPool.length,
   );
-
-  // Combina contraponto (reutilizadas) + novas, sem duplicar por título.
-  const seenTitles = new Set(reusedUnderstood.map(s => s.title));
-  const combined = [
-    ...reusedUnderstood,
-    ...relevantNew.filter(s => !seenTitles.has(s.title)),
-  ].sort((a, b) => b.semanticScore - a.semanticScore);
 
   return {
     sources: combined,

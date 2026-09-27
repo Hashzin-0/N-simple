@@ -13,13 +13,16 @@ const UNIFIED_THRESHOLD = SEMANTIC_DISCARD_THRESHOLD / 100;
  * índice de embeddings útil de verdade para reuso: mesmo fontes salvas
  * sob tópicos com redação diferente da query atual podem ser encontradas
  * por similaridade semântica real.
+ *
+ * Devolve o `semantic_status` junto: só 'full' conta para reuso; matches
+ * 'light' são enfileirados na fase 2 (entender completo → salvar → reusar).
  */
 async function findSourcesByVector(
   query: string,
   limit = 15
-): Promise<Map<string, number>> {
-  const similarityByPk = new Map<string, number>();
-  if (!isSupabaseConfigured()) return similarityByPk;
+): Promise<Array<{ sourceId: string; similarity: number; semanticStatus: string }>> {
+  const matches: Array<{ sourceId: string; similarity: number; semanticStatus: string }> = [];
+  if (!isSupabaseConfigured()) return matches;
 
   try {
     // Mesmo task family do docEmbedding armazenado (RETRIEVAL_DOCUMENT).
@@ -29,16 +32,20 @@ async function findSourcesByVector(
       match_threshold: UNIFIED_THRESHOLD,
       match_count: limit,
     });
-    if (error || !data) return similarityByPk;
+    if (error || !data) return matches;
 
-    for (const row of data as Array<{ source_id: string; similarity: number }>) {
-      similarityByPk.set(row.source_id, row.similarity);
+    for (const row of data as Array<{ source_id: string; similarity: number; semantic_status?: string }>) {
+      matches.push({
+        sourceId: row.source_id,
+        similarity: row.similarity,
+        semanticStatus: row.semantic_status ?? 'full',
+      });
     }
   } catch (err) {
     console.warn('[ReuseDecision] Busca vetorial falhou, seguindo só com tópicos:', err);
   }
 
-  return similarityByPk;
+  return matches;
 }
 
 export interface ReuseDecision {
@@ -50,6 +57,12 @@ export interface ReuseDecision {
   topicsNeedingSearch: string[];
   allTopics: string[];
   diversityScore: number;
+  /**
+   * Fontes que casaram com a query mas ainda estão 'light' (não passaram
+   * pela fase 2). NÃO contam em coverage/diversity — o chamador deve
+   * enfileirá-las para o understandOne completo ANTES de poder reusar.
+   */
+  pendingFullSemanticIds: string[];
   stats: {
     totalSourcesFound: number;
     topicsWithEvidence: number;
@@ -111,7 +124,7 @@ function computeAgePenalty(lastVerified: string, maxAgeDays: number): number {
   return Math.min(0.2, excess / 365 * 0.2);
 }
 
-function buildSourceFromDb(row: {
+export function buildSourceFromDb(row: {
   id: string;
   title: string;
   authors: string;
@@ -159,21 +172,37 @@ function buildSourceFromDb(row: {
   };
 }
 
-async function fetchSourcesByIds(ids: string[]): Promise<ScientificSource[]> {
-  if (ids.length === 0 || !isSupabaseConfigured()) return [];
+/**
+ * Carrega fontes por id e PARTICIONA por estágio:
+ *  - 'full' → podem ser reutilizadas de imediato;
+ *  - 'light' → devolvidas em `pendingFullIds` (fase 2 antes do reuso).
+ */
+async function fetchSourcesByIds(ids: string[]): Promise<{
+  sources: ScientificSource[];
+  pendingFullIds: string[];
+}> {
+  if (ids.length === 0 || !isSupabaseConfigured()) return { sources: [], pendingFullIds: [] };
 
   const { data, error } = await supabase!
     .from('sources')
     .select(
-      'id, title, authors, year, publication, source_name, source_type, abstract, keywords, direct_url, search_url, doi, abnt_citation, vantagens, desvantagens, caracteristicas, last_verified, reuse_count'
+      'id, title, authors, year, publication, source_name, source_type, abstract, keywords, direct_url, search_url, doi, abnt_citation, vantagens, desvantagens, caracteristicas, last_verified, reuse_count, semantic_status'
     )
     .in('id', ids);
 
-  if (error || !data) return [];
+  if (error || !data) return { sources: [], pendingFullIds: [] };
 
-  return data.map((row) =>
-    buildSourceFromDb({ ...row, source_topics: [] } as Parameters<typeof buildSourceFromDb>[0])
-  );
+  const sources: ScientificSource[] = [];
+  const pendingFullIds: string[] = [];
+  for (const row of data as Array<Parameters<typeof buildSourceFromDb>[0] & { semantic_status?: string }>) {
+    if (row.semantic_status === 'light') {
+      pendingFullIds.push(row.id);
+      continue;
+    }
+    sources.push(buildSourceFromDb({ ...row, source_topics: [] }));
+  }
+
+  return { sources, pendingFullIds };
 }
 export async function decideReuse(
   query: string,
@@ -195,6 +224,7 @@ export async function decideReuse(
       topicsNeedingSearch: allTopics,
       allTopics,
       diversityScore: 0,
+      pendingFullSemanticIds: [],
       stats: {
         totalSourcesFound: 0,
         topicsWithEvidence: 0,
@@ -218,7 +248,8 @@ export async function decideReuse(
         sources!inner(
           id, title, authors, year, publication, source_name, source_type,
           abstract, keywords, direct_url, search_url, doi, abnt_citation,
-          vantagens, desvantagens, caracteristicas, last_verified, reuse_count
+          vantagens, desvantagens, caracteristicas, last_verified, reuse_count,
+          semantic_status
         )
       `)
       .in('topic_normalized', normalizedTopics)
@@ -229,7 +260,17 @@ export async function decideReuse(
 
   const { data: topicRows, error: topicError } = topicResult;
 
-  if ((topicError || !topicRows || topicRows.length === 0) && vectorMatches.size === 0) {
+  // Gate da fase 2: matches 'light' não entram no cálculo de reuso —
+  // são devolvidos em pendingFullSemanticIds (entender completo →
+  // salvar → só aí contar como reuso).
+  const vectorFullIds = vectorMatches
+    .filter((m) => m.semanticStatus !== 'light')
+    .map((m) => m.sourceId);
+  const pendingFullIds = new Set<string>(
+    vectorMatches.filter((m) => m.semanticStatus === 'light').map((m) => m.sourceId),
+  );
+
+  if ((topicError || !topicRows || topicRows.length === 0) && vectorFullIds.length === 0) {
     return {
       action: 'new_search',
       coverageScore: 0,
@@ -239,6 +280,7 @@ export async function decideReuse(
       topicsNeedingSearch: allTopics,
       allTopics,
       diversityScore: 0,
+      pendingFullSemanticIds: [...pendingFullIds],
       stats: {
         totalSourcesFound: 0,
         topicsWithEvidence: 0,
@@ -252,7 +294,32 @@ export async function decideReuse(
   // fontes semanticamente parecidas com a query (frases diferentes, mesmo
   // assunto) — reaproveita essas fontes e ainda assim busca material novo.
   if (!topicRows || topicRows.length === 0) {
-    const vectorSources = await fetchSourcesByIds([...vectorMatches.keys()]);
+    const { sources: vectorSources, pendingFullIds: vectorPending } =
+      await fetchSourcesByIds(vectorFullIds);
+    vectorPending.forEach((id) => pendingFullIds.add(id));
+
+    if (vectorSources.length === 0) {
+      // Só matches 'light' — nada reutilizável AGORA; fila na fase 2 e
+      // busca do zero.
+      return {
+        action: 'new_search',
+        coverageScore: 0,
+        reuseScore: 0,
+        explorationNeed: 1,
+        sourcesToReuse: [],
+        topicsNeedingSearch: allTopics,
+        allTopics,
+        diversityScore: 0,
+        pendingFullSemanticIds: [...pendingFullIds],
+        stats: {
+          totalSourcesFound: 0,
+          topicsWithEvidence: 0,
+          topicsWithoutEvidence: allTopics.length,
+          avgEvidenceStrength: 0,
+        },
+      };
+    }
+
     return {
       action: 'complementary',
       coverageScore: 0,
@@ -262,6 +329,7 @@ export async function decideReuse(
       topicsNeedingSearch: allTopics,
       allTopics,
       diversityScore: 0,
+      pendingFullSemanticIds: [...pendingFullIds],
       stats: {
         totalSourcesFound: vectorSources.length,
         topicsWithEvidence: 0,
@@ -299,7 +367,14 @@ export async function decideReuse(
       caracteristicas: string[];
       last_verified: string;
       reuse_count: number;
+      semantic_status?: string;
     };
+
+    // Fonte 'light': enfileira na fase 2 em vez de reutilizar incompleta.
+    if (src.semantic_status === 'light') {
+      pendingFullIds.add(src.id);
+      continue;
+    }
 
     const existing = sourceMap.get(src.id);
     if (existing) {
@@ -377,9 +452,11 @@ export async function decideReuse(
   // de tópico (redação diferente) — soma-se ao pool de reuso, sem alterar
   // o cálculo de coverage/diversidade (que continua só por tópico, já
   // validado). É o índice de embeddings "valendo a pena" na prática.
-  const extraVectorIds = [...vectorMatches.keys()].filter((id) => !sourceMap.has(id));
+  const extraVectorIds = vectorFullIds.filter((id) => !sourceMap.has(id));
   if (extraVectorIds.length > 0) {
-    const extraSources = await fetchSourcesByIds(extraVectorIds);
+    const { sources: extraSources, pendingFullIds: vectorPending } =
+      await fetchSourcesByIds(extraVectorIds);
+    vectorPending.forEach((id) => pendingFullIds.add(id));
     sourcesToReuse.push(...extraSources);
   }
 
@@ -422,6 +499,7 @@ export async function decideReuse(
     topicsNeedingSearch,
     allTopics,
     diversityScore: Math.round(diversityScore * 1000) / 1000,
+    pendingFullSemanticIds: [...pendingFullIds],
     stats: {
       totalSourcesFound: sourcesToReuse.length,
       topicsWithEvidence: topicsWithEvidence.length,

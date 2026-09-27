@@ -1,7 +1,9 @@
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { getCached, setCache } from '@/lib/scraperCache';
+import { searchSemanticScholarPapers } from '@/lib/scrapers/semanticScholarClient';
 
-const S2_API = 'https://api.semanticscholar.org/graph/v1/paper/search';
+const S2_FIELDS =
+  'title,authors,year,venue,journal,abstract,externalIds,url,citationCount,openAccessPdf';
 
 function cleanText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -83,32 +85,14 @@ function parseS2Item(paper: any): ScientificSource {
   };
 }
 
-async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (response.status === 429 && attempt < retries) {
-      // Rate limited - wait with longer exponential backoff (S2 limits ~100 req/5min without key)
-      const waitTime = 2000 * Math.pow(2, attempt) + Math.random() * 1000;
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-      continue;
-    }
-
-    return response;
-  }
-
-  // Should not reach here, but just in case
-  return fetch(url, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(15000),
-  });
-}
-
+/**
+ * Busca no Semantic Scholar.
+ *
+ * Erros de rate limit/HTTP NÃO são mais engolidos: o cliente lança
+ * `SemanticScholarError`, que sobe até `searchAllSourcesWithProgress` e vira
+ * chip vermelho na UI (`scraper_error`) em vez de um verde "(0)" mentiroso.
+ * `[]` só acontece quando a API respondeu 200 sem resultados.
+ */
 export async function scrapeSemanticScholar(
   query: string,
   maxResults: number = 20
@@ -116,24 +100,13 @@ export async function scrapeSemanticScholar(
   const cached = getCached('semantic_scholar', query);
   if (cached) return cached;
 
-  try {
-    const params = new URLSearchParams({
-      query,
-      limit: String(Math.min(maxResults, 100)),
-      fields: 'title,authors,year,venue,journal,abstract,externalIds,url,citationCount,openAccessPdf',
-    });
+  const papers = await searchSemanticScholarPapers(query, {
+    maxResults,
+    fields: S2_FIELDS,
+  });
 
-    const response = await fetchWithRetry(`${S2_API}?${params.toString()}`);
+  const results = papers.map(parseS2Item).filter((r: ScientificSource) => r.title.length > 5);
 
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    const items = data?.data || [];
-    const results = items.map(parseS2Item).filter((r: ScientificSource) => r.title.length > 5);
-
-    setCache('semantic_scholar', query, results);
-    return results;
-  } catch {
-    return [];
-  }
+  setCache('semantic_scholar', query, results);
+  return results;
 }

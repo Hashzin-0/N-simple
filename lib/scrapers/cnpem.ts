@@ -1,5 +1,6 @@
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { getCached, setCache } from '@/lib/scraperCache';
+import { searchSemanticScholarPapers } from '@/lib/scrapers/semanticScholarClient';
 
 const OPENALEX_API = 'https://api.openalex.org/works';
 
@@ -133,24 +134,15 @@ async function searchSemanticScholar(
 ): Promise<ScientificSource[]> {
   try {
     const searchQuery = `${query} CNPEM`;
-    const params = new URLSearchParams({
-      query: searchQuery,
-      limit: String(Math.min(maxResults, 50)),
+    const papers = await searchSemanticScholarPapers(searchQuery, {
+      maxResults,
       fields: 'title,authors,year,venue,journal,abstract,externalIds,url,citationCount',
+      pinnedTerms: ['CNPEM'],
     });
 
-    const response = await fetch(`https://api.semanticscholar.org/graph/v1/paper/search?${params.toString()}`, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    const items = data?.data || [];
     const results: ScientificSource[] = [];
 
-    for (const paper of items) {
+    for (const paper of papers) {
       if (results.length >= maxResults) break;
 
       const title = cleanText(paper.title || '');
@@ -179,7 +171,8 @@ async function searchSemanticScholar(
     }
 
     return results;
-  } catch {
+  } catch (err) {
+    console.warn('[CNPEM] fallback Semantic Scholar falhou:', err instanceof Error ? err.message : err);
     return [];
   }
 }

@@ -22,11 +22,8 @@ import type { CornYieldFillParams } from '@/components/CornYieldCalculator';
 import type { PesqSourcesReport, PesqArticleReport } from '@/components/PesquisadorAgro';
 import type { FontesSearchProgress } from '@/components/PesquisadorAgro/PesquisadorFontesCard';
 import type { RedacaoVoiceReport } from '@/components/PesquisadorRedacao';
-import type { LibrasSubTab } from '@/components/LibrasNoAgro';
 import { PRESET_FERTILIZERS, resolveFertilizerId } from '@/lib/fertilizers';
 import { SQLikeCalculationDB, type CalculationRecord } from '@/lib/storage';
-import { ALL_MODULES, MODULO_VOCABULARIO, MODULO_FRASES, AREAS } from '@/lib/libras-course-data';
-import { loadTemplates } from '@/lib/libras-templates';
 import type { Frase } from '@/lib/analiseMorfologica/types';
 import { gerarFraseLocal } from '@/lib/analiseMorfologica/gerarLocal';
 import { useTheme } from '@/components/ThemeProvider';
@@ -99,11 +96,6 @@ export interface SimulatorContext {
   redacaoReq: { seq: number; action: 'pesquisar' | 'gerar' | 'validar' | 'recomecar'; tema?: string } | null;
   redacaoReport: RedacaoVoiceReport | null;
   onRedacaoAction: (action: 'pesquisar' | 'gerar' | 'validar' | 'recomecar', tema?: string) => void;
-  // Libras no Agro
-  onAbrirLibras: (subTab: LibrasSubTab) => void;
-  onBuscarSinal: (palavra: string) => void;
-  onIniciarPraticaLibras: (templateId?: string) => void;
-  onIniciarQuizLibras: (moduleId?: string) => void;
   // Análise morfológica (aba ABNT) — recebe a frase já sorteada.
   onGerarFraseMorfologica: (frase: Frase) => void;
   // Pesquisador Agro — último progresso da busca (não expira)
@@ -126,13 +118,13 @@ Capacidades:
 7. Referências ABNT com 'setABNTReference' (tipo, autor, título, ano, editor, local, URL) — adiciona à lista e abre a aba ABNT.
 8. Cenários salvos: 'salvarCenario' (nome + notas opcionais), 'listarCenarios', 'carregarCenario' (por id), 'excluirCenario'. Os cenários ficam salvos neste dispositivo.
 9. Utilitários: 'redefinirCalculadora' (zera tudo — só quando pedirem explicitamente) e 'imprimirTela' (abre a impressão/PDF).
-10. Rolagem com 'scrollToSection' para QUALQUER seção do app: aceita o id do menu de navegação (SectionNavGooey) de qualquer aba — Adubação: 'preset_selector' (Cenários), 'form_section' (Parâmetros), 'results_section' (Resultados), 'parceling_section' (Parcelamento), 'balanco_section' (Balanço), 'detailed_math_panel' (Fórmulas); Produtividade: 'corn_yield_header', 'corn_yield_params', 'corn_yield_visual', 'corn_yield_results'; ITR: 'itr_section', 'itr_params_section', 'itr_results_section'; ABNT: 'abnt_section', 'bibliography_autodetect', 'analise_morfologica'; Pesquisador: 'pesquisador_fontes', 'pesquisador_portais', 'pesquisador_automatico'; Libras: 'libras_search', 'librascurso', 'libras_practice', 'libras_tutor', 'libras_capture_test'; Redação: 'redacao_tema', 'redacao_repertorio', 'redacao_expressoes', 'redacao_estrutura', 'redacao_resultado'; Tutor: 'tutor_tema', 'tutor_session', 'tutor_research', 'tutor_progress'. Também aceita os aliases legados: 'parametros', 'resultados', 'dose_total', 'parcelamento', 'balanco', 'presets', 'produtividade', 'solo', 'eficiencia', 'fonte_nitrogenada', 'estimativa_milho', 'itr', 'abnt', 'topo'. A tool troca de aba sozinha quando preciso — não chame 'mudarAba' antes de rolar. Se a seção for da aba do Tutor, a sessão é transferida automaticamente para o Tutor junto com o comando de rolagem: responda só com uma frase curta de despedida (ex: "Vou te chamar o Tutor!"). Troca manual de aba continua com 'mudarAba' ('nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao') — a aba do Tutor NÃO existe em 'mudarAba' (para lá é 'chamarAgente').
+10. Rolagem com 'scrollToSection' para QUALQUER seção do app: aceita o id do menu de navegação (SectionNavGooey) de qualquer aba — Adubação: 'preset_selector' (Cenários), 'form_section' (Parâmetros), 'results_section' (Resultados), 'parceling_section' (Parcelamento), 'balanco_section' (Balanço), 'detailed_math_panel' (Fórmulas); Produtividade: 'corn_yield_header', 'corn_yield_params', 'corn_yield_visual', 'corn_yield_results'; ITR: 'itr_section', 'itr_params_section', 'itr_results_section'; ABNT: 'abnt_section', 'bibliography_autodetect', 'analise_morfologica'; Pesquisador: 'pesquisador_fontes', 'pesquisador_portais', 'pesquisador_automatico'; Libras: 'libras_search', 'librascurso', 'libras_practice', 'libras_tutor', 'libras_capture_test'; Redação: 'redacao_tema', 'redacao_repertorio', 'redacao_expressoes', 'redacao_estrutura', 'redacao_resultado'; Tutor: 'tutor_tema', 'tutor_session', 'tutor_research', 'tutor_progress'. Também aceita os aliases legados: 'parametros', 'resultados', 'dose_total', 'parcelamento', 'balanco', 'presets', 'produtividade', 'solo', 'eficiencia', 'fonte_nitrogenada', 'estimativa_milho', 'itr', 'abnt', 'topo'. A tool troca de aba sozinha quando preciso — não chame 'mudarAba' antes de rolar. Se a seção for da aba do Tutor ou da aba Libras, a sessão é transferida automaticamente para o agente dono dela junto com o comando de rolagem: responda só com uma frase curta de despedida (ex: "Vou te chamar o Tutor!" / "Vou te chamar o Libras!"). Troca manual de aba continua com 'mudarAba' ('nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'redacao') — as abas do Tutor e de Libras NÃO existem em 'mudarAba' (para lá é 'chamarAgente').
 11. Após cada alteração no simulador a tela rola automaticamente até o local afetado; quando o usuário pedir os resultados (dose total, parcelamento, balanço), role para 'resultados'/'dose_total'/'parcelamento'/'balanco'.
-12. Para revisar, estudar, treinar com questões, simulado, seminário, mapa mental, flashcards ou falar com o Tutor, use 'chamarAgente' com alvo 'tutor'. Ela abre a aba do Tutor e transfere a sessão de voz. Responda com uma frase curta de despedida (ex: "Vou te chamar o Tutor!") — de quem responde é ele. Se o usuário pedir para "voltar para o agente global", "falar com o Puck" ou "mudar para o agente de voz" enquanto VOCÊ já é o agente ativo, não chame nenhuma ferramenta: responda que você já é ele e siga a conversa. Alvo 'global' só se aplica quando a chamada vem do Tutor (devolvendo a conversa).
+12. Para revisar, estudar, treinar com questões, simulado, seminário, mapa mental, flashcards ou falar com o Tutor, use 'chamarAgente' com alvo 'tutor'. Para buscar sinais em Libras, ver vídeos de sinais (YouTube ou VLibras), praticar com a câmera, fazer o mini-curso de Libras ou falar com o Libras, use 'chamarAgente' com alvo 'libras'. As duas tools abrem a aba de destino e transferem a sessão de voz. Responda com uma frase curta de despedida (ex: "Vou te chamar o Tutor!" / "Vou te chamar o Libras!") — de quem responde é ele. Se o usuário pedir para "voltar para o agente global", "falar com o Puck" ou "mudar para o agente de voz" enquanto VOCÊ já é o agente ativo, não chame nenhuma ferramenta: responda que você já é ele e siga a conversa. Alvo 'global' só se aplica quando a chamada vem do Tutor ou do Libras (devolvendo a conversa).
 13. Pesquisador Agro: 'pesquisarFontes' (busca fontes sobre um tema — demora; depois leia com 'lerResultadosFontes'), 'gerarArtigoABNT' (gera artigo ABNT — demora bastante; as referências ficam prontas para 'copiarCitacaoABNT'). Sempre avise que a ação foi iniciada e que o resultado pode ser lido depois.
 14. Pesquisador de Redação: fluxo = 'pesquisarRepertorio' (tema) → 'gerarRedacao' → 'lerRedacao' (lê o texto e a validação) → 'validarRedacao' (revalida) e 'recomecarRedacao' (zera). Não pule a pesquisa de repertório: sem contexto a geração falha.
-15. Libras no Agro: 'abrirSecaoLibras' (seções: buscar, curso, praticar, tutor, camera), 'buscarSinal' (busca o vídeo do sinal de uma palavra) e 'progressoLibras' (lê o progresso do mini-curso). NÃO existe um "agente Libras": Libras é uma aba — use 'mudarAba' com alvo 'libras' ou 'abrirSecaoLibras'.
-16. Prática e quiz de Libras: 'iniciarPraticaLibras' (sinal opcional, ex: "milho" — abre a prática e pede PERMISSÃO de câmera; sem sinal lista os sinais disponíveis) e 'iniciarQuizLibras' (módulo opcional: "vocabulario_basico", "frases_campo" ou um módulo de área; sem módulo inicia o vocabulário básico). Aviso sempre que abrir prática: a câmera será solicitada.
+15. Libras no Agro — busca de sinais, exibição de vídeo (YouTube ou VLibras), mini-curso, progresso, prática e quiz com câmera: TUDO isso é do agente Libras — use 'chamarAgente' com alvo 'libras' e responda com uma frase curta de despedida (ex: "Vou te chamar o Libras!"). Você não possui tools de Libras.
+16. A prática de Libras com câmera é do agente Libras — quem abrir a prática é ele, e ele avisa que a câmera será solicitada. Se o usuário pedir para praticar/fazer quiz de Libras aqui, transfira com 'chamarAgente' (alvo 'libras').
 17. Análise morfológica (aba ABNT): 'gerarFraseMorfologica' (sorteia uma frase nova, abre a aba ABNT e devolve o TEXTO da frase) e 'lerProgressoAnalise' (acertos, erros, frases resolvidas e sequências). Ao ditar a frase NUNCA revele as classes gramaticais — o aluno que classifica na tela.
 18. Clima da lavoura: 'consultarPrevisaoTempo' (parâmetro local = cidade, ex: "Lavras"; opcional dias de 1 a 7). Sem cidade usa a geolocalização do aparelho (se negada, peça a cidade). Devolve temperatura, chuva e probabilidade de precipitação.
 19. Memória de evidências: 'consultarMemoriaEvidencias' (tema) — consulta as fontes científicas já pesquisadas/indexadas e diz se há material para reuso. Pode demorar alguns segundos; use para "o que já temos sobre X?".
@@ -309,7 +301,7 @@ const GLOBAL_TOOLS = [
       {
         name: 'scrollToSection',
         description:
-          'Rola suavemente a tela até uma seção do aplicativo (ids do menu de navegação lateral/topo de qualquer aba ou aliases legados). Troca de aba automaticamente quando a seção está em outra aba; se a seção for da aba do Tutor, transfere a sessão para o Tutor com o comando de rolagem.',
+          'Rola suavemente a tela até uma seção do aplicativo (ids do menu de navegação lateral/topo de qualquer aba ou aliases legados). Troca de aba automaticamente quando a seção está em outra aba; se a seção for da aba do Tutor ou da aba Libras, transfere a sessão para o agente dono dela com o comando de rolagem.',
         behavior: 'NON_BLOCKING',
         parameters: {
           type: 'OBJECT',
@@ -329,16 +321,16 @@ const GLOBAL_TOOLS = [
       {
         name: 'mudarAba',
         description:
-          'Troca a aba principal do aplicativo. Use antes de rolar para seções de outras abas (ITR, ABNT, Produtividade, Pesquisador, Libras, Redação).',
+          'Troca a aba principal do aplicativo. Use antes de rolar para seções de outras abas (ITR, ABNT, Produtividade, Pesquisador, Redação).',
         behavior: 'NON_BLOCKING',
         parameters: {
           type: 'OBJECT',
           properties: {
             aba: {
               type: 'STRING',
-              enum: ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao'],
+              enum: ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'redacao'],
               description:
-                'Aba de destino: "nitrogen" (adubação), "productivity" (produtividade de milho), "itr", "abnt", "pesquisador", "libras", "redacao". Para o Tutor use chamarAgente.',
+                'Aba de destino: "nitrogen" (adubação), "productivity" (produtividade de milho), "itr", "abnt", "pesquisador", "redacao". Para o Tutor ou para Libras use chamarAgente.',
             },
           },
           required: ['aba'],
@@ -644,41 +636,6 @@ const GLOBAL_TOOLS = [
         parameters: { type: 'OBJECT', properties: {} },
       },
       {
-        name: 'abrirSecaoLibras',
-        description: 'Abre a aba Libras no Agro e rola até a seção pedida (buscar sinais, mini-curso, praticar, tutor ou teste de câmera).',
-        behavior: 'NON_BLOCKING',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            secao: {
-              type: 'STRING',
-              enum: ['buscar', 'curso', 'praticar', 'tutor', 'camera'],
-              description: 'Seção desejada.',
-            },
-          },
-          required: ['secao'],
-        },
-      },
-      {
-        name: 'buscarSinal',
-        description:
-          'Abre a aba Libras no Agro e busca vídeos de um sinal em Libras (ex: "gado", "milho"). Mostra os resultados na tela.',
-        behavior: 'NON_BLOCKING',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            palavra: { type: 'STRING', description: 'Palavra/frase para buscar o sinal (ex: "irrigação")' },
-          },
-          required: ['palavra'],
-        },
-      },
-      {
-        name: 'progressoLibras',
-        description: 'Lê o progresso do mini-curso de Libras: palavras aprendidas e média de acertos nos quizzes.',
-        behavior: 'NON_BLOCKING',
-        parameters: { type: 'OBJECT', properties: {} },
-      },
-      {
         name: 'listarCapacidades',
         description:
           'Lista tudo o que este assistente de voz sabe fazer, organizado por categoria (simulador, clima, pesquisa, redação, Libras, acessibilidade, sessão). Use quando perguntarem o que você faz.',
@@ -727,36 +684,6 @@ const GLOBAL_TOOLS = [
           'Lê o placar da análise morfológica: acertos, erros, frases resolvidas, sequência atual e melhor sequência.',
         behavior: 'NON_BLOCKING',
         parameters: { type: 'OBJECT', properties: {} },
-      },
-      {
-        name: 'iniciarPraticaLibras',
-        description:
-          'Abre a prática de sinais em Libras (DTW com câmera) e, quando informado, seleciona o sinal. Sem sinal, lista os sinais disponíveis. A câmera será solicitada ao usuário.',
-        behavior: 'NON_BLOCKING',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            sinal: {
-              type: 'STRING',
-              description: 'Sinal a praticar (ex: "milho", "gado", "trator"). Omitir para abrir a lista.',
-            },
-          },
-        },
-      },
-      {
-        name: 'iniciarQuizLibras',
-        description: 'Inicia o quiz do mini-curso de Libras no módulo pedido (padrão: vocabulário básico).',
-        behavior: 'NON_BLOCKING',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            modulo: {
-              type: 'STRING',
-              description:
-                'Módulo: "vocabulario_basico", "frases_campo" ou módulo de área (ex: "area_agricultura"). Omitir = vocabulário básico.',
-            },
-          },
-        },
       },
       {
         name: 'lerProgressoPesquisa',
@@ -840,21 +767,21 @@ const GLOBAL_TOOLS = [
       {
         name: 'chamarAgente',
         description:
-          'Transfere a conversa de voz para outro agente do aplicativo (ex: Tutor de Revisão). Use quando o usuário pedir para revisar, estudar, fazer questões, simulado ou falar com o tutor. A sessão continua viva e o novo agente assume a fala.',
+          'Transfere a conversa de voz para outro agente do aplicativo (Tutor de Revisão ou Tutor de Libras). Use quando o usuário pedir para revisar/estudar (tutor) ou para buscar sinais, ver vídeos em Libras, praticar com a câmera e usar o VLibras (libras). A sessão continua viva e o novo agente assume a fala.',
         behavior: 'NON_BLOCKING',
         parameters: {
           type: 'OBJECT',
           properties: {
             alvo: {
               type: 'STRING',
-              enum: ['tutor', 'global'],
+              enum: ['tutor', 'libras', 'global'],
               description:
-                'Agente de destino: "tutor" (Tutor de Revisão) ou "global" (este assistente — use quando o usuário pedir para voltar/ficar aqui).',
+                'Agente de destino: "tutor" (Tutor de Revisão), "libras" (Tutor de Libras) ou "global" (este assistente — use quando o usuário pedir para voltar/ficar aqui).',
             },
             acao: {
               type: 'STRING',
               description:
-                'O que o usuário quer revisar/estudar (ex: "revisão de calagem"). Vira o contexto inicial do tutor.',
+                'O que o usuário quer revisar/estudar ou qual sinal quer aprender (ex: "revisão de calagem", "sinal de milho"). Vira o contexto inicial do agente de destino.',
             },
           },
           required: ['alvo'],
@@ -893,7 +820,6 @@ const TAB_LABELS: Record<string, string> = {
   itr: 'Calculadora ITR',
   abnt: 'Referências ABNT',
   pesquisador: 'Pesquisador Agro',
-  libras: 'Libras no Agro',
   redacao: 'Pesquisador de Redação',
 };
 
@@ -965,14 +891,9 @@ const CAPACIDADES: { categoria: string; descricao: string; tools: string[] }[] =
   },
   {
     categoria: 'Libras no Agro',
-    descricao: 'Buscar sinais, mini-curso, progresso, prática com câmera (DTW) e quiz por módulo.',
-    tools: [
-      'abrirSecaoLibras',
-      'buscarSinal',
-      'progressoLibras',
-      'iniciarPraticaLibras',
-      'iniciarQuizLibras',
-    ],
+    descricao:
+      'Transferir a conversa para o agente Libras, que cuida de buscar sinais, mostrar vídeos (YouTube ou VLibras), mini-curso, progresso, prática e quiz com câmera.',
+    tools: ['chamarAgente'],
   },
   {
     categoria: 'Análise morfológica',
@@ -992,7 +913,7 @@ const CAPACIDADES: { categoria: string; descricao: string; tools: string[] }[] =
   {
     categoria: 'Sessão de voz',
     descricao:
-      'Transferir para o Tutor, encerrar a conversa, mudo do microfone, supressor de ruído (modo próximo) e listar capacidades.',
+      'Transferir para o Tutor ou para o Libras, encerrar a conversa, mudo do microfone, supressor de ruído (modo próximo) e listar capacidades.',
     tools: [
       'chamarAgente',
       'iniciarRevisao',
@@ -1079,9 +1000,6 @@ const fraseParaTexto = (f: Frase): string => {
   });
   return out.trim();
 };
-
-const normalizar = (s: string) =>
-  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 const GLOBAL_CONFIG = {
   systemInstruction: GLOBAL_SYSTEM_INSTRUCTION,
@@ -1208,7 +1126,10 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
       case 'mudarAba': {
         const aba = String(args.aba || '');
         if (!(aba in TAB_LABELS)) {
-          return { success: false, error: `Aba inválida. Use: ${Object.keys(TAB_LABELS).join(', ')}.` };
+          return {
+            success: false,
+            error: `Aba inválida. Use: ${Object.keys(TAB_LABELS).join(', ')}. Para a aba Libras use chamarAgente com alvo "libras".`,
+          };
         }
         setActionLabel(`Abrindo ${TAB_LABELS[aba]}`);
         ctx.onNavigateTab(aba as TabId);
@@ -1412,20 +1333,23 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
         const sectionId = resolved?.id ?? input;
         const sectionLabel = label ?? resolved?.label ?? sectionId;
 
-        // Seção na aba do Tutor: transfere a sessão com o comando de rolagem —
-        // trocar para a aba tutor desmontaria este agente e cortaria a fala.
-        if (resolved?.tab === 'tutor') {
-          setActionLabel(`Tutor: ${resolved.label}`);
-          const res = voiceHub.callAgent('tutor', {
-            transitionText: `Comando transferido do assistente principal: o aluno pediu para rolar a tela até a seção "${resolved.label}" (id: ${resolved.id}) na aba Tutor. Assuma a conversa e execute AGORA a tool scrollToSection(section="${resolved.id}") sem perguntar nada; depois confirme o scroll em uma frase curta.`,
+        // Seção na aba do Tutor ou na aba Libras: transfere a sessão com o
+        // comando de rolagem — trocar de aba desmontaria este agente e cortaria
+        // a fala.
+        if (resolved?.tab === 'tutor' || resolved?.tab === 'libras') {
+          const alvo: 'tutor' | 'libras' = resolved.tab;
+          const nomeAgente = alvo === 'tutor' ? 'Tutor' : 'Libras';
+          setActionLabel(`${nomeAgente}: ${resolved.label}`);
+          const res = voiceHub.callAgent(alvo, {
+            transitionText: `Comando transferido de outro assistente: o usuário pediu para rolar a tela até a seção "${resolved.label}" (id: ${resolved.id}) na aba ${nomeAgente}. Assuma a conversa e execute AGORA a tool scrollToSection(section="${resolved.id}") sem perguntar nada; depois confirme o scroll em uma frase curta.`,
           });
           if (!res.ok) return { success: false, error: res.message };
           return {
             success: true,
             section: resolved.id,
-            aba: 'tutor',
+            aba: alvo,
             transferido: true,
-            message: `A seção "${resolved.label}" fica na aba do Tutor: a sessão foi transferida com o comando de rolagem. Diga uma frase curta de despedida (ex: "Vou te chamar o Tutor!") — quem rola a tela e continua é ele.`,
+            message: `A seção "${resolved.label}" fica na aba do ${nomeAgente}: a sessão foi transferida com o comando de rolagem. Diga uma frase curta de despedida (ex: "Vou te chamar o ${nomeAgente}!") — quem rola a tela e continua é ele.`,
           };
         }
 
@@ -1754,69 +1678,6 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
         return { success: true, message: 'Pesquisador de Redação reiniciado do zero.' };
       }
 
-      case 'abrirSecaoLibras': {
-        const mapa: Record<string, LibrasSubTab> = {
-          buscar: 'search',
-          curso: 'course',
-          praticar: 'practice',
-          tutor: 'tutor',
-          camera: 'capture-test',
-        };
-        const secao = String(args.secao || '').toLowerCase();
-        const sub = mapa[secao];
-        if (!sub) {
-          return { success: false, error: 'Seção inválida. Use: buscar, curso, praticar, tutor ou camera.' };
-        }
-        setActionLabel(`Libras: ${secao}`);
-        ctx.onAbrirLibras(sub);
-        return { success: true, secao, message: `Aba Libras no Agro aberta — rolando até a seção "${secao}".` };
-      }
-
-      case 'buscarSinal': {
-        const palavra = String(args.palavra || '').trim();
-        if (!palavra) return { success: false, error: 'Informe a palavra (parâmetro palavra).' };
-        setActionLabel(`Buscando sinal: ${palavra}`);
-        ctx.onBuscarSinal(palavra);
-        return {
-          success: true,
-          palavra,
-          iniciado: true,
-          message: `Busca do sinal de "${palavra}" iniciada em Libras — os vídeos aparecem na tela.`,
-        };
-      }
-
-      case 'progressoLibras': {
-        setActionLabel('Lendo progresso de Libras');
-        try {
-          const raw = typeof window !== 'undefined' ? localStorage.getItem('libras_progress_v1') : null;
-          const data: Record<string, { learned?: boolean; quizScore?: number }> = raw ? JSON.parse(raw) : {};
-          const entries = Object.entries(data);
-          const aprendidas = entries.filter(([, v]) => v?.learned).length;
-          const scores = entries.map(([, v]) => Number(v?.quizScore) || 0).filter((s) => s > 0);
-          const media = scores.length
-            ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
-            : 0;
-          const totalCurso = ALL_MODULES.reduce((n, m) => n + (m.words?.length || 0), 0);
-          return {
-            success: true,
-            total_no_curso: totalCurso,
-            registradas: entries.length,
-            aprendidas,
-            media_quiz: media,
-            palavras_aprendidas: entries
-              .filter(([, v]) => v?.learned)
-              .map(([k]) => k)
-              .slice(0, 20),
-            message:
-              entries.length === 0
-                ? 'Nenhum progresso registrado ainda no mini-curso de Libras.'
-                : `Aprendidas ${aprendidas} de ${totalCurso} palavras do curso (${entries.length} registradas). Média de ${media}% nos quizzes.`,
-          };
-        } catch {
-          return { success: false, error: 'Não foi possível ler o progresso de Libras.' };
-        }
-      }
-
       case 'chamarAgente': {
         const alvo = String(args.alvo || 'tutor');
         if (alvo === 'global') {
@@ -1830,10 +1691,24 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
               'Você é o agente ativo. Nenhuma transferência foi necessária — continue a conversa normalmente.',
           };
         }
+        const acao = args.acao ? String(args.acao) : undefined;
+        if (alvo === 'libras') {
+          setActionLabel('Transferindo para o Libras…');
+          const res = voiceHub.callAgent('libras', {
+            transitionText: acao
+              ? `Atenção: a sessão foi transferida de outro assistente. O usuário quer aprender o sinal: ${acao}. Cumprimente e ajude com Libras.`
+              : 'Atenção: a sessão foi transferida de outro assistente. Cumprimente o usuário e pergunte qual sinal ou fluxo de Libras ele quer.',
+          });
+          if (!res.ok) return { success: false, error: res.message };
+          return {
+            success: true,
+            message:
+              'Tutor de Libras ativado. Diga uma frase curta de despedida (ex: "Vou te chamar o Libras!") — quem responde daqui para frente é ele.',
+          };
+        }
         if (alvo !== 'tutor') {
           return { success: true, message: 'Você já é o agente ativo.' };
         }
-        const acao = args.acao ? String(args.acao) : undefined;
         setActionLabel('Transferindo para o Tutor…');
         const res = voiceHub.callAgent('tutor', {
           transitionText: acao
@@ -2091,71 +1966,6 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
         } catch {
           return { success: false, error: 'Não foi possível ler o placar da análise morfológica.' };
         }
-      }
-
-      case 'iniciarPraticaLibras': {
-        const sinal = args.sinal ? String(args.sinal).trim() : '';
-        const templates = loadTemplates();
-        if (!sinal) {
-          setActionLabel('Abrindo prática de sinais');
-          ctx.onIniciarPraticaLibras(undefined);
-          return {
-            success: true,
-            sinais: templates.map((t) => ({ id: t.id, nome: t.label })),
-            message: `Prática aberta na seção Praticar (aba Libras), com ${templates.length} sinais: ${templates
-              .map((t) => t.label)
-              .join(', ')}. Escolha um com iniciarPraticaLibras — a câmera será solicitada.`,
-          };
-        }
-        const n = normalizar(sinal);
-        const alvo =
-          templates.find((t) => normalizar(t.id) === n || normalizar(t.label) === n) ??
-          templates.find((t) => normalizar(t.label).includes(n));
-        if (!alvo) {
-          return {
-            success: false,
-            error: `Sinal "${sinal}" não existe na prática. Disponíveis: ${templates
-              .map((t) => t.label)
-              .join(', ')}.`,
-          };
-        }
-        setActionLabel(`Praticando sinal: ${alvo.label}`);
-        ctx.onIniciarPraticaLibras(alvo.id);
-        return {
-          success: true,
-          sinal: alvo.label,
-          message: `Prática de "${alvo.label}" aberta na seção Praticar (aba Libras). A câmera será pedida ao usuário — avise antes que ela apareça.`,
-        };
-      }
-
-      case 'iniciarQuizLibras': {
-        const moduloArg = args.modulo ? String(args.modulo).trim() : '';
-        const modulos = [MODULO_VOCABULARIO, MODULO_FRASES, ...AREAS.flatMap((a) => a.modules)];
-        let alvo = MODULO_VOCABULARIO;
-        if (moduloArg) {
-          const n = normalizar(moduloArg);
-          const found =
-            modulos.find((m) => normalizar(m.id) === n || normalizar(m.title) === n) ??
-            modulos.find(
-              (m) => normalizar(m.title).includes(n) || normalizar(m.id).includes(n)
-            );
-          if (!found) {
-            return {
-              success: false,
-              error: `Módulo "${moduloArg}" não encontrado. Opções: ${modulos
-                .map((m) => `${m.id} (${m.title})`)
-                .join(', ')}.`,
-            };
-          }
-          alvo = found;
-        }
-        setActionLabel(`Iniciando quiz: ${alvo.title}`);
-        ctx.onIniciarQuizLibras(alvo.id);
-        return {
-          success: true,
-          modulo: alvo.title,
-          message: `Quiz do módulo "${alvo.title}" iniciado na seção Mini-Curso (aba Libras).`,
-        };
       }
 
       case 'lerProgressoPesquisa': {

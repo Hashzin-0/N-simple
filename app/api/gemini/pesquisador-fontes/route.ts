@@ -49,9 +49,9 @@ export async function POST(req: NextRequest) {
           logMemory('before searchSources (stream)');
 
           try {
-            // Orquestrador unificado: memória (decideReuse) → reuso →
-            // scrapers → understandSources (persistindo incrementalmente)
-            // → indexSources (upsert final idempotente).
+            // Orquestrador unificado: memória (decideReuse) → scrapers →
+            // FASE 1 light por portal (persistindo incrementalmente) →
+            // FASE 2 enfileirada no Inngest (understandOne em 2º plano).
             const result = await searchSources({
               query: cleanQuery,
               searchOptions,
@@ -76,9 +76,14 @@ export async function POST(req: NextRequest) {
                       action: decision.action,
                       coverage: decision.coverageScore,
                       reuseScore: decision.reuseScore,
+                      pendingFull: decision.pendingFullSemanticIds.length,
                     });
                   }
                 },
+                onPortalQueuesReady: (portals) =>
+                  sendEvent('portal_queues', { portals }),
+                onPhase2Enqueued: (count) =>
+                  sendEvent('semantic_full_queued', { count }),
               },
             });
 

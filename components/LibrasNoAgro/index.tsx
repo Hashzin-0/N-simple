@@ -8,8 +8,12 @@ import LibrasCourse from './LibrasCourse';
 import LibrasCaptureTest from '@/components/LibrasCaptureTest';
 import LibrasPractice from '@/components/LibrasPractice';
 import LibrasTutor from '@/components/LibrasTutor';
+import LibrasVideoModal from './LibrasVideoModal';
 import { useLibrasProgress } from '@/hooks/useLibrasProgress';
 import SaveProgressToggle from '@/components/auth/SaveProgressToggle';
+import { useLibrasVideo, closeLibrasVideo } from '@/lib/librasVideoPlayer';
+import { useLibrasLiveAgent, type LibrasLiveBridgeContext } from '@/hooks/useLibrasLiveAgent';
+import type { LibrasVoiceSearchReport, LibrasCoachReport } from '@/lib/libras-types';
 
 type SubTab = 'search' | 'course' | 'practice' | 'tutor' | 'capture-test';
 
@@ -39,15 +43,32 @@ interface LibrasNoAgroProps {
   pendingPractice?: { seq: number; templateId?: string } | null;
   /** Pedido externo (voz) de quiz do mini-curso. */
   pendingQuiz?: { seq: number; moduleId?: string } | null;
+  /** Pedido externo (voz) de observação da câmera (Gemini vision). */
+  pendingCoach?: { seq: number; alvo?: string; segundos: number } | null;
+  /** Reporte da última busca de sinais para a tool lerResultadosSinais. */
+  onSearchReport?: (report: LibrasVoiceSearchReport) => void;
+  /** Reporte da avaliação visual de sinal para a tool lerFeedbackSinal. */
+  onCoachReport?: (report: LibrasCoachReport) => void;
+  /** Ponte do agente de voz "Libras" (montado nesta aba, padrão do Tutor). */
+  voiceBridge: LibrasLiveBridgeContext;
 }
 
 export default React.memo(function LibrasNoAgro({
   pendingSearch,
   pendingPractice,
   pendingQuiz,
+  pendingCoach,
+  onSearchReport,
+  onCoachReport,
+  voiceBridge,
 }: LibrasNoAgroProps) {
   const { isDark } = useTheme();
   const progress = useLibrasProgress();
+  const voiceVideo = useLibrasVideo();
+
+  // Agente de voz "Libras" (Gemini Live): só existe enquanto a aba está montada;
+  // o hub de agentes (`voiceHub`) cuida do handoff com global/tutor.
+  useLibrasLiveAgent(voiceBridge);
 
   const cardClass = `p-4 sm:p-6 rounded-3xl shadow-sm border ${
     isDark ? 'bg-[#1C201A] border-[#2C3328]' : 'bg-white border-[#E5E2D9]'
@@ -60,11 +81,23 @@ export default React.memo(function LibrasNoAgro({
   const renderContent = (id: SubTab) => {
     switch (id) {
       case 'search':
-        return <LibrasSearch maxResults={3} pendingSearch={pendingSearch ?? null} />;
+        return (
+          <LibrasSearch
+            maxResults={3}
+            pendingSearch={pendingSearch ?? null}
+            onReport={onSearchReport}
+          />
+        );
       case 'course':
         return <LibrasCourse progress={progress} pendingQuiz={pendingQuiz ?? null} />;
       case 'practice':
-        return <LibrasPractice pendingTemplate={pendingPractice ?? null} />;
+        return (
+          <LibrasPractice
+            pendingTemplate={pendingPractice ?? null}
+            pendingCoach={pendingCoach ?? null}
+            onCoachReport={onCoachReport}
+          />
+        );
       case 'tutor':
         return <LibrasTutor />;
       case 'capture-test':
@@ -109,6 +142,16 @@ export default React.memo(function LibrasNoAgro({
           </section>
         );
       })}
+
+      {/* Player de vídeo aberto pela voz (mostrarSinal → YouTube, autoplay) */}
+      {voiceVideo && (
+        <LibrasVideoModal
+          videoId={voiceVideo.videoId}
+          title={voiceVideo.title}
+          isOpen
+          onClose={closeLibrasVideo}
+        />
+      )}
     </div>
   );
 });

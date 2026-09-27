@@ -18,7 +18,7 @@
  *   (ou quando o grace terminar, o que vier depois).
  */
 
-export type VoiceAgentId = 'global' | 'tutor';
+export type VoiceAgentId = 'global' | 'tutor' | 'libras';
 
 export interface HubAgentState {
   isConnected: boolean;
@@ -74,6 +74,20 @@ const HANDOFF_GRACE_MS = 2500;
 const TAB_FOR_AGENT: Record<VoiceAgentId, string> = {
   global: 'nitrogen',
   tutor: 'tutor',
+  libras: 'libras',
+};
+
+/** Aba → agente de voz dono dela (usado por syncTab). */
+const AGENT_FOR_TAB: Record<string, VoiceAgentId> = {
+  tutor: 'tutor',
+  libras: 'libras',
+};
+
+/** Frase de transição padrão ao ceder a conversa para cada agente. */
+const TRANSITION_TEXT: Record<VoiceAgentId, string> = {
+  global: 'Retornando ao assistente agronômico principal.',
+  tutor: 'Cedendo a conversa ao Tutor de Revisão do aplicativo.',
+  libras: 'Cedendo a conversa ao Tutor de Libras do aplicativo.',
 };
 
 interface PendingSwitch {
@@ -320,7 +334,7 @@ class VoiceHub {
    *   apenas marca o agente ativo.
    */
   syncTab(tab: string): void {
-    const target: VoiceAgentId = tab === 'tutor' ? 'tutor' : 'global';
+    const target: VoiceAgentId = AGENT_FOR_TAB[tab] ?? 'global';
     if (this.pendingSwitch && this.pendingSwitch.target !== target) {
       // navegação manual no meio da troca: cancela, mantém o que estiver vivo
       this.cancelPending();
@@ -329,12 +343,7 @@ class VoiceHub {
     if (this.snapshot.activeAgentId === target) return;
     const from = this.agents.get(this.snapshot.activeAgentId);
     if (from?.getState().isConnected) {
-      this.callAgent(target, {
-        transitionText:
-          target === 'tutor'
-            ? 'Cedendo a conversa ao Tutor de Revisão do aplicativo.'
-            : 'Retornando ao assistente agronômico principal.',
-      });
+      this.callAgent(target, { transitionText: TRANSITION_TEXT[target] });
     } else {
       this.setActive(target);
     }

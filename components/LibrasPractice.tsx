@@ -15,15 +15,41 @@ import { useLibrasDTW } from '@/hooks/useLibrasDTW';
 import { loadTemplates } from '@/lib/libras-templates';
 import { drawHandLandmarks } from '@/lib/libras-capture-debug';
 import LibrasGestureFeedback from './LibrasGestureFeedback';
-import type { GestureTemplate } from '@/lib/libras-types';
+import type { GestureTemplate, LibrasCoachReport } from '@/lib/libras-types';
 
 interface LibrasPracticeProps {
   onBack?: () => void;
   /** Pedido externo (voz); seq monotônico evita re-execução. */
   pendingTemplate?: { seq: number; templateId?: string } | null;
+  /** Pedido externo (voz) de observação da câmera (Gemini vision). */
+  pendingCoach?: { seq: number; alvo?: string; segundos: number } | null;
+  /** Reporte da avaliação visual para a tool lerFeedbackSinal. */
+  onCoachReport?: (report: LibrasCoachReport) => void;
 }
 
-export default React.memo(function LibrasPractice({ onBack, pendingTemplate }: LibrasPracticeProps) {
+const COACH_CAPTURES = 3;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+async function waitFor<T>(
+  fn: () => T | null | undefined | false,
+  timeoutMs: number,
+  stepMs = 100
+): Promise<T | null> {
+  const end = Date.now() + timeoutMs;
+  for (;;) {
+    const v = fn();
+    if (v) return v;
+    if (Date.now() >= end) return null;
+    await sleep(stepMs);
+  }
+}
+
+export default React.memo(function LibrasPractice({
+  onBack,
+  pendingTemplate,
+  pendingCoach,
+  onCoachReport,
+}: LibrasPracticeProps) {
   const { isDark } = useTheme();
   const {
     isReady,
@@ -41,6 +67,9 @@ export default React.memo(function LibrasPractice({ onBack, pendingTemplate }: L
   const [templates, setTemplates] = useState<GestureTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<GestureTemplate | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+  /** Modo coach (voz): câmera aberta sem template, avaliada pelo Gemini. */
+  const [coach, setCoach] = useState<{ seq: number; alvo: string | null } | null>(null);
+  const [coachRemaining, setCoachRemaining] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -52,8 +81,15 @@ export default React.memo(function LibrasPractice({ onBack, pendingTemplate }: L
     setTemplates(loadTemplates());
   }, []);
 
-  // Camera management
+  // Camera management (idempotente: reaproveita o stream já aberto)
   const startCamera = useCallback(async () => {
+    if (streamRef.current) {
+      if (videoRef.current && videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        await videoRef.current.play().catch(() => {});
+      }
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
@@ -65,6 +101,7 @@ export default React.memo(function LibrasPractice({ onBack, pendingTemplate }: L
       }
     } catch (err) {
       console.error('Camera error:', err);
+      throw err;
     }
   }, []);
 
@@ -78,9 +115,11 @@ export default React.memo(function LibrasPractice({ onBack, pendingTemplate }: L
     }
   }, []);
 
-  // Process frames loop
+  // Process frames loop (prática com template) ou só câmera (modo coach/voz)
+  const hasCamera = isActive || coach !== null;
+
   useEffect(() => {
-    if (!isActive || !selectedTemplate) {
+    if (!hasCamera) {
       if (frameIntervalRef.current) {
         clearInterval(frameIntervalRef.current);
         frameIntervalRef.current = null;
@@ -91,33 +130,40 @@ export default React.memo(function LibrasPractice({ onBack, pendingTemplate }: L
     let cancelled = false;
 
     const init = async () => {
-      await startCamera();
+      try {
+        await startCamera();
+      } catch {
+        /* permissão negada — o coach reporta o erro ao final */
+      }
     };
     init();
 
-    frameIntervalRef.current = setInterval(async () => {
-      if (videoRef.current && canvasRef.current && !cancelled) {
-        const landmarks = await processFrame(videoRef.current);
-        if (landmarks && canvasRef.current) {
-          const ctx = canvasRef.current.getContext('2d');
-          if (ctx) {
-            ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-            if (landmarks.length > 0) {
-              drawHandLandmarks(ctx, landmarks, canvasRef.current.width, canvasRef.current.height, '#86efac');
+    if (isActive && selectedTemplate) {
+      frameIntervalRef.current = setInterval(async () => {
+        if (videoRef.current && canvasRef.current && !cancelled) {
+          const landmarks = await processFrame(videoRef.current);
+          if (landmarks && canvasRef.current) {
+            const ctx = canvasRef.current.getContext('2d');
+            if (ctx) {
+              ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+              if (landmarks.length > 0) {
+                drawHandLandmarks(ctx, landmarks, canvasRef.current.width, canvasRef.current.height, '#86efac');
+              }
             }
           }
         }
-      }
-    }, 33);
+      }, 33);
+    }
 
     return () => {
       cancelled = true;
       if (frameIntervalRef.current) {
         clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
       }
       stopCamera();
     };
-  }, [isActive, selectedTemplate, processFrame, startCamera, stopCamera]);
+  }, [hasCamera, isActive, selectedTemplate, processFrame, startCamera, stopCamera]);
 
   // Template selection
   const handleSelectTemplate = useCallback(
@@ -145,6 +191,141 @@ export default React.memo(function LibrasPractice({ onBack, pendingTemplate }: L
     if (tpl) handleSelectTemplate(tpl);
   }, [pendingTemplate, templates, handleSelectTemplate]);
 
+  // ---- Modo coach (voz): observa a câmera e devolve avaliação do Gemini ----
+
+  const captureFrame = useCallback((): string | null => {
+    const v = videoRef.current;
+    if (!v || v.readyState < 2 || v.videoWidth === 0) return null;
+    const w = 480;
+    const h = Math.max(1, Math.round((v.videoHeight / v.videoWidth) * w));
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(v, 0, 0, w, h);
+    try {
+      return c.toDataURL('image/jpeg', 0.7);
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const runCoach = useCallback(
+    async (req: { seq: number; alvo?: string; segundos: number }) => {
+      const alvo = req.alvo?.trim() || null;
+      const seg = Math.min(10, Math.max(2, Number(req.segundos) || 4));
+      setCoach({ seq: req.seq, alvo });
+      if (selectedTemplate) setIsActive(true);
+
+      const report = (r: Omit<LibrasCoachReport, 'seq' | 'alvo' | 'at'>) => {
+        onCoachReport?.({ seq: req.seq, at: Date.now(), alvo, ...r });
+      };
+      const clearCoach = () => {
+        setCoach((c) => (c && c.seq === req.seq ? null : c));
+        setCoachRemaining(0);
+      };
+      const failMsg = 'Não consegui avaliar o sinal agora. Tente novamente.';
+
+      try {
+        const mounted = await waitFor(() => videoRef.current, 3000);
+        if (!mounted) {
+          report({
+            ok: false,
+            correcoes: [],
+            message: 'O painel da câmera não abriu. Diga "praticar sinal" e tente de novo.',
+            error: 'camera',
+          });
+          return;
+        }
+
+        let camOk = true;
+        try {
+          await startCamera();
+        } catch {
+          camOk = false;
+        }
+        const ready = await waitFor(
+          () =>
+            videoRef.current &&
+            videoRef.current.readyState >= 2 &&
+            videoRef.current.videoWidth > 0,
+          8000
+        );
+        if (!camOk || !ready) {
+          report({
+            ok: false,
+            correcoes: [],
+            message:
+              'Preciso da câmera para observar seu sinal. Libere o acesso à câmera no navegador e tente de novo.',
+            error: 'permissao',
+          });
+          return;
+        }
+
+        // Captura N quadros durante a contagem (movimento entre quadros ajuda)
+        const totalMs = seg * 1000;
+        const interval =
+          COACH_CAPTURES > 1 ? Math.max(500, (totalMs - 700) / (COACH_CAPTURES - 1)) : 0;
+        const frames: string[] = [];
+        setCoachRemaining(seg);
+        const tick = setInterval(() => setCoachRemaining((s) => Math.max(0, s - 1)), 1000);
+        try {
+          for (let i = 0; i < COACH_CAPTURES; i++) {
+            if (i > 0) await sleep(interval);
+            const f = captureFrame();
+            if (f) frames.push(f);
+            if (i === 0) await sleep(700);
+          }
+        } finally {
+          clearInterval(tick);
+        }
+        setCoachRemaining(0);
+
+        if (frames.length === 0) {
+          report({ ok: false, correcoes: [], message: failMsg, error: 'quadros' });
+          return;
+        }
+
+        const res = await fetch('/api/libras/sign-feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alvo, frames }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) {
+          report({
+            ok: false,
+            correcoes: [],
+            message: data?.error || failMsg,
+            error: 'llm',
+          });
+          return;
+        }
+        report({
+          ok: true,
+          identificacao: data.identificacao,
+          acerto: typeof data.acerto === 'number' ? data.acerto : null,
+          correcoes: Array.isArray(data.correcoes) ? data.correcoes : [],
+          elogio: data.elogio,
+          message: data.message || failMsg,
+        });
+      } catch {
+        report({ ok: false, correcoes: [], message: failMsg, error: 'erro' });
+      } finally {
+        clearCoach();
+      }
+    },
+    [captureFrame, onCoachReport, selectedTemplate, startCamera]
+  );
+
+  const lastCoachSeqRef = useRef(0);
+  useEffect(() => {
+    if (!pendingCoach || pendingCoach.seq === lastCoachSeqRef.current) return;
+    lastCoachSeqRef.current = pendingCoach.seq;
+    void runCoach(pendingCoach);
+  }, [pendingCoach, runCoach]);
+
   const handleNext = useCallback(() => {
     const nextIdx = (currentIndex + 1) % templates.length;
     setCurrentIndex(nextIdx);
@@ -168,10 +349,34 @@ export default React.memo(function LibrasPractice({ onBack, pendingTemplate }: L
     stopCamera();
   }, [setTargetTemplate, stopCamera]);
 
-  // Template grid view
+  // Grid view (sem template) — com cartão de câmera quando o coach está rodando
   if (!selectedTemplate) {
     return (
       <div className="space-y-4">
+        {coach && (
+          <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/40 backdrop-blur-sm">
+            <video
+              ref={videoRef}
+              className="w-full h-auto"
+              style={{ transform: 'scaleX(-1)' }}
+              playsInline
+              muted
+            />
+            <div className="absolute top-2 left-2 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-xs text-white/70">
+                {coachRemaining > 0
+                  ? `Observando você... ${coachRemaining}s`
+                  : 'Enviando avaliação...'}
+              </span>
+            </div>
+            {coach.alvo && (
+              <div className="absolute bottom-2 left-2 text-xs text-white/70">
+                Alvo: {coach.alvo}
+              </div>
+            )}
+          </div>
+        )}
         <p className={`text-sm ${isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'}`}>
           Selecione um sinal para praticar:
         </p>

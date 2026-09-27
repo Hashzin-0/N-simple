@@ -50,6 +50,8 @@ import type { PesqSourcesReport, PesqArticleReport } from '@/components/Pesquisa
 import type { FontesSearchProgress } from '@/components/PesquisadorAgro/PesquisadorFontesCard';
 import type { RedacaoVoiceReport } from '@/components/PesquisadorRedacao';
 import type { LibrasSubTab } from '@/components/LibrasNoAgro';
+import type { LibrasVoiceSearchReport, LibrasCoachReport } from '@/lib/libras-types';
+import type { LibrasLiveBridgeContext } from '@/hooks/useLibrasLiveAgent';
 import type { Frase } from '@/lib/analiseMorfologica/types';
 import { smoothScrollToSection, waitForElement } from '@/lib/pageAutomator';
 
@@ -60,6 +62,13 @@ const LIBRAS_SECTION_IDS: Record<LibrasSubTab, string> = {
   practice: 'libras_practice',
   tutor: 'libras_tutor',
   'capture-test': 'libras_capture_test',
+};
+
+/** Rótulo do botão de voz no header para cada agente de voz. */
+const VOICE_AGENT_LABELS: Record<string, string> = {
+  global: 'Falar com Puck',
+  tutor: 'Falar com Tutor',
+  libras: 'Falar com Libras',
 };
 import ProfileMenu from '@/components/auth/ProfileMenu';
 import GoogleSignInIsland from '@/components/auth/GoogleSignInIsland';
@@ -389,8 +398,12 @@ export default function Home() {
   const [librasSearchReq, setLibrasSearchReq] = useState<{ seq: number; query: string } | null>(null);
   const [librasPracticeReq, setLibrasPracticeReq] = useState<{ seq: number; templateId?: string } | null>(null);
   const [librasQuizReq, setLibrasQuizReq] = useState<{ seq: number; moduleId?: string } | null>(null);
+  const [librasCoachReq, setLibrasCoachReq] = useState<{ seq: number; alvo?: string; segundos: number } | null>(null);
   const [analiseReq, setAnaliseReq] = useState<{ seq: number; frase: Frase } | null>(null);
   const voiceReqSeqRef = useRef(0);
+  // Reportes da aba Libras (voz): refs bastam — só as tools de leitura leem.
+  const librasSearchReportRef = useRef<LibrasVoiceSearchReport | null>(null);
+  const librasCoachReportRef = useRef<LibrasCoachReport | null>(null);
 
 
   const onSetITRParameters = useCallback((params: { vtn: number; areaTotal: number; areaTributavel?: number; areaAproveitavel?: number; areaUtilizada?: number }) => {
@@ -628,6 +641,51 @@ export default function Home() {
     [onAbrirLibras]
   );
 
+  // ---- Voice callbacks: coach de câmera + reportes (agente Libras) ----
+  const onObservarSinal = useCallback(
+    (alvo: string | null, segundos: number) => {
+      voiceReqSeqRef.current += 1;
+      setLibrasCoachReq({
+        seq: voiceReqSeqRef.current,
+        ...(alvo ? { alvo } : {}),
+        segundos,
+      });
+      onAbrirLibras('practice');
+    },
+    [onAbrirLibras]
+  );
+
+  const onLibrasSearchReport = useCallback((r: LibrasVoiceSearchReport) => {
+    librasSearchReportRef.current = r;
+  }, []);
+  const onLibrasCoachReport = useCallback((r: LibrasCoachReport) => {
+    librasCoachReportRef.current = r;
+  }, []);
+  const getLibrasSearchReport = useCallback(() => librasSearchReportRef.current, []);
+  const getLibrasCoachReport = useCallback(() => librasCoachReportRef.current, []);
+
+  // Ponte do agente de voz "Libras" — memoizada para o hook não recriar o config.
+  const librasVoiceBridge: LibrasLiveBridgeContext = useMemo(
+    () => ({
+      onAbrirSecao: onAbrirLibras,
+      onBuscarSinal,
+      onIniciarPratica: onIniciarPraticaLibras,
+      onIniciarQuiz: onIniciarQuizLibras,
+      onObservarSinal,
+      getSearchReport: getLibrasSearchReport,
+      getCoachReport: getLibrasCoachReport,
+    }),
+    [
+      onAbrirLibras,
+      onBuscarSinal,
+      onIniciarPraticaLibras,
+      onIniciarQuizLibras,
+      onObservarSinal,
+      getLibrasSearchReport,
+      getLibrasCoachReport,
+    ]
+  );
+
   // ---- Voice callbacks: análise morfológica (aba ABNT) ----
   const onGerarFraseMorfologica = useCallback(
     (frase: Frase) => {
@@ -697,10 +755,6 @@ export default function Home() {
     onPesquisarFontes,
     onGerarArtigo,
     onRedacaoAction,
-    onAbrirLibras,
-    onBuscarSinal,
-    onIniciarPraticaLibras,
-    onIniciarQuizLibras,
     onGerarFraseMorfologica,
     onAbrirAcessibilidade,
     pesqSearchSnapshot,
@@ -823,11 +877,23 @@ export default function Home() {
             pendingSearch={librasSearchReq}
             pendingPractice={librasPracticeReq}
             pendingQuiz={librasQuizReq}
+            pendingCoach={librasCoachReq}
+            onSearchReport={onLibrasSearchReport}
+            onCoachReport={onLibrasCoachReport}
+            voiceBridge={librasVoiceBridge}
           />
         </ScrollStack>
       </div>
     ),
-    [librasSearchReq, librasPracticeReq, librasQuizReq]
+    [
+      librasSearchReq,
+      librasPracticeReq,
+      librasQuizReq,
+      librasCoachReq,
+      onLibrasSearchReport,
+      onLibrasCoachReport,
+      librasVoiceBridge,
+    ]
   );
 
   const redacaoContent = useMemo(
@@ -944,7 +1010,7 @@ export default function Home() {
   let voiceLabel: string;
   if (!hudAgentState.isConnected) {
     orbState = 'breathing';
-    voiceLabel = hubSnapshot.activeAgentId === 'tutor' ? 'Falar com Tutor' : 'Falar com Puck';
+    voiceLabel = VOICE_AGENT_LABELS[hubSnapshot.activeAgentId] ?? VOICE_AGENT_LABELS.global;
   } else if (typedTheme !== null) {
     // tool "digitando" o tema no pesquisador
     orbState = 'working';

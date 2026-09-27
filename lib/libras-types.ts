@@ -30,6 +30,45 @@ export interface LibrasSearchResponse {
   ambiguousSense?: boolean;
 }
 
+/**
+ * Reporte da última busca de sinais (usado pela tool `lerResultadosSinais`
+ * do agente de voz de Libras). `seq` acompanha o pedido de voz correspondente.
+ */
+export interface LibrasVoiceSearchReport {
+  seq: number;
+  /** Instante (Date.now) em que o reporte foi produzido. */
+  at: number;
+  query: string;
+  results: LibrasVideoResult[];
+  signGroups: LibrasSignGroup[];
+  senseOptions: LibrasSenseOption[];
+  ambiguousSense: boolean;
+  selectedSenseId: string | null;
+  totalFound: number;
+  error?: string;
+}
+
+/**
+ * Resultado da avaliação visual de um sinal feito pelo usuário na câmera
+ * (Gemini vision) — devolvido pela tool `lerFeedbackSinal`.
+ */
+export interface LibrasCoachReport {
+  seq: number;
+  /** Instante (Date.now) em que o reporte foi produzido. */
+  at: number;
+  /** Sinal-alvo pedido na tool observarMeuSinal (null = modo identificação). */
+  alvo: string | null;
+  ok: boolean;
+  identificacao?: string;
+  /** 0 a 100 (avaliação) ou null quando não aplicável. */
+  acerto?: number | null;
+  correcoes: string[];
+  elogio?: string;
+  /** Fala pronta para o agente de voz narrar. */
+  message: string;
+  error?: string;
+}
+
 export type LibrasCategory =
   | 'agricultura'
   | 'pecuaria'

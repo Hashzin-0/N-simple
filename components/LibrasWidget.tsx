@@ -21,6 +21,13 @@ const VLIBRAS_PERSONALIZATION = 'https://vlibras.gov.br/config/default_logo.json
 const VLIBRAS_POLL_INTERVAL = 50;
 const VLIBRAS_TIMEOUT = 5000;
 
+/** Remove todos os nós do plugin VLibras (loader + app React). */
+function removeVLibrasNodes(): void {
+  document
+    .querySelectorAll('#vlibras-access-wrapper, #vlibras-app-root, [vp-plugin]')
+    .forEach((node) => node.remove());
+}
+
 function getAvatarValue(avatar: LibrasAvatar): string {
   if (avatar === 'random') {
     const avatars = ['icaro', 'hosana', 'guga'];
@@ -36,10 +43,7 @@ export default function VLibrasWidget() {
 
   useEffect(() => {
     if (!settings.widgetEnabled) {
-      const existingWidget = document.querySelector('[vp-plugin]');
-      if (existingWidget) {
-        existingWidget.remove();
-      }
+      removeVLibrasNodes();
       widgetRef.current = false;
       return;
     }
@@ -88,11 +92,8 @@ export default function VLibrasWidget() {
     if (!settings.widgetEnabled || !widgetRef.current) return;
 
     // Remove existing widget
-    const existingWidget = document.querySelector('[vp-plugin]');
-    if (existingWidget) {
-      existingWidget.remove();
-      widgetRef.current = false;
-    }
+    removeVLibrasNodes();
+    widgetRef.current = false;
 
     // Reinitialize with new settings
     if (window.VLibras?.Widget) {

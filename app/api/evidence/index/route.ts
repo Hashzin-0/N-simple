@@ -50,7 +50,17 @@ export async function POST(req: NextRequest) {
       sourceArray.every((s) => isAlreadyUnderstood(s as unknown as Record<string, unknown>));
 
     if (skipUnderstand) {
-      understood = sourceArray as unknown as UnderstoodSource[];
+      // Fontes já passaram pelo motor (campos completos ou flag do
+      // chamador) → 'full', a menos que o cliente declare o estágio.
+      understood = sourceArray.map((s) =>
+        s.semanticStatus
+          ? (s as unknown as UnderstoodSource)
+          : ({
+              ...s,
+              semanticStatus: 'full',
+              semanticQuery: typeof query === 'string' ? query : undefined,
+            } as unknown as UnderstoodSource),
+      );
     } else {
       if (!query || typeof query !== 'string') {
         return Response.json(
@@ -58,6 +68,8 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
+      // understandFullOne carimba semanticStatus ('full' no sucesso,
+      // 'light' no fallback leve) — indexSources persiste o estágio.
       understood = await understandSources(query, sourceArray);
     }
 

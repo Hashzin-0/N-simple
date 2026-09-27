@@ -5,12 +5,18 @@ import { useTheme } from '@/components/ThemeProvider';
 import { Search, Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import LibrasVideoCard from './LibrasVideoCard';
 import { extractSignsFromText, stripSentenceEnding } from '@/lib/libras-search-utils';
-import type { LibrasVideoResult, LibrasSignGroup, LibrasSenseOption } from '@/lib/libras-types';
+import type {
+  LibrasVideoResult,
+  LibrasSignGroup,
+  LibrasSenseOption,
+  LibrasVoiceSearchReport,
+} from '@/lib/libras-types';
 
 interface LibrasSearchProps {
   initialQuery?: string;
   maxResults?: number;
-  onResults?: (results: LibrasVideoResult[]) => void;
+  /** Reporte da última busca (voz): resultados, sentidos e erros. */
+  onReport?: (report: LibrasVoiceSearchReport) => void;
   /** Pedido externo (voz) de busca; seq monotônico evita re-execução. */
   pendingSearch?: { seq: number; query: string } | null;
 }
@@ -18,7 +24,7 @@ interface LibrasSearchProps {
 export default React.memo(function LibrasSearch({
   initialQuery = '',
   maxResults = 3,
-  onResults,
+  onReport,
   pendingSearch,
 }: LibrasSearchProps) {
   const { isDark } = useTheme();
@@ -52,12 +58,25 @@ export default React.memo(function LibrasSearch({
         const data = await res.json();
 
         if (!res.ok) {
-          setError(data.error || 'Erro ao buscar vídeos');
+          const msg = data.error || 'Erro ao buscar vídeos';
+          setError(msg);
           setResults([]);
           setSignGroups([]);
           setSenseOptions([]);
           setAmbiguousSense(false);
           setSelectedSenseId(null);
+          onReport?.({
+            seq: pendingSearch?.seq ?? 0,
+            at: Date.now(),
+            query: trimmed,
+            results: [],
+            signGroups: [],
+            senseOptions: [],
+            ambiguousSense: false,
+            selectedSenseId: null,
+            totalFound: 0,
+            error: msg,
+          });
         } else {
           const phraseResults: LibrasVideoResult[] = data.phraseResults || data.results || [];
           const groups: LibrasSignGroup[] = data.signGroups || [];
@@ -69,7 +88,17 @@ export default React.memo(function LibrasSearch({
           setSenseOptions(options);
           setAmbiguousSense(isAmbiguous);
           setSelectedSenseId(data.selectedSenseId ?? senseId ?? null);
-          onResults?.(phraseResults);
+          onReport?.({
+            seq: pendingSearch?.seq ?? 0,
+            at: Date.now(),
+            query: trimmed,
+            results: phraseResults,
+            signGroups: groups,
+            senseOptions: options,
+            ambiguousSense: isAmbiguous,
+            selectedSenseId: data.selectedSenseId ?? senseId ?? null,
+            totalFound: Number(data.totalFound) || phraseResults.length,
+          });
         }
       } catch {
         setError('Erro de conexão ao buscar vídeos');
@@ -78,11 +107,23 @@ export default React.memo(function LibrasSearch({
         setSenseOptions([]);
         setAmbiguousSense(false);
         setSelectedSenseId(null);
+        onReport?.({
+          seq: pendingSearch?.seq ?? 0,
+          at: Date.now(),
+          query: trimmed,
+          results: [],
+          signGroups: [],
+          senseOptions: [],
+          ambiguousSense: false,
+          selectedSenseId: null,
+          totalFound: 0,
+          error: 'Erro de conexão ao buscar vídeos.',
+        });
       } finally {
         setLoading(false);
       }
     },
-    [query, maxResults, onResults]
+    [query, maxResults, onReport, pendingSearch]
   );
 
   const handleSearch = useCallback(() => runSearch(null), [runSearch]);

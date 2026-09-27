@@ -15,10 +15,31 @@ import { scrapeSemanticScholar } from './semantic-scholar';
 
 export interface ScrapedResult {
   sources: ScientificSource[];
+  /**
+   * Fontes particionadas POR PORTAL (chave = `sourceName`), montadas após
+   * o dedup global. Cada semântico dedicado consome a própria fila
+   * (1→2→3) — ver `lib/semantic/portalQueues.ts`.
+   */
+  groupedByPortal: Map<string, ScientificSource[]>;
   query: string;
   totalFound: number;
   errors: string[];
   sourcesUsed: string[];
+}
+
+/**
+ * Particiona o pool deduplicado por portal, preservando a ordem original
+ * dentro de cada fila (a ordem de chegada dos scrapers em SCRAPERS_INTERNAL).
+ */
+export function groupByPortal(sources: ScientificSource[]): Map<string, ScientificSource[]> {
+  const grouped = new Map<string, ScientificSource[]>();
+  for (const src of sources) {
+    const portal = src.sourceName;
+    const list = grouped.get(portal);
+    if (list) list.push(src);
+    else grouped.set(portal, [src]);
+  }
+  return grouped;
 }
 
 export interface ScraperConfig {
@@ -156,6 +177,7 @@ export async function searchAllSourcesWithProgress(
     const deduplicated = deduplicateSources(results);
     return {
       sources: deduplicated,
+      groupedByPortal: groupByPortal(deduplicated),
       query,
       totalFound: deduplicated.length,
       errors,
@@ -218,6 +240,7 @@ export async function searchAllSourcesWithProgress(
 
   return {
     sources: deduplicated,
+    groupedByPortal: groupByPortal(deduplicated),
     query,
     totalFound: deduplicated.length,
     errors: allErrors,

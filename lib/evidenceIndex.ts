@@ -78,7 +78,7 @@ export async function indexSource(
 
   const { data: existingSource, error: selectError } = await supabase!
     .from('sources')
-    .select('id, source_key')
+    .select('id, source_key, semantic_status, semantic_query')
     .eq('source_key', key)
     .maybeSingle();
 
@@ -87,6 +87,21 @@ export async function indexSource(
   }
 
   let sourceId: string;
+
+  // Regra do estágio (pipeline em duas fases):
+  //  - 'full' sempre vence (já passou pelo understandOne completo);
+  //  - re-persistência light NÃO rebaixa uma fonte já 'full';
+  //  - sem status explícito (chamadores legados) mantém o existente na
+  //    update e insere como 'light' (precisa passar pela fase 2).
+  const incomingStatus = source.semanticStatus;
+  const nextStatus =
+    incomingStatus === 'full'
+      ? 'full'
+      : incomingStatus === 'light'
+        ? existingSource?.semantic_status === 'full'
+          ? 'full'
+          : 'light'
+        : existingSource?.semantic_status ?? 'light';
 
   const sharedFields = {
     title: source.title,
@@ -110,6 +125,8 @@ export async function indexSource(
     best_excerpt: source.bestExcerpt || null,
     domain_score: source.domainScore ?? 0,
     in_agro_domain: source.inAgroDomain ?? false,
+    semantic_status: nextStatus,
+    semantic_query: source.semanticQuery ?? existingSource?.semantic_query ?? null,
   };
 
   if (existingSource) {
@@ -214,15 +231,18 @@ export async function indexSource(
  *    salvas no banco (base futura), NUNCA mostradas nesta busca.
  *  - `discardedOutOfDomain`: fora do domínio agro inteiro — nunca salvas.
  *  - `errors`: falha de gravação.
+ *  - `indexedIds`: ids das fontes efetivamente gravadas — é o que a
+ *    fase 2 (Inngest) recebe para fazer o upgrade light → full.
  */
 export async function indexSources(
   sources: UnderstoodSource[],
   topics: string[]
-): Promise<{ indexed: number; archivedOffTopic: number; discardedOutOfDomain: number; errors: number }> {
+): Promise<{ indexed: number; archivedOffTopic: number; discardedOutOfDomain: number; errors: number; indexedIds: string[] }> {
   let indexed = 0;
   let archivedOffTopic = 0;
   let discardedOutOfDomain = 0;
   let errors = 0;
+  const indexedIds: string[] = [];
 
   // Embeddings de tópico calculados 1x para o lote inteiro (antes: N×M).
   const topicEmbeddings = await buildTopicEmbeddings(topics);
@@ -232,17 +252,19 @@ export async function indexSources(
     const batch = sources.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async (src) => {
-        if (src.shouldPersist === false) return 'discardedOutOfDomain' as const;
+        if (src.shouldPersist === false) return { kind: 'discardedOutOfDomain' as const };
         const result = await indexSource(src, topics, topicEmbeddings);
-        if (!result) return 'error' as const;
-        return src.discarded ? ('archivedOffTopic' as const) : ('indexed' as const);
+        if (!result) return { kind: 'error' as const };
+        return { kind: src.discarded ? ('archivedOffTopic' as const) : ('indexed' as const), id: result.id };
       })
     );
     for (const result of results) {
       if (result.status === 'fulfilled') {
-        if (result.value === 'indexed') indexed++;
-        else if (result.value === 'archivedOffTopic') archivedOffTopic++;
-        else if (result.value === 'discardedOutOfDomain') discardedOutOfDomain++;
+        const { kind, id } = result.value;
+        if (id) indexedIds.push(id);
+        if (kind === 'indexed') indexed++;
+        else if (kind === 'archivedOffTopic') archivedOffTopic++;
+        else if (kind === 'discardedOutOfDomain') discardedOutOfDomain++;
         else errors++;
       } else {
         errors++;
@@ -251,7 +273,7 @@ export async function indexSources(
     }
   }
 
-  return { indexed, archivedOffTopic, discardedOutOfDomain, errors };
+  return { indexed, archivedOffTopic, discardedOutOfDomain, errors, indexedIds };
 }
 
 /**

@@ -119,7 +119,7 @@ REGRAS DE COMPORTAMENTO:
 7. Seja conciso: conversa falada em tempo real.
 8. Quando o feedback indicar "dominou", parabene e suba a dificuldade naturalmente na próxima questão.
 9. Quando indicar "revisar", explique o que faltou com base no feedback, não com textão.
-10. Se o usuário quiser voltar ao cálculo de adubação, ao simulador, ITR, produtividade ou "falar com o Puck", use a ferramenta 'chamarAgente' com alvo 'global' e responda com uma frase curta de despedida — a sessão de voz será transferida para o assistente principal.
+10. Se o usuário quiser voltar ao cálculo de adubação, ao simulador, ITR, produtividade ou "falar com o Puck", use a ferramenta 'chamarAgente' com alvo 'global' e responda com uma frase curta de despedida — a sessão de voz será transferida para o assistente principal. Se ele quiser buscar sinais em Libras, ver vídeos de sinais, praticar com a câmera ou falar com o Libras, use 'chamarAgente' com alvo 'libras' da mesma forma.
 11. Quando o usuário perguntar algo sobre o MATERIAL ENVIADO (PDFs/ textos), use 'lerDocumento(pergunta)' e responda com base nos trechos retornados, indicando que veio do material.
 12. Quando o usuário pedir para gerar um simulado, quiz, flashcards, resumo, plano de estudos, mapa mental ou seminário, use 'criarRevisao(tipo, tema?, subtema?, quantidade?, dificuldade?)' e narre o resultado de forma animada (o material também aparece na tela, no Estúdio de revisão).
 13. Flashcards são respondidos por voz: use 'listarFlashcards' para contar os pendentes e narrar a FRENTE do próximo cartão; quando o aluno responder, chame 'responderFlashcard(id, qualidade)' com qualidade 'bom' (acertou), 'facil' (muito fácil) ou 'ruim' (errou) e narre o próximo cartão retornado. Nunca revele o verso antes da resposta.
@@ -132,7 +132,7 @@ REGRAS DE COMPORTAMENTO:
 20. Quando perguntar quais materiais ele já enviou, use 'listarDocumentos' e cite os nomes.
 21. Quando quiser abrir um material já gerado antes (simulado, quiz, flashcards, resumo, plano, mapa mental ou seminário), use 'carregarRevisao(tipo)' e narre o resumo curto retornado — não leia o material inteiro.
 22. Quando pedir para pesquisar/criar mais questões sobre um tema, use 'pesquisarQuestoes(tema?)' — a pesquisa roda em segundo plano; avise que o resultado vai aparecer na tela e continue a conversa.
-23. Rolagem de tela com 'scrollToSection(secao?)': se a seção for da aba do Tutor ('tutor_tema' Sessão, 'tutor_session' Progresso, 'tutor_research' Questões, 'tutor_progress' Desempenho), a tela rola até ela na hora. Se for uma seção de qualquer outra aba (ex: 'results_section', 'pesquisador_fontes', 'redacao_resultado'), a tool transfere a conversa automaticamente para o assistente principal junto com o comando de rolagem — responda apenas com uma frase curta de despedida (ex: "Voltando pro simulador!") e quem troca a aba e rola a tela é ele.
+23. Rolagem de tela com 'scrollToSection(secao?)': se a seção for da aba do Tutor ('tutor_tema' Sessão, 'tutor_session' Progresso, 'tutor_research' Questões, 'tutor_progress' Desempenho), a tela rola até ela na hora. Se for uma seção da aba Libras, a tool transfere a conversa para o agente Libras; se for de qualquer outra aba (ex: 'results_section', 'pesquisador_fontes', 'redacao_resultado'), transfere para o assistente principal — nas duas transferências responda apenas com uma frase curta de despedida (ex: "Voltando pro simulador!" / "Vou te chamar o Libras!") e quem troca a aba e rola a tela é o agente de destino.
 24. Supressor de ruído do microfone: 'setSupressorRuido' — modo 'automatico' (PADRÃO: sozinho detecta o ruído de fundo como trânsito, escola ou parque e só deixa passar quem está perto ~30 cm), 'manual' (para de ajustar sozinho e fixa a distância em distancia_cm, ex: 30) ou 'desligado' (capta tudo normalmente). Use quando o aluno pedir para ativar/desativar o supressor, "modo próximo", parar o ajuste automático ou mudar a distância.
 
 Fluxo típico:
@@ -228,15 +228,15 @@ function buildTools(modo?: TutorModo) {
     {
       name: 'chamarAgente',
       description:
-        'Transfere a conversa de voz de volta para o assistente principal (calculadora/adubação, ITR, produtividade). Use quando o usuário pedir para voltar ao simulador ou falar com o Puck.',
+        'Transfere a conversa de voz para outro agente do aplicativo: "global" (assistente principal — calculadora/adubação, ITR, produtividade) ou "libras" (Tutor de Libras — sinais, vídeos, prática com câmera).',
       behavior: 'NON_BLOCKING',
       parameters: {
         type: 'OBJECT',
         properties: {
           alvo: {
             type: 'STRING',
-            enum: ['global'],
-            description: 'Agente de destino. Atualmente apenas "global".',
+            enum: ['global', 'libras'],
+            description: 'Agente de destino: "global" (assistente principal) ou "libras" (Tutor de Libras).',
           },
         },
         required: ['alvo'],
@@ -425,7 +425,7 @@ function buildTools(modo?: TutorModo) {
     {
       name: 'scrollToSection',
       description:
-        'Rola a tela até uma seção do aplicativo (id do menu de navegação lateral/topo). Seções da aba do Tutor rolam na hora; seções de outras abas transferem a conversa automaticamente para o assistente principal com o comando de rolagem.',
+        'Rola a tela até uma seção do aplicativo (id do menu de navegação lateral/topo). Seções da aba do Tutor rolam na hora; seções da aba Libras transferem a conversa para o agente Libras; seções de outras abas transferem para o assistente principal — sempre com o comando de rolagem.',
       behavior: 'NON_BLOCKING',
       parameters: {
         type: 'OBJECT',
@@ -892,6 +892,25 @@ export function useTutorLiveAgent(bridge: TutorLiveBridgeContext, modo?: TutorMo
           return { success: true, section: sectionId, message: `Rolando até "${sectionLabel}".` };
         }
 
+        // Seção da aba Libras: transfere para o agente Libras (delayNavigation
+        // preserva a despedida antes de desmontar o Tutor).
+        if (targetTab === 'libras') {
+          setActionLabel(`Libras: ${sectionLabel}`);
+          const res = voiceHub.callAgent('libras', {
+            transitionText: `Comando transferido do Tutor: o usuário pediu para rolar a tela até a seção "${sectionLabel}" (id: ${sectionId}) na aba Libras. Assuma a conversa e execute AGORA a tool scrollToSection(section="${sectionId}") sem perguntar nada; depois confirme o scroll em uma frase curta.`,
+            delayNavigation: true,
+            tab: 'libras',
+          });
+          if (!res.ok) return { success: false, error: res.message };
+          return {
+            success: true,
+            section: sectionId,
+            aba: 'libras',
+            transferido: true,
+            message: `A seção "${sectionLabel}" fica na aba Libras: a sessão foi transferida para o agente Libras com o comando de rolagem. Diga uma frase curta de despedida (ex: "Vou te chamar o Libras!") — quem troca a aba e rola a tela é ele.`,
+          };
+        }
+
         // Outra aba: transfere a sessão para o assistente principal com o
         // comando de rolagem. delayNavigation preserva a despedida antes de
         // desmontar o Tutor; tab leva direto à aba da seção.
@@ -913,6 +932,21 @@ export function useTutorLiveAgent(bridge: TutorLiveBridgeContext, modo?: TutorMo
 
       case 'chamarAgente': {
         const alvo = String(args.alvo || 'global');
+        if (alvo === 'libras') {
+          setActionLabel('Transferindo para o Libras…');
+          const res = voiceHub.callAgent('libras', {
+            transitionText:
+              'Atenção: a sessão foi transferida de um outro assistente. O usuário quer ajuda com Libras (sinais, vídeos, prática com câmera). Cumprimente e pergunte qual sinal ou fluxo ele quer.',
+            delayNavigation: true,
+            tab: 'libras',
+          });
+          if (!res.ok) return { success: false, error: res.message };
+          return {
+            success: true,
+            message:
+              'Tutor de Libras ativado. Diga uma frase curta de despedida (ex: "Vou te chamar o Libras!") — quem responde daqui para frente é ele.',
+          };
+        }
         if (alvo !== 'global') {
           return { success: true, message: 'Você já é o agente ativo.' };
         }

@@ -174,6 +174,56 @@ export default function PesquisadorFontesCard({
   const [searchOptions, setSearchOptions] = useState<{ maxPerSource?: Record<string, number>; language?: 'pt-br' | 'pt-br-en' }>({ language: 'pt-br' });
   const [showScraperConfig, setShowScraperConfig] = useState(false);
   const [resolvedImages, setResolvedImages] = useState<Record<string, string>>({});
+
+  // ── Fase 1 por portal (filas 1→2→3) + chip da fase 2 (Inngest) ──
+  const [portalQueues, setPortalQueues] = useState<Array<{ portal: string; total: number }>>([]);
+  const [portalVerified, setPortalVerified] = useState<Record<string, number>>({});
+  const [phase2, setPhase2] = useState<{
+    /** Ids enfileirados nesta busca (mostrado na hora). */
+    enqueued: number;
+    /** Pendências reais na fila (vem do polling de /semantic-status). */
+    pending: number;
+    lightByPortal?: Record<string, number>;
+  } | null>(null);
+  const phase2Active = !!phase2 && phase2.pending > 0;
+
+  // Polling da fila da fase 2 enquanto houver pendência.
+  useEffect(() => {
+    if (!phase2Active) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await fetch('/api/gemini/semantic-status');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setPhase2((prev) =>
+          prev
+            ? {
+                ...prev,
+                pending: typeof data.pending === 'number' ? data.pending : 0,
+                lightByPortal: data.lightByPortal,
+              }
+            : prev
+        );
+      } catch {
+        // rede indisponível — tenta de novo no próximo tick
+      }
+    };
+    const id = setInterval(tick, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [phase2Active]);
+
+  // Terminou a fila (pending=0): mostra o "concluído" por 15s e some.
+  useEffect(() => {
+    if (!phase2 || phase2.pending > 0) return;
+    const t = setTimeout(() => setPhase2(null), 15000);
+    return () => clearTimeout(t);
+  }, [phase2]);
+
   const sourceCardsRef = useRef<HTMLDivElement>(null);
   const resultsHeaderRef = useRef<HTMLDivElement>(null);
 
@@ -357,6 +407,9 @@ export default function PesquisadorFontesCard({
     setScraperProgress({});
     setVerifiedIds(new Set());
     setVerifyProgress(null);
+    setPortalQueues([]);
+    setPortalVerified({});
+    setPhase2(null);
     fontesCountsRef.current = {};
     reportSearchProgress('searching');
 
@@ -413,7 +466,11 @@ export default function PesquisadorFontesCard({
               } else if (event === 'scraper_error') {
                 setScraperProgress(prev => ({
                   ...prev,
-                  [data.name]: { status: 'error' }
+                  [data.name]: {
+                    status: 'error',
+                    count: typeof data.count === 'number' ? data.count : 0,
+                    message: typeof data.error === 'string' ? data.error : undefined,
+                  }
                 }));
               } else if (event === 'processing_start') {
                 setScraperProgress(prev => ({
@@ -432,6 +489,27 @@ export default function PesquisadorFontesCard({
                     percentage: 0,
                   });
                 }
+              } else if (event === 'portal_queues') {
+                // Fase 1: filas por portal prontas (1→2→3) — mostra o
+                // progresso de cada portal em paralelo (round-robin).
+                if (Array.isArray(data?.portals)) {
+                  setPortalQueues(
+                    data.portals
+                      .filter((p: { portal?: string; total?: number }) => typeof p.portal === 'string')
+                      .map((p: { portal: string; total?: number }) => ({
+                        portal: p.portal,
+                        total: typeof p.total === 'number' ? p.total : 0,
+                      }))
+                  );
+                }
+              } else if (event === 'semantic_full_queued') {
+                // Fase 2: understandOne completo aguardando no Inngest.
+                if (typeof data?.count === 'number' && data.count > 0) {
+                  setPhase2((prev) => ({
+                    enqueued: (prev?.enqueued ?? 0) + data.count,
+                    pending: data.count,
+                  }));
+                }
               } else if (event === 'processing_progress') {
                 // Fonte verificada (analisada/salva) — badge azul + contador %
                 if (data?.sourceId) {
@@ -442,6 +520,12 @@ export default function PesquisadorFontesCard({
                     next.add(id);
                     return next;
                   });
+                }
+                if (typeof data?.portal === 'string') {
+                  setPortalVerified(prev => ({
+                    ...prev,
+                    [data.portal]: (prev[data.portal] ?? 0) + 1,
+                  }));
                 }
                 if (typeof data?.percentage === 'number' || typeof data?.verifiedCount === 'number') {
                   setVerifyProgress({
@@ -458,7 +542,10 @@ export default function PesquisadorFontesCard({
                     message:
                       `Verificadas ${data.verifiedCount ?? 0}/${data.totalSources ?? '?'}` +
                       ` (${data.percentage ?? 0}%)` +
-                      (data.persistedCount ? ` • salvas: ${data.persistedCount}` : ''),
+                      (data.persistedCount ? ` • salvas: ${data.persistedCount}` : '') +
+                      (typeof data.portal === 'string'
+                        ? ` • ${data.portal} ${data.queueIndex ?? ''}/${data.queueTotal ?? ''}`
+                        : ''),
                     count: data.totalSources,
                   }
                 }));
@@ -843,6 +930,11 @@ export default function PesquisadorFontesCard({
                 {Object.entries(scraperProgress).map(([name, status]) => (
                   <div
                     key={name}
+                    title={
+                      name !== '_processing' && status.status === 'error' && status.message
+                        ? status.message
+                        : undefined
+                    }
                     className={`text-[10px] px-2 py-1.5 rounded-lg border ${
                       name === '_processing'
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 col-span-full'
@@ -860,7 +952,9 @@ export default function PesquisadorFontesCard({
                     {status.status === 'complete' && status.count !== undefined && (
                       <span className="ml-1">({status.count})</span>
                     )}
-                    {status.status === 'error' && <span className="ml-1">Erro</span>}
+                    {status.status === 'error' && (
+                      <span className="ml-1">Erro{status.count !== undefined ? ` (${status.count})` : ''}</span>
+                    )}
                     {name === '_processing' && status.message && (
                       <span className="ml-1 opacity-75">— {status.message}</span>
                     )}
@@ -877,6 +971,50 @@ export default function PesquisadorFontesCard({
                   </div>
                 ))}
               </div>
+              {portalQueues.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  <span className="text-[10px] text-[#8C897E] dark:text-[#9EA399]">
+                    Filas por portal (round-robin):
+                  </span>
+                  {portalQueues.map((p) => {
+                    const done = portalVerified[p.portal] ?? 0;
+                    const pct = p.total > 0 ? Math.round((done / p.total) * 100) : 0;
+                    return (
+                      <span
+                        key={p.portal}
+                        title={`${p.portal}: ${done}/${p.total} na fila`}
+                        className={`text-[10px] px-1.5 py-0.5 rounded-md border font-mono ${
+                          done >= p.total && p.total > 0
+                            ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                        }`}
+                      >
+                        {p.portal} {done}/{p.total} ({pct}%)
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Chip da fase 2 — permanece após o fim da busca (polling) */}
+          {phase2 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {phase2.pending > 0 ? (
+                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
+                  <Clock className="h-3 w-3 animate-pulse" />
+                  Classificando em 2º plano: {phase2.pending} pendente{phase2.pending === 1 ? '' : 's'}
+                  {phase2.enqueued > 0 && phase2.enqueued !== phase2.pending
+                    ? ` (${phase2.enqueued} enfileiradas nesta busca)`
+                    : ''}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
+                  <Check className="h-3 w-3" />
+                  Classificação semântica em 2º plano concluída
+                </span>
+              )}
             </div>
           )}
         </div>
