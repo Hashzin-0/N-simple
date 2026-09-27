@@ -310,6 +310,8 @@ export async function searchSources(
             status: src.shouldPersist ? 'persisted' : 'analyzed',
           });
         },
+      },
+    );
     const relevant = filterAndRankRelevant(understood);
 
     const indexingStats = null;
@@ -452,10 +454,12 @@ export async function searchSources(
             void persistPartialBatch(topics, [src]).then((partial) => {
               if (partial) persistedCount += partial.indexed;
             }).catch((err) => {
-              console.warn('[ResearchService] Persistência semântica assíncrona falhou:', err);
+                console.warn('[ResearchService] Persistência semântica assíncrona falhou:', err);
             });
           }
         },
+      },
+    );
   } catch (err) {
     // Se o motor morrer no meio (quota, erro de embed, OOM parcial),
     // tenta um segundo passe "leve" para não perder a corrida dos scrapers.
@@ -473,6 +477,8 @@ export async function searchSources(
           onSourceComplete: (src) => {
             emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
           },
+        },
+      );
     } catch (retryErr) {
       console.warn('[ResearchService] retry light também falhou:', retryErr);
       // Fallback final: envolve as fontes cruas como light e persiste.
@@ -503,7 +509,6 @@ export async function searchSources(
     );
     for (const src of outOfTopK) {
       emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
-    }
     }
   } catch (err) {
     console.warn('[ResearchService] Falha ao classificar fontes fora do top-K:', err);
