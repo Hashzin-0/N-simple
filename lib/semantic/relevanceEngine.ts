@@ -189,7 +189,7 @@ export interface UnderstandSourcesOptions {
    */
   onSourceComplete?: (
     source: UnderstoodSource,
-    meta: { index: number; total: number }
+    meta: { index: number; total: number; sourceName?: string }
   ) => void | Promise<void>;
 }
 
