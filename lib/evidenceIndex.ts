@@ -1,6 +1,7 @@
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { normalizeTopic, sourceKeyFromTitle } from '@/lib/topicExtractor';
+import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { UnderstoodSource } from '@/lib/semantic/relevanceEngine';
 import { embedTexts, cosineSimilarity, cosineToPercentage } from '@/lib/semantic/embeddings';
 import { SEMANTIC_DISCARD_THRESHOLD } from '@/lib/semantic/config';
@@ -66,7 +67,7 @@ export async function indexSource(
   topics: string[],
   topicEmbeddings?: Map<string, number[]>
 ): Promise<IndexedSource | null> {
-  if (!isSupabaseConfigured()) return null;
+  if (!isSupabaseConfigured() || !supabaseAdmin) return null;
 
   // shouldPersist === false explícito → fora do domínio agro e irrelevante.
   // undefined (fonte crua do cliente) ainda é indexada após classificação.
