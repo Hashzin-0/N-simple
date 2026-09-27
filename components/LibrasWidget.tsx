@@ -13,6 +13,9 @@ declare global {
         position: string
       ) => void;
     };
+    VLibrasWidget?: {
+      initBtn?: HTMLElement;
+    };
   }
 }
 
@@ -82,6 +85,38 @@ export default function VLibrasWidget() {
       return () => clearInterval(timer);
     }
   }, [settings.widgetEnabled, settings.widgetAvatar, settings.widgetPosition]);
+
+  // Voice Tutor: abre o Widget sob comando do agente de voz.
+  useEffect(() => {
+    const handleVoiceOpen = (event: Event) => {
+      const sign = String((event as CustomEvent).detail?.sign || '').trim();
+      if (sign) {
+        let target = document.getElementById('libras-voice-target');
+        if (!target) {
+          target = document.createElement('span');
+          target.id = 'libras-voice-target';
+          target.style.position = 'absolute';
+          target.style.width = '1px';
+          target.style.height = '1px';
+          target.style.overflow = 'hidden';
+          target.style.opacity = '0';
+          target.style.pointerEvents = 'none';
+          document.body.appendChild(target);
+        }
+        target.textContent = sign;
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+
+      const button = window.VLibrasWidget?.initBtn as HTMLElement | undefined;
+      if (button) button.click();
+    };
+    window.addEventListener('libras:open-vlibras', handleVoiceOpen);
+    return () => window.removeEventListener('libras:open-vlibras', handleVoiceOpen);
+  }, []);
 
   // Reinitialize widget when settings change
   useEffect(() => {
