@@ -35,9 +35,9 @@ export type EmbedTaskType =
   | 'SEMANTIC_SIMILARITY';
 
 /**
- * Orçamento RPM por chave. Default 80 < 100 (limite do free tier),
- * deixando folga para outras chamadas (generateContent etc.) na mesma key.
- * Nunca deixe EMBEDDING_RPM_PER_KEY chegar a 100.
+ * Orçamento defensivo por minuto para itens de embedding.
+ * Rate limits reais são definidos por projeto/modelo/tier no AI Studio;
+ * este teto local evita que uma única execução faça uma rajada grande.
  */
 const RPM_TOTAL = (() => {
   const raw = parseInt(process.env.EMBEDDING_RPM_TOTAL || '70', 10);
@@ -48,12 +48,9 @@ const RPM_TOTAL = (() => {
 const WINDOW_MS = 60_000;
 
 /**
- * Rate limiter por chave com janela deslizante de 60s.
- *
- * Cada chave mantém os timestamps dos requests da janela atual.
- * `acquire()` bloqueia até existir uma chave com espaço no orçamento
- * (round-robin entre as disponíveis). Chaves em cooldown (429/quota)
- * são puladas temporariamente.
+ * Rate limiter defensivo com janela deslizante de 60s.
+ * O orçamento é global ao processo porque as quotas do Gemini são por projeto,
+ * não por API key. Chaves diferentes ainda podem representar projetos diferentes.
  */
 class EmbeddingRateLimiter {
   private readonly hits: number[] = [];
