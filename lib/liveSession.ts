@@ -598,6 +598,19 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
     resumptionHandleRef.current = null;
   }, []);
 
+  const sendText = useCallback((text: string) => {
+    const clean = text.trim();
+    const ws = wsRef.current;
+    if (!clean || !ws || ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify({
+      clientContent: {
+        turns: { role: 'user', parts: [{ text: clean }] },
+        turnComplete: true,
+      },
+    }));
+    return true;
+  }, []);
+
   const toggleMute = useCallback(() => {
     setState((prev) => ({ ...prev, isMuted: !prev.isMuted }));
   }, []);
@@ -621,5 +634,6 @@ export function useLiveSession({ config, executeTool }: UseLiveSessionOptions) {
     toggleConnection,
     setActionLabel,
     setStatus,
+    sendText,
   };
 }
