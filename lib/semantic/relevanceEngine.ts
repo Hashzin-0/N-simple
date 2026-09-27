@@ -45,6 +45,7 @@ export interface UnderstoodSource extends ScientificSource {
   semanticProvider?: 'gemini' | 'openrouter';
   semanticModel?: string;
   semanticDimensions?: number;
+  semanticFusionScore?: number;
 }
 
 
@@ -471,5 +472,7 @@ export async function classifyOutOfTopKForPersistence(
 export function filterAndRankRelevant(sources: UnderstoodSource[]): UnderstoodSource[] {
   return sources
     .filter((s) => !s.discarded)
-    .sort((a, b) => b.semanticScore - a.semanticScore);
+    .sort((a, b) =>
+      (b.semanticFusionScore ?? b.semanticScore) - (a.semanticFusionScore ?? a.semanticScore)
+    );
 }
