@@ -9,10 +9,9 @@ import { EMBEDDING_DIM } from './config';
  * Modelo: gemini-embedding-2 (768 dims via Matryoshka, 8192 tokens)
  * Documentação: https://ai.google.dev/gemini-api/docs/embeddings
  *
- * Rate limiting defensivo: o orçamento é contado por TEXTO embutido, não por
- * chamada HTTP. O teto padrão é 70 itens/minuto no processo. As chaves não
- * são tratadas como quotas independentes porque o Gemini aplica rate limits
- * por projeto, não por API key.
+ * Rate limiting defensivo: o orçamento é contado por TEXTO embutido, inclusive
+ * quando vários textos são enviados em batch. As quotas do Gemini são por
+ * projeto/modelo, não por API key.
  */
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -40,7 +39,7 @@ export type EmbedTaskType =
  * este teto local evita que uma única execução faça uma rajada grande.
  */
 const RPM_TOTAL = (() => {
-  const raw = parseInt(process.env.EMBEDDING_RPM_TOTAL || '70', 10);
+  const raw = parseInt(process.env.EMBEDDING_RPM_TOTAL || '60', 10);
   if (Number.isNaN(raw) || raw < 1) return 70;
   return Math.min(raw, 90);
 })();
@@ -295,7 +294,9 @@ export async function geminiEmbedTexts(
 
 /**
  * Envia um lote de textos para a Batch Embed API.
- * Adquire 1 unidade de RPM por lote HTTP; rotaciona e penaliza keys em quota.
+ * O orçamento é consumido por texto do lote, não por fetch HTTP.
+ * As chaves continuam sendo usadas como fallback de disponibilidade, mas não
+ * representam quotas independentes quando pertencem ao mesmo projeto.
  */
 async function embedBatch(
   keys: string[],
@@ -315,7 +316,7 @@ async function embedBatch(
   // seu próprio slot no orçamento RPM (retries de backoff também).
   for (let pass = 0; pass < keys.length; pass++) {
     for (let attempt = 0; attempt <= retries; attempt++) {
-      const slot = await rateLimiter.acquire(keys, 1);
+      const slot = await rateLimiter.acquire(keys, texts.length);
       const url = `${GEMINI_API_BASE}/models/gemini-embedding-2:batchEmbedContents?key=${keys[slot]}`;
 
       try {
@@ -326,10 +327,15 @@ async function embedBatch(
         });
 
         if (response.status === 429) {
-          rateLimiter.penalize(slot, keys, 10_000);
-          lastError = new Error('429 rate limit');
+          rateLimiter.penalize(slot, keys, 15_000);
+          const errorText = await response.text().catch(() => '');
+          lastError = new Error(`429 rate limit: ${errorText.slice(0, 500)}`);
           if (attempt < retries) {
-            const delay = Math.pow(2, attempt) * 3000;
+            const retryDelayMatch = errorText.match(/retryDelay[^0-9]*(\d+)/i);
+            const serverDelay = retryDelayMatch ? Number(retryDelayMatch[1]) * 1000 : 0;
+            const baseDelay = Math.min(30_000, Math.pow(2, attempt) * 3000);
+            const jitter = Math.floor(Math.random() * 1000);
+            const delay = Math.max(serverDelay, baseDelay) + jitter;
             console.warn(`[GeminiEmbeddings] Batch key ${slot + 1}/${keys.length} rate limit, retry ${attempt + 1}/${retries} em ${delay}ms...`);
             await new Promise((r) => setTimeout(r, delay));
             continue;
