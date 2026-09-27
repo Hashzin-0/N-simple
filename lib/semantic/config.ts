@@ -46,6 +46,10 @@ export const ENGINE_CONCURRENCY = 2;
 /** Quantos chunks de maior similaridade entram na média ponderada do score final. */
 export const TOP_K_CHUNKS_FOR_SCORE = 3;
 
+/** Pesos legados mantidos para compatibilidade; o motor atual não usa cross-encoder. */
+export const BI_ENCODER_WEIGHT = 0.6;
+export const CROSS_ENCODER_WEIGHT = 0.4;
+
 /** Quantas categorias semânticas (índice de assunto) extrair por fonte. */
 export const MAX_CATEGORIES_PER_SOURCE = 4;
 
