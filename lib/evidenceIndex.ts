@@ -217,7 +217,8 @@ export async function indexSource(
  */
 export async function indexSources(
   sources: UnderstoodSource[],
-  topics: string[]
+  topics: string[],
+  topicEmbeddings?: Map<string, number[]>,
 ): Promise<{ indexed: number; archivedOffTopic: number; discardedOutOfDomain: number; errors: number }> {
   let indexed = 0;
   let archivedOffTopic = 0;
@@ -225,7 +226,7 @@ export async function indexSources(
   let errors = 0;
 
   // Embeddings de tópico calculados 1x para o lote inteiro (antes: N×M).
-  const topicEmbeddings = await buildTopicEmbeddings(topics);
+  const sharedTopicEmbeddings = topicEmbeddings ?? (await buildTopicEmbeddings(topics));
 
   const BATCH_SIZE = 10;
   for (let i = 0; i < sources.length; i += BATCH_SIZE) {
@@ -233,7 +234,7 @@ export async function indexSources(
     const results = await Promise.allSettled(
       batch.map(async (src) => {
         if (src.shouldPersist === false) return 'discardedOutOfDomain' as const;
-        const result = await indexSource(src, topics, topicEmbeddings);
+        const result = await indexSource(src, topics, sharedTopicEmbeddings);
         if (!result) return 'error' as const;
         return src.discarded ? ('archivedOffTopic' as const) : ('indexed' as const);
       })
