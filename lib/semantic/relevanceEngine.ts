@@ -107,6 +107,10 @@ export async function retrieve(
   );
   const sourceEmbeddings = await embedTexts(texts, 'RETRIEVAL_DOCUMENT');
 
+  candidates.forEach((source, i) => {
+    retrievalEmbeddingCache.set(source, sourceEmbeddings[i]);
+  });
+
   return candidates
     .map((source, i) => ({
       source,
@@ -119,8 +123,8 @@ export async function retrieve(
 }
 
 /**
- * ETAPA 2: Reranking — aplica cross-encoder ONNX sobre os top-K candidatos
- * do retrieval para refinar a ordenação.
+ * ETAPA 2: Reranking — ordena os top-K pelos scores de retrieval.
+ * Não carrega modelo local/ONNX no ambiente serverless.
  */
 export async function rerank(
   _query: string,
@@ -420,6 +424,7 @@ export async function understandSources(
  * de uma vez (causa clássica de SIGKILL em funções longas).
  */
 const domainEmbeddingCache = new Map<DomainKey, Promise<number[]>>();
+const retrievalEmbeddingCache = new WeakMap<object, number[]>();
 
 async function getDomainEmbedding(domain: DomainKey): Promise<number[]> {
   const cached = domainEmbeddingCache.get(domain);
@@ -444,26 +449,17 @@ export async function classifyOutOfTopKForPersistence(
 
   const domainEmbedding = await getDomainEmbedding(domain);
   const out: UnderstoodSource[] = [];
-  const BATCH = 40;
-  for (let i = 0; i < remaining.length; i += BATCH) {
-    const batch = remaining.slice(i, i + BATCH);
-    const texts = batch.map((source) => [source.title, source.abstract, (source.keywords || []).join(' ')].filter(Boolean).join(' ').slice(0, 1800));
-    let embeddings: number[][] = [];
-    try { embeddings = await embedTexts(texts, 'RETRIEVAL_DOCUMENT'); }
-    catch (err) { console.warn('[SemanticEngine] Falha ao classificar lote residual:', err); }
-    for (let j = 0; j < batch.length; j++) {
-      const source = batch[j];
-      const docEmbedding = embeddings[j] || [];
+  for (const source of remaining) {
+      const docEmbedding = retrievalEmbeddingCache.get(source) || [];
       const domainCos = docEmbedding.length ? cosineSimilarity(domainEmbedding, docEmbedding) : 0;
       const domainScore = Math.round(cosineToPercentage(domainCos) * 10) / 10;
       const inDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
-      out.push({
-        ...source, semanticScore: 0, semanticCategories: [],
-        bestExcerpt: (source.abstract || source.title || '').slice(0, 600),
-        discarded: true, docEmbedding, usedFullText: false,
-        domainScore, inAgroDomain: inDomain, shouldPersist: inDomain, chunks: [],
-      });
-    }
+    out.push({
+      ...source, semanticScore: 0, semanticCategories: [],
+      bestExcerpt: (source.abstract || source.title || '').slice(0, 600),
+      discarded: true, docEmbedding, usedFullText: false,
+      domainScore, inAgroDomain: inDomain, shouldPersist: inDomain, chunks: [],
+    });
   }
   return out;
 }
