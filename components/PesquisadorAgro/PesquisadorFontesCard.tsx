@@ -146,6 +146,7 @@ export default function PesquisadorFontesCard({
     onSearchProgressRef.current = onSearchProgress;
   }, [onSearchProgress]);
   const fontesCountsRef = useRef<Record<string, number>>({});
+  const semanticPortalProgressRef = useRef<Record<string, number>>({});
   const reportSearchProgress = useCallback(
     (phase: FontesSearchProgress['phase'], total = 0) => {
       onSearchProgressRef.current?.({
@@ -358,6 +359,7 @@ export default function PesquisadorFontesCard({
     setVerifiedIds(new Set());
     setVerifyProgress(null);
     fontesCountsRef.current = {};
+    semanticPortalProgressRef.current = {};
     reportSearchProgress('searching');
 
     try {
@@ -433,7 +435,20 @@ export default function PesquisadorFontesCard({
                   });
                 }
               } else if (event === 'processing_progress') {
-                // Fonte verificada (analisada/salva) — badge azul + contador %
+                // Fonte verificada (analisada/salva) — contador por portal + global.
+                if (data?.sourceName) {
+                  const portal = String(data.sourceName);
+                  const nextCount = (semanticPortalProgressRef.current[portal] || 0) + 1;
+                  semanticPortalProgressRef.current[portal] = nextCount;
+                  setScraperProgress(prev => ({
+                    ...prev,
+                    [portal]: {
+                      ...(prev[portal] || {}),
+                      status: 'loading',
+                      count: nextCount,
+                    },
+                  }));
+                }
                 if (data?.sourceId) {
                   const id = String(data.sourceId);
                   setVerifiedIds(prev => {
@@ -843,22 +858,27 @@ export default function PesquisadorFontesCard({
                 {Object.entries(scraperProgress).map(([name, status]) => (
                   <div
                     key={name}
-                    className={`text-[10px] px-2 py-1.5 rounded-lg border ${
+                    className={`text-[10px] px-2 py-1.5 rounded-lg border transition-all ${
                       name === '_processing'
                         ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 col-span-full'
+                        : status.status === 'loading'
+                        ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 ring-1 ring-blue-300/50'
                         : status.status === 'complete'
                         ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
-                        : status.status === 'loading'
-                        ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300'
                         : status.status === 'error'
                         ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
                         : 'bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400'
-                    }`}
-                  >
+                    }`}>
                     <span className="font-medium">{name === '_processing' ? '🧠 Processamento Semântico' : name}</span>
-                    {status.status === 'loading' && <span className="ml-1 animate-pulse">...</span>}
-                    {status.status === 'complete' && status.count !== undefined && (
-                      <span className="ml-1">({status.count})</span>
+                    {name !== '_processing' && status.status === 'loading' && (
+                      <span className="ml-auto font-mono font-bold tabular-nums">
+                        {status.count ?? 0}/{fontesCountsRef.current[name] ?? '?'}
+                      </span>
+                    )}
+                    {name !== '_processing' && status.status === 'complete' && status.count !== undefined && (
+                      <span className="ml-auto font-mono font-bold tabular-nums">
+                        {status.count}/{fontesCountsRef.current[name] ?? status.count}
+                      </span>
                     )}
                     {status.status === 'error' && <span className="ml-1">Erro</span>}
                     {name === '_processing' && status.message && (
