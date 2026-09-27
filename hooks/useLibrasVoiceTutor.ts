@@ -194,7 +194,7 @@ export function useLibrasVoiceTutor(bridge: LibrasVoiceTutorBridge) {
     systemInstruction: SYSTEM_INSTRUCTION,
     tools: buildTools(),
     temperature: 0.35,
-    thinkingLevel: 'LOW' as const,
+    thinkingLevel: 'low' as const,
     labels: {
       obtainingToken: 'Obtendo voz…',
       connecting: 'Conectando Tutor Libras…',
