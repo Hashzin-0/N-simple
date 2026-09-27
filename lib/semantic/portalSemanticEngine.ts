@@ -245,7 +245,6 @@ export async function understandSourcesByPortalQueue(
 
   const pool = new SemanticProviderPool();
   const allScored: ScoredSource[] = [];
-  const scoredLock: { promise: Promise<void> } = { promise: Promise.resolve() };
 
   const runPortalQueue = async (portal: string, portalSources: ScientificSource[]) => {
     const results: ScoredSource[] = [];
@@ -278,17 +277,7 @@ export async function understandSourcesByPortalQueue(
       });
     }
 
-    await (async () => {
-      const previous = scoredLock.promise;
-      let release!: () => void;
-      scoredLock.promise = new Promise<void>((resolve) => { release = resolve; });
-      await previous;
-      try {
-        allScored.push(...results);
-      } finally {
-        release();
-      }
-    })();
+    allScored.push(...results);
   };
 
   await Promise.all(
