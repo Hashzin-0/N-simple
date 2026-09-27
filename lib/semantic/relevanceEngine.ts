@@ -225,6 +225,17 @@ async function understandOne(
   };
 }
 
+export interface UnderstandSourcesOptions {
+  /**
+   * Chamado após cada fonte terminar de ser entendida.
+   * Permite persistência incremental e atualização de progresso.
+   */
+  onSourceComplete?: (
+    source: UnderstoodSource,
+    meta: { index: number; total: number }
+  ) => void | Promise<void>;
+}
+
 /**
  * Fallback "semântico leve" quando o pipeline completo falha (OOM,
  * timeout de full-text, cross-encoder, etc.). Usa só abstract/título,
@@ -298,6 +309,165 @@ export async function understandSourcesLightFallback(
 
   const count = Math.min(ENGINE_CONCURRENCY, Math.max(1, candidates.length));
   await Promise.all(Array.from({ length: count }, () => worker()));
+  return results;
+}
+
+/**
+ * Pipeline completo: retrieval → reranking → entendimento.
+ *
+ * Mantém a interface consumida pelo restante do sistema:
+ * 1. retrieval com Gemini Embedding em lote;
+ * 2. reranking com Cross-Encoder local;
+ * 3. entendimento profundo das fontes finais;
+ * 4. callback incremental por fonte.
+ *
+ * O embedding da query é compartilhado quando fornecido pelo caller.
+ */
+export async function understandSources(
+  query: string,
+  sources: ScientificSource[],
+  sharedQueryEmbedding?: number[],
+  domain: DomainKey = 'agro',
+  options?: UnderstandSourcesOptions,
+): Promise<UnderstoodSource[]> {
+  if (sources.length === 0) return [];
+
+  const retrieved = await retrieve(
+    query,
+    sources,
+    RETRIEVAL_TOP_K,
+    sharedQueryEmbedding,
+  );
+
+  let reranked: Awaited<ReturnType<typeof rerank>> = [];
+
+  try {
+    reranked = await rerank(query, retrieved, RERANK_TOP_K);
+  } catch (err) {
+    console.warn(
+      '[SemanticEngine] Rerank falhou, seguindo apenas com retrieval:',
+      err,
+    );
+
+    reranked = retrieved.slice(0, RERANK_TOP_K).map((candidate) => ({
+      source: candidate.source,
+      retrievalScore: candidate.score,
+      rerankScore: candidate.score,
+      queryEmbedding: candidate.queryEmbedding,
+    }));
+  }
+
+  if (reranked.length === 0) return [];
+
+  const queryEmbedding =
+    sharedQueryEmbedding ??
+    reranked[0].queryEmbedding ??
+    (await embedText(query, 'RETRIEVAL_QUERY'));
+
+  const total = reranked.length;
+  const results: UnderstoodSource[] = new Array(total);
+  let cursor = 0;
+
+  async function worker() {
+    while (true) {
+      const index = cursor++;
+      if (index >= total) return;
+
+      const candidate = reranked[index];
+
+      let understood: UnderstoodSource;
+
+      try {
+        /*
+         * retrieve() já calculou o embedding documental. Guardamos esse
+         * vetor no objeto apenas durante o pipeline para que understandOne()
+         * possa reutilizá-lo sem uma nova chamada à API.
+         */
+        const sourceWithEmbedding = {
+          ...candidate.source,
+          __retrievalEmbedding: candidate.documentEmbedding,
+        } as ScientificSource & { __retrievalEmbedding?: number[] };
+
+        understood = await understandOne(
+          query,
+          queryEmbedding,
+          sourceWithEmbedding,
+          candidate.retrievalScore,
+          domain,
+        );
+      } catch (err) {
+        console.warn(
+          '[SemanticEngine] Pipeline completo falhou, usando fallback leve:',
+          candidate.source.title,
+          err,
+        );
+
+        try {
+          understood = await understandOneLight(
+            query,
+            candidate.source,
+            domain,
+          );
+        } catch (lightErr) {
+          console.warn(
+            '[SemanticEngine] Fallback leve também falhou:',
+            candidate.source.title,
+            lightErr,
+          );
+
+          understood = {
+            ...candidate.source,
+            semanticScore: 0,
+            semanticCategories: [],
+            bestExcerpt: (candidate.source.abstract || candidate.source.title || '').slice(0, 600),
+            discarded: true,
+            docEmbedding: [],
+            usedFullText: false,
+            domainScore: 0,
+            inAgroDomain: false,
+            /*
+             * Falha de infraestrutura não deve apagar a fonte encontrada
+             * pelos scrapers. O indexador recebe a fonte para persistência.
+             */
+            shouldPersist: true,
+            chunks: [],
+            trigonometricSimilarity: {
+              cosTheta: 0,
+              angleDegrees: 90,
+              percentage: 0,
+              alignmentQuality: 'Moderada',
+            },
+          };
+        }
+      }
+
+      results[index] = understood;
+
+      if (options?.onSourceComplete) {
+        try {
+          await options.onSourceComplete(understood, {
+            index,
+            total,
+          });
+        } catch (callbackError) {
+          console.warn(
+            '[SemanticEngine] onSourceComplete falhou:',
+            callbackError,
+          );
+        }
+      }
+    }
+  }
+
+  const workerCount = Math.min(
+    ENGINE_CONCURRENCY,
+    Math.max(1, total),
+  );
+
+  await Promise.all(
+    Array.from({ length: workerCount }, () => worker()),
+  );
+
   return results;
 }
 
