@@ -16,8 +16,8 @@ import {
  * MOTOR SEMÂNTICO — Arquitetura híbrida retrieval + reranking.
  *
  * Etapa 1 (retrieve): Gemini Embedding 2 → pgvector → TOP_K candidatas
- * Etapa 2 (rerank): Cross-Encoder ONNX → RERANK_TOP_K finais
- * Etapa 3 (entender): Análise completa com chunks, categorias, domínio
+ * Etapa 2 (rerank): ordenação pelo score de retrieval → RERANK_TOP_K finais
+ * Etapa 3 (entender): análise semântica leve com embedding documental e domínio
  *
  * Fontes com score final <= 45 são marcadas `discarded` e nunca devem
  * ser salvas nem mostradas ao usuário.
@@ -144,8 +144,7 @@ export async function rerank(
 
 /** Entende uma fonte usando o embedding documental já calculado no retrieval. */
 /**
- * Entende uma única fonte: fetch full text, gera chunks, embeddings,
- * categorias, e score final combinando bi-encoder + cross-encoder.
+ * Entende uma única fonte usando o embedding documental já calculado no retrieval.
  */
 async function understandOne(
   _query: string,
@@ -256,8 +255,8 @@ export async function understandSourcesLightFallback(
  *
  * Mantém a interface consumida pelo restante do sistema:
  * 1. retrieval com Gemini Embedding em lote;
- * 2. reranking com Cross-Encoder local;
- * 3. entendimento profundo das fontes finais;
+ * 2. ordenação dos candidatos pelo score de retrieval;
+ * 3. entendimento semântico leve das fontes finais;
  * 4. callback incremental por fonte.
  *
  * O embedding da query é compartilhado quando fornecido pelo caller.
