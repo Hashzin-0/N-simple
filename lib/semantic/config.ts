@@ -23,7 +23,7 @@ export const EMBEDDING_DIM = 768;
 export const CROSS_ENCODER_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
 
 /** Máximo de fontes novas que recebem embedding na recuperação. */
-export const EMBEDDING_CANDIDATE_LIMIT = 80;
+export const EMBEDDING_CANDIDATE_LIMIT = 50;
 
 /** Top-K para recuperação vetorial (primeira etapa do pipeline). */
 export const RETRIEVAL_TOP_K = 50;
