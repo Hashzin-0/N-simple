@@ -13,6 +13,7 @@ import {
 import { embedText, embedTexts } from '@/lib/semantic/embeddings';
 import { DomainKey } from '@/lib/semantic/config';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
+import { understandSourcesByPortalQueue } from '@/lib/semantic/portalSemanticEngine';
 
 export interface SourceSearchRequest {
   query: string;
@@ -442,10 +443,9 @@ export async function searchSources(
 
   let understood: UnderstoodSource[] = [];
   try {
-    understood = await understandSources(
+    const semanticResult = await understandSourcesByPortalQueue(
       query,
       result.sources,
-      sharedQueryEmbedding,
       domain,
       {
         onSourceComplete: (src) => {
@@ -454,16 +454,20 @@ export async function searchSources(
             void persistPartialBatch(topics, [src]).then((partial) => {
               if (partial) persistedCount += partial.indexed;
             }).catch((err) => {
-                console.warn('[ResearchService] Persistência semântica assíncrona falhou:', err);
+              console.warn('[ResearchService] Persistência semântica assíncrona falhou:', err);
             });
           }
         },
+        onPortalProgress: (progress) => {
+          console.info(
+            `[SemanticQueue] ${progress.portal} ${progress.index}/${progress.total} — ${progress.model}`,
+          );
+        },
       },
     );
+    understood = semanticResult.sources;
   } catch (err) {
-    // Se o motor morrer no meio (quota, erro de embed, OOM parcial),
-    // tenta um segundo passe "leve" para não perder a corrida dos scrapers.
-    console.warn('[ResearchService] understandSources falhou, retry light:', err);
+    console.warn('[ResearchService] Fila semântica falhou, retry light:', err);
     onProgress?.onProcessingStart?.(
       result.sources.length,
       'Análise semântica interrompida — retomando com modo leve...',
@@ -481,12 +485,10 @@ export async function searchSources(
       );
     } catch (retryErr) {
       console.warn('[ResearchService] retry light também falhou:', retryErr);
-      // Fallback final: envolve as fontes cruas como light e persiste.
       understood = result.sources.map(toLightUnderstood).map((s) => ({
         ...s,
         shouldPersist: true,
       }));
-      // Raw sources are already durable in source_persistence.
       for (const src of understood) {
         emitVerified(src, 'persisted');
       }
