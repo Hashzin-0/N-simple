@@ -248,36 +248,33 @@ async function understandOneLight(
   domain: DomainKey,
 ): Promise<UnderstoodSource> {
   const analysisText = buildAnalysisText(source, '', false);
-  const chunks = chunkText(analysisText).slice(0, MAX_CHUNKS_PER_SOURCE);
-  const candidates = chunks.length > 0 ? chunks : [source.abstract || source.title || ''];
-  const scored = await Promise.all(
-    candidates.map(async (chunk) => ({
-      text: chunk,
-      score: await crossEncoderScore(query, `${source.title}. ${chunk}`),
-    })),
+  const docText = [source.title, source.abstract, (source.keywords || []).join(' ')]
+    .filter(Boolean)
+    .join(' ')
+    .slice(0, 1800);
+
+  const semanticProb = await crossEncoderScore(query, docText);
+  const domainProb = await crossEncoderScore(
+    DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR,
+    docText,
   );
-  scored.sort((x, y) => y.score - x.score);
-  const semanticScore = Math.round((scored[0]?.score ?? 0.5) * 1000) / 10;
-  const domainScore = Math.round(
-    (await crossEncoderScore(
-      DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR,
-      analysisText.slice(0, 1200),
-    )) * 100,
-  ) / 10;
-  const inDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
+  const semanticScore = Math.round(semanticProb * 1000) / 10;
+  const domainScore = Math.round(domainProb * 1000) / 10;
   const discarded = semanticScore <= SEMANTIC_DISCARD_THRESHOLD;
+  const inDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
+
   return {
     ...source,
     semanticScore,
     semanticCategories: [],
-    bestExcerpt: (scored[0]?.text || source.abstract || source.title || '').slice(0, 600),
+    bestExcerpt: (source.abstract || source.title || '').slice(0, 600),
     discarded,
     docEmbedding: [],
     usedFullText: false,
     domainScore,
     inAgroDomain: inDomain,
     shouldPersist: !discarded && inDomain,
-    chunks: scored.map((item) => ({ text: item.text, embedding: [], score: item.score })),
+    chunks: [{ text: docText, embedding: [], score: semanticProb }],
     trigonometricSimilarity: {
       cosTheta: 0,
       angleDegrees: 90,
@@ -287,150 +284,32 @@ async function understandOneLight(
   };
 }
 
-
 export async function understandSourcesLightFallback(
   query: string,
   sources: ScientificSource[],
   domain: DomainKey = 'agro',
   options?: UnderstandSourcesOptions,
 ): Promise<UnderstoodSource[]> {
-  const results: UnderstoodSource[] = new Array(sources.length);
-  let cursor = 0;
-  async function worker() {
-    while (cursor < sources.length) {
-      const index = cursor++;
-      results[index] = await understandOneLight(query, sources[index], domain);
-      if (options?.onSourceComplete) {
-        await options.onSourceComplete(results[index], { index, total: sources.length });
-      }
-    }
-  }
-  const count = Math.min(ENGINE_CONCURRENCY, Math.max(1, sources.length));
-  await Promise.all(Array.from({ length: count }, () => worker()));
-  return results;
-}
-
-export interface UnderstandSourcesOptions {
-  /**
-   * Chamado após cada fonte terminar de ser entendida (sucesso ou
-   * fallback leve). Use para persistir incrementalmente e emitir
-   * progresso ao cliente — se o processo morrer no meio, o que já
-   * passou aqui já foi salvo.
-   */
-  onSourceComplete?: (
-    source: UnderstoodSource,
-    meta: { index: number; total: number }
-  ) => void | Promise<void>;
-}
-
-/**
- * Pipeline completo: retrieve → rerank → understand.
- * Mantém interface estável para o restado do sistema.
- *
- * Com `options.onSourceComplete`, cada fonte do top-K é reportada
- * assim que pronta (para indexação incremental no Supabase).
- */
-export async function understandSources(
-  query: string,
-  sources: ScientificSource[],
-  sharedQueryEmbedding?: number[],
-  domain: DomainKey = 'agro',
-  options?: UnderstandSourcesOptions,
-): Promise<UnderstoodSource[]> {
   if (sources.length === 0) return [];
 
-  // Etapa 1: Retrieval (Gemini Embedding, em lote)
-  const retrieved = await retrieve(query, sources, RETRIEVAL_TOP_K, sharedQueryEmbedding);
-  for (const candidate of retrieved) {
-    (candidate.source as ScientificSource & { __retrievalEmbedding?: number[] }).__retrievalEmbedding = candidate.documentEmbedding;
-  }
-
-  // Etapa 2: Reranking (Cross-Encoder ONNX)
-  let reranked: Awaited<ReturnType<typeof rerank>> = [];
-  try {
-    reranked = await rerank(query, retrieved, RERANK_TOP_K);
-  } catch (err) {
-    console.warn('[SemanticEngine] Rerank falhou, seguindo só com retrieval:', err);
-    reranked = retrieved
-      .slice(0, RERANK_TOP_K)
-      .map((c) => ({
-        source: c.source,
-        retrievalScore: c.score,
-        rerankScore: c.score,
-        queryEmbedding: c.queryEmbedding,
-      }));
-  }
-
-  // Etapa 3: Entender cada fonte final
-  const queryEmbedding =
-    sharedQueryEmbedding ??
-    reranked[0]?.queryEmbedding ??
-    (await embedText(query, 'RETRIEVAL_QUERY'));
-  const total = reranked.length;
-  const results: UnderstoodSource[] = new Array(total);
+  // Fallback não chama Gemini. Limita o trabalho local para não transformar
+  // uma falha de quota em centenas de inferências ONNX.
+  const candidates = sources.slice(0, Math.min(RERANK_TOP_K * 4, 40));
+  const results: UnderstoodSource[] = new Array(candidates.length);
   let cursor = 0;
-  let completed = 0;
 
   async function worker() {
-    while (cursor < total) {
-      const i = cursor++;
-      let understood: UnderstoodSource;
-      try {
-        understood = await understandOne(
-          query,
-          queryEmbedding,
-          reranked[i].source,
-          reranked[i].retrievalScore,
-          domain,
-        );
-      } catch (err) {
-        console.warn(
-          '[SemanticEngine] Pipeline completo falhou, fallback leve:',
-          reranked[i]?.source.title,
-          err,
-        );
-        try {
-          understood = await understandOneLight(
-            queryEmbedding,
-            reranked[i].source,
-            domain,
-          );
-        } catch (lightErr) {
-          console.warn('[SemanticEngine] Fallback leve também falhou:', lightErr);
-          understood = {
-            ...reranked[i].source,
-            semanticScore: 0,
-            semanticCategories: [],
-            bestExcerpt: (reranked[i].source.abstract || '').slice(0, 600),
-            discarded: true,
-            docEmbedding: [],
-            usedFullText: false,
-            domainScore: 0,
-            inAgroDomain: false,
-            // Não descarta por erro de infra: tenta salvar mesmo assim.
-            shouldPersist: true,
-            chunks: [],
-          };
-        }
-      }
-      results[i] = understood;
-      completed += 1;
+    while (cursor < candidates.length) {
+      const index = cursor++;
+      results[index] = await understandOneLight(query, candidates[index], domain);
       if (options?.onSourceComplete) {
-        try {
-          await options.onSourceComplete(understood, { index: i, total });
-        } catch (cbErr) {
-          console.warn('[SemanticEngine] onSourceComplete falhou:', cbErr);
-        }
+        await options.onSourceComplete(results[index], { index, total: candidates.length });
       }
     }
   }
 
-  const workerCount = Math.min(ENGINE_CONCURRENCY, Math.max(1, total));
-  await Promise.all(Array.from({ length: workerCount }, () => worker()));
-
-  // complete foi usado só para o callback; evita lint de variável não lida
-  void completed;
-
+  const count = Math.min(ENGINE_CONCURRENCY, Math.max(1, candidates.length));
+  await Promise.all(Array.from({ length: count }, () => worker()));
   return results;
 }
 
