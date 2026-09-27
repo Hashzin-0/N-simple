@@ -9,7 +9,7 @@ import {
   filterAndRankRelevant,
   classifyOutOfTopKForPersistence,
   UnderstoodSource,
-} from '@/lib/semantic/relevanceEngine';
+} from '@/lib/semantic/relevanceEngine';\nimport { understandSourcesByPortalQueue } from '@/lib/semantic/portalSemanticEngine';
 import { embedText, embedTexts } from '@/lib/semantic/embeddings';
 import { DomainKey } from '@/lib/semantic/config';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
@@ -442,10 +442,9 @@ export async function searchSources(
 
   let understood: UnderstoodSource[] = [];
   try {
-    understood = await understandSources(
+    const semanticResult = await understandSourcesByPortalQueue(
       query,
       result.sources,
-      sharedQueryEmbedding,
       domain,
       {
         onSourceComplete: (src) => {
@@ -454,12 +453,18 @@ export async function searchSources(
             void persistPartialBatch(topics, [src]).then((partial) => {
               if (partial) persistedCount += partial.indexed;
             }).catch((err) => {
-                console.warn('[ResearchService] Persistência semântica assíncrona falhou:', err);
+              console.warn('[ResearchService] Persistência semântica assíncrona falhou:', err);
             });
           }
         },
+        onPortalProgress: (progress) => {
+          console.info(
+            `[SemanticQueue] ${progress.portal} ${progress.index}/${progress.total} — ${progress.model}`
+          );
+        },
       },
     );
+    understood = semanticResult.sources;
   } catch (err) {
     // Se o motor morrer no meio (quota, erro de embed, OOM parcial),
     // tenta um segundo passe "leve" para não perder a corrida dos scrapers.
