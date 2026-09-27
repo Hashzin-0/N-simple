@@ -307,7 +307,6 @@ export async function searchSources(
               verifiedCount: meta.index + 1,
               totalSources: meta.total,
               sourceName: src.sourceName,
-              sourceName: src.sourceName,
               persistedCount: partial?.indexed ?? 0,
               percentage: Math.round(((meta.index + 1) / Math.max(1, meta.total)) * 100),
               status: partial && partial.errors === 0 && partial.indexed > 0 ? 'persisted' : 'analyzed',
