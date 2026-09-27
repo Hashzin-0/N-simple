@@ -451,7 +451,9 @@ export async function searchSources(
         onSourceComplete: (src) => {
           emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
           if (src.shouldPersist) {
-            void persistPartialBatch(topics, [src]).then((partial) => {
+            void getSharedTopicEmbeddings().then((topicEmbeddings) =>
+              persistPartialBatch(topics, [src], topicEmbeddings)
+            ).then((partial) => {
               if (partial) persistedCount += partial.indexed;
             }).catch((err) => {
               console.warn('[ResearchService] Persistência semântica assíncrona falhou:', err);
