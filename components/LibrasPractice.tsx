@@ -119,6 +119,37 @@ export default React.memo(function LibrasPractice({ onBack, pendingTemplate }: L
     };
   }, [isActive, selectedTemplate, processFrame, startCamera, stopCamera]);
 
+  // Voice Tutor: recebe o sinal escolhido pelo agente e abre a câmera/prática.
+  useEffect(() => {
+    const handleVoicePractice = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      const sign = String(detail?.sign || '').trim().toLowerCase();
+      if (!sign || templates.length === 0) return;
+      const normalized = sign.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const tpl = templates.find((t) => {
+        const label = t.label.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return t.id.toLowerCase() === normalized || label === normalized;
+      });
+      if (tpl) {
+        handleSelectTemplate(tpl);
+      }
+    };
+    window.addEventListener('libras:voice-practice', handleVoicePractice);
+    return () => window.removeEventListener('libras:voice-practice', handleVoicePractice);
+  }, [templates]);
+
+  // Envia o resultado estruturado para o Tutor de voz.
+  const lastVoiceResultRef = useRef('');
+  useEffect(() => {
+    if (!recognition || !evaluation) return;
+    const key = `${attempt}:${recognition.candidateId}:${recognition.confidence}`;
+    if (lastVoiceResultRef.current === key) return;
+    lastVoiceResultRef.current = key;
+    window.dispatchEvent(new CustomEvent('libras:practice-result', {
+      detail: { attempt, recognition, evaluation }
+    }));
+  }, [attempt, recognition, evaluation]);
+
   // Template selection
   const handleSelectTemplate = useCallback(
     (template: GestureTemplate) => {
