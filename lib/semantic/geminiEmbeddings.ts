@@ -9,12 +9,10 @@ import { EMBEDDING_DIM } from './config';
  * Modelo: gemini-embedding-2 (768 dims via Matryoshka, 8192 tokens)
  * Documentação: https://ai.google.dev/gemini-api/docs/embeddings
  *
- * Rate limiting: o free tier do Gemini expõe ~100 requisições/minuto
- * (RPM) por chave. Este módulo NUNCA emite mais que
- * EMBEDDING_RPM_PER_KEY (default 80, com folga sob 100) por chave em
- * qualquer janela deslizante de 60s — single (embedContent) e batch
- * (batchEmbedContents) passam pelo mesmo orçamento. Cada request HTTP
- * conta como 1 unidade (um lote de 50 textos = 1 RPM).
+ * Rate limiting defensivo: o orçamento é contado por TEXTO embutido, não por
+ * chamada HTTP. O teto padrão é 70 itens/minuto no processo. As chaves não
+ * são tratadas como quotas independentes porque o Gemini aplica rate limits
+ * por projeto, não por API key.
  */
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -41,11 +39,10 @@ export type EmbedTaskType =
  * deixando folga para outras chamadas (generateContent etc.) na mesma key.
  * Nunca deixe EMBEDDING_RPM_PER_KEY chegar a 100.
  */
-const RPM_PER_KEY = (() => {
-  const raw = parseInt(process.env.EMBEDDING_RPM_PER_KEY || '80', 10);
-  if (Number.isNaN(raw) || raw < 1) return 80;
-  // Teto rígido: não pode atingir 100 (limite da API).
-  return Math.min(raw, 95);
+const RPM_TOTAL = (() => {
+  const raw = parseInt(process.env.EMBEDDING_RPM_TOTAL || '70', 10);
+  if (Number.isNaN(raw) || raw < 1) return 70;
+  return Math.min(raw, 90);
 })();
 
 const WINDOW_MS = 60_000;
@@ -59,7 +56,7 @@ const WINDOW_MS = 60_000;
  * são puladas temporariamente.
  */
 class EmbeddingRateLimiter {
-  private readonly hits: Map<string, number[]> = new Map();
+  private readonly hits: number[] = [];
   private readonly cooldownUntil: Map<string, number> = new Map();
   private readonly waiters: Array<() => void> = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -69,30 +66,25 @@ class EmbeddingRateLimiter {
    * Aguarda até uma chave ter orçamento e retorna seu índice.
    * Também respeita cooldown pós-429 da chave.
    */
-  async acquire(keys: string[]): Promise<number> {
+  async acquire(keys: string[], units = 1): Promise<number> {
+    const cost = Math.max(1, units);
     for (;;) {
       const now = Date.now();
       this.prune(now);
 
-      // Round-robin a partir da última escolhida, entre chaves livres.
       for (let n = 0; n < keys.length; n++) {
         const idx = (this.rr + n) % keys.length;
         const key = keys[idx];
         if ((this.cooldownUntil.get(key) ?? 0) > now) continue;
 
-        const hits = this.hits.get(key);
-        if (!hits || hits.length < RPM_PER_KEY) {
+        if (this.hits.length + cost <= RPM_TOTAL) {
           this.rr = (idx + 1) % keys.length;
-          hits?.push(now);
-          if (!hits) this.hits.set(key, [now]);
-          else this.hits.set(key, hits);
+          for (let i = 0; i < cost; i++) this.hits.push(now);
           return idx;
         }
       }
 
-      // Todas em cooldown → espera o cooldown mais próximo.
-      // Todas sem orçamento → espera o expiry da janela.
-      await this.sleepUntilNextOpportunity(keys, now);
+      await this.sleepUntilNextOpportunity(keys, now, cost);
     }
   }
 
@@ -105,17 +97,13 @@ class EmbeddingRateLimiter {
 
   private prune(now: number): void {
     const cutoff = now - WINDOW_MS;
-    for (const [key, times] of this.hits) {
-      const alive = times.filter((t) => t > cutoff);
-      if (alive.length === 0) this.hits.delete(key);
-      else this.hits.set(key, alive);
-    }
+    while (this.hits.length > 0 && this.hits[0] <= cutoff) this.hits.shift();
     for (const [key, until] of this.cooldownUntil) {
       if (until <= now) this.cooldownUntil.delete(key);
     }
   }
 
-  private sleepUntilNextOpportunity(keys: string[], now: number): Promise<void> {
+  private sleepUntilNextOpportunity(keys: string[], now: number, units = 1): Promise<void> {
     let delay = 250;
 
     const cooldowns = keys
@@ -126,16 +114,8 @@ class EmbeddingRateLimiter {
       // Todas em cooldown: espera a primeira liberar.
       delay = Math.max(50, cooldowns[0] - now + 25);
     } else {
-      // Alguma sem orçamento: espera o request mais antigo da janela sair.
-      let oldest = Infinity;
-      for (const k of keys) {
-        const hits = this.hits.get(k);
-        if (hits && hits.length >= RPM_PER_KEY && hits.length > 0) {
-          oldest = Math.min(oldest, hits[0]);
-        }
-      }
-      if (Number.isFinite(oldest)) {
-        delay = Math.max(50, oldest + WINDOW_MS - now + 25);
+      if (this.hits.length > 0 && this.hits.length + Math.max(1, units) > RPM_TOTAL) {
+        delay = Math.max(50, this.hits[0] + WINDOW_MS - now + 25);
       }
     }
 
@@ -297,7 +277,13 @@ export async function geminiEmbedTexts(
   }
 
   const prefix = getTaskPrefix(taskType);
-  const prepared = prefix ? texts.map((t) => `${prefix} ${t}`) : texts;
+  const prepared = texts.map((t) => {
+    const clean = (t || '').trim();
+    if (taskType === 'RETRIEVAL_DOCUMENT') {
+      return clean.includes('title:') && clean.includes('| text:') ? clean : `title: none | text: ${clean}`;
+    }
+    return prefix ? `${prefix} ${clean}` : clean;
+  });
 
   const results: number[][] = [];
 
@@ -332,7 +318,7 @@ async function embedBatch(
   // seu próprio slot no orçamento RPM (retries de backoff também).
   for (let pass = 0; pass < keys.length; pass++) {
     for (let attempt = 0; attempt <= retries; attempt++) {
-      const slot = await rateLimiter.acquire(keys);
+      const slot = await rateLimiter.acquire(keys, texts.length);
       const url = `${GEMINI_API_BASE}/models/gemini-embedding-2:batchEmbedContents?key=${keys[slot]}`;
 
       try {
@@ -396,9 +382,9 @@ function getTaskPrefix(taskType: string): string {
     case 'RETRIEVAL_QUERY':
       return 'task:search result | query:';
     case 'RETRIEVAL_DOCUMENT':
-      return 'task:search result | document:';
+      return '';
     case 'SEMANTIC_SIMILARITY':
-      return 'task:semantic similarity | text:';
+      return 'task: sentence similarity | query:';
     default:
       return '';
   }
@@ -412,5 +398,5 @@ export const EMBEDDING_METADATA = {
   model: 'gemini-embedding-2',
   dimensions: EMBEDDING_DIM,
   version: 'v1',
-  rpmPerKey: RPM_PER_KEY,
+  rpmBudgetPerMinute: RPM_TOTAL,
 } as const;
