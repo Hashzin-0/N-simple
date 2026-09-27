@@ -42,6 +42,9 @@ export interface UnderstoodSource extends ScientificSource {
   domainScore: number;
   inAgroDomain: boolean;
   shouldPersist: boolean;
+  semanticProvider?: 'gemini' | 'openrouter';
+  semanticModel?: string;
+  semanticDimensions?: number;
 }
 
 
