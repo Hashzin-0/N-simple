@@ -90,7 +90,7 @@ export async function indexSource(
 
   let sourceId: string;
 
-  const sharedFields = {
+  const sharedFields: Record<string, unknown> = {
     title: source.title,
     authors: source.authors,
     year: source.year,
@@ -106,13 +106,19 @@ export async function indexSource(
     vantagens: source.vantagens || [],
     desvantagens: source.desvantagens || [],
     caracteristicas: source.caracteristicas || [],
-    embedding: source.docEmbedding && source.docEmbedding.length > 0 ? source.docEmbedding : null,
     semantic_score: source.semanticScore ?? 0,
     used_full_text: source.usedFullText ?? false,
     best_excerpt: source.bestExcerpt || null,
     domain_score: source.domainScore ?? 0,
     in_agro_domain: source.inAgroDomain ?? false,
   };
+
+  // A coluna sources.embedding permanece no espaço Gemini Embedding 2 (768).
+  // Fallbacks OpenRouter :free têm espaços/dimensões diferentes e nunca
+  // podem sobrescrever ou corromper o vetor Gemini já indexado.
+  if (source.docEmbedding?.length === 768) {
+    sharedFields.embedding = source.docEmbedding;
+  }
 
   if (existingSource) {
     sourceId = existingSource.id;
