@@ -3,6 +3,20 @@ import { getCached, setCache } from '@/lib/scraperCache';
 
 const S2_API = 'https://api.semanticscholar.org/graph/v1/paper/search';
 const S2_API_KEY = process.env.SEMANTIC_SCHOLAR_API_KEY?.trim();
+let semanticScholarLastRequestAt = 0;
+let semanticScholarRequestLock: Promise<void> = Promise.resolve();
+
+async function waitForSemanticScholarSlot(): Promise<void> {
+  const previous = semanticScholarRequestLock;
+  let release!: () => void;
+  semanticScholarRequestLock = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  const minInterval = S2_API_KEY ? 1100 : 500;
+  const wait = Math.max(0, minInterval - (Date.now() - semanticScholarLastRequestAt));
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  semanticScholarLastRequestAt = Date.now();
+  release();
+}
 
 function cleanText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -86,6 +100,7 @@ function parseS2Item(paper: any): ScientificSource {
 
 async function fetchWithRetry(url: string, retries = 1): Promise<Response> {
   for (let attempt = 0; attempt <= retries; attempt++) {
+    await waitForSemanticScholarSlot();
     const response = await fetch(url, {
       headers: {
         Accept: 'application/json',
