@@ -6,7 +6,6 @@ import { extractSemanticCategories, SemanticCategory } from './categoryExtractor
 import { crossEncoderScore } from '@/lib/scrapers/semanticFilter';
 import {
   SEMANTIC_DISCARD_THRESHOLD,
-  TOP_K_CHUNKS_FOR_SCORE,
   BI_ENCODER_WEIGHT,
   CROSS_ENCODER_WEIGHT,
   ENGINE_CONCURRENCY,
@@ -60,16 +59,6 @@ function getDomainAnchorEmbedding(domain: DomainKey = 'agro'): Promise<number[]>
     domainAnchorPromises.set(domain, promise);
   }
   return promise;
-}
-
-function centroid(vectors: number[][]): number[] {
-  if (vectors.length === 0) return [];
-  const dim = vectors[0].length;
-  const sum = new Array(dim).fill(0);
-  for (const v of vectors) {
-    for (let i = 0; i < dim; i++) sum[i] += v[i];
-  }
-  return sum.map((s) => s / vectors.length);
 }
 
 function buildAnalysisText(source: ScientificSource, fullText: string, hasFullText: boolean): string {
@@ -215,9 +204,12 @@ async function understandOne(
 
   const discarded = semanticScore <= SEMANTIC_DISCARD_THRESHOLD;
 
-  const domainAnchor = docEmbedding.length > 0 ? await getDomainAnchorEmbedding(domain) : [];
-  const domainCos = docEmbedding.length > 0 && domainAnchor.length > 0 ? cosineSimilarity(docEmbedding, domainAnchor) : 0;
-  const domainScore = cosineToPercentage(domainCos);
+  const domainScore = Math.round(
+    (await crossEncoderScore(
+      DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR,
+      analysisText.slice(0, 1800),
+    )) * 100,
+  ) / 10;
   const inAgroDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
 
   const shouldPersist = !discarded || inAgroDomain;
@@ -235,9 +227,9 @@ async function understandOne(
     shouldPersist,
     chunks: chunkScores.map((item) => ({ text: item.text, embedding: [], score: item.score })),
     trigonometricSimilarity: {
-      cosTheta: Math.round(Math.max(0, avgTopKCos) * 1000) / 1000,
+      cosTheta: Math.round(Math.max(-1, Math.min(1, retrievalScore)) * 1000) / 1000,
       angleDegrees:
-        Math.round(Math.acos(Math.max(-1, Math.min(1, avgTopKCos))) * (180 / Math.PI) * 10) / 10,
+        Math.round(Math.acos(Math.max(-1, Math.min(1, retrievalScore))) * (180 / Math.PI) * 10) / 10,
       percentage: Math.round(semanticScore),
       alignmentQuality: angleQuality(semanticScore),
     },
