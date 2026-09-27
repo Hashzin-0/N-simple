@@ -386,14 +386,6 @@ export async function searchSources(
     onProgress,
   );
 
-  // Enfileira imediatamente tudo que os scrapers encontraram. A fila é durável
-  // no Supabase e continua sendo drenada mesmo se a Function da Vercel morrer.
-  try {
-    await enqueueSourcesForPersistence(result.sources);
-  } catch (err) {
-    console.warn('[ResearchService] Não foi possível enfileirar persistência:', err);
-  }
-
   if (light) {
     // Contexto de prompt semântico: top-K por score de título/reuso, sem
     // full-text nem cross-encoder. Mantém compat com formatSourcesByTopic.
@@ -425,6 +417,14 @@ export async function searchSources(
         : null,
       errors: result.errors,
     };
+  }
+
+  // Enfileira imediatamente tudo que os scrapers encontraram. A fila é durável
+  // no Supabase e continua sendo drenada mesmo se a Function da Vercel morrer.
+  try {
+    await enqueueSourcesForPersistence(result.sources);
+  } catch (err) {
+    console.warn('[ResearchService] Não foi possível enfileirar persistência:', err);
   }
 
   const totalToAnalyze = result.sources.length;
