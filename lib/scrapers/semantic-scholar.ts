@@ -2,6 +2,7 @@ import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { getCached, setCache } from '@/lib/scraperCache';
 
 const S2_API = 'https://api.semanticscholar.org/graph/v1/paper/search';
+const S2_API_KEY = process.env.SEMANTIC_SCHOLAR_API_KEY?.trim();
 
 function cleanText(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
@@ -83,18 +84,20 @@ function parseS2Item(paper: any): ScientificSource {
   };
 }
 
-async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
+async function fetchWithRetry(url: string, retries = 1): Promise<Response> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     const response = await fetch(url, {
       headers: {
         Accept: 'application/json',
+        ...(S2_API_KEY ? { 'x-api-key': S2_API_KEY } : {}),
+        'User-Agent': 'Agrotools/1.0 (academic-source-researcher)',
       },
       signal: AbortSignal.timeout(15000),
     });
 
     if (response.status === 429 && attempt < retries) {
-      // Rate limited - wait with longer exponential backoff (S2 limits ~100 req/5min without key)
-      const waitTime = 2000 * Math.pow(2, attempt) + Math.random() * 1000;
+      const retryAfter = Number(response.headers.get('retry-after') || 2);
+      const waitTime = Math.min(8000, Math.max(1000, retryAfter * 1000));
       await new Promise(resolve => setTimeout(resolve, waitTime));
       continue;
     }
@@ -104,8 +107,12 @@ async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
 
   // Should not reach here, but just in case
   return fetch(url, {
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(15000),
+    headers: {
+      Accept: 'application/json',
+      ...(S2_API_KEY ? { 'x-api-key': S2_API_KEY } : {}),
+      'User-Agent': 'Agrotools/1.0 (academic-source-researcher)',
+    },
+    signal: AbortSignal.timeout(12000),
   });
 }
 
@@ -117,15 +124,23 @@ export async function scrapeSemanticScholar(
   if (cached) return cached;
 
   try {
+    const normalizedQuery = query
+      .replace(/[-–—]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
     const params = new URLSearchParams({
-      query,
-      limit: String(Math.min(maxResults, 100)),
+      query: normalizedQuery,
+      limit: String(Math.min(maxResults, 50)),
       fields: 'title,authors,year,venue,journal,abstract,externalIds,url,citationCount,openAccessPdf',
     });
 
     const response = await fetchWithRetry(`${S2_API}?${params.toString()}`);
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      console.warn(`[SemanticScholar] HTTP ${response.status}: ${body.slice(0, 300)}`);
+      return [];
+    }
 
     const data = await response.json();
     const items = data?.data || [];
@@ -133,7 +148,8 @@ export async function scrapeSemanticScholar(
 
     setCache('semantic_scholar', query, results);
     return results;
-  } catch {
+  } catch (err) {
+    console.warn('[SemanticScholar] scraper failed:', err instanceof Error ? err.message : String(err));
     return [];
   }
 }
