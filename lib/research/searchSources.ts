@@ -220,21 +220,24 @@ export async function searchSources(
     : extractTopics(query, topicExtractorConfig);
 
   let sharedTopicEmbeddings: Map<string, number[]> | undefined;
-  let topicEmbeddingsReady = false;
+  let sharedTopicEmbeddingsPromise: Promise<Map<string, number[]> | undefined> | null = null;
   const getSharedTopicEmbeddings = async () => {
-    if (!topicEmbeddingsReady) {
+    if (sharedTopicEmbeddings) return sharedTopicEmbeddings;
+    if (sharedTopicEmbeddingsPromise) return sharedTopicEmbeddingsPromise;
+
+    sharedTopicEmbeddingsPromise = (async () => {
       const unique = [...new Set(topics.map((t) => t.replace(/_/g, ' ')))];
-      if (unique.length > 0) {
-        try {
-          const vectors = await embedTexts(unique, 'RETRIEVAL_DOCUMENT');
-          sharedTopicEmbeddings = new Map(unique.map((topic, i) => [topic, vectors[i]]));
-        } catch (err) {
-          console.warn('[ResearchService] Falha ao preparar embeddings de tópicos:', err);
-        }
+      if (unique.length === 0) return undefined;
+      try {
+        const vectors = await embedTexts(unique, 'RETRIEVAL_DOCUMENT');
+        sharedTopicEmbeddings = new Map(unique.map((topic, i) => [topic, vectors[i]]));
+      } catch (err) {
+        console.warn('[ResearchService] Falha ao preparar embeddings de tópicos:', err);
       }
-      topicEmbeddingsReady = true;
-    }
-    return sharedTopicEmbeddings;
+      return sharedTopicEmbeddings;
+    })();
+
+    return sharedTopicEmbeddingsPromise;
   };
 
   // 1 única embed da query, reutilizada em todos os understandSources deste request.
