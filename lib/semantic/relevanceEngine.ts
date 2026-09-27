@@ -360,6 +360,7 @@ export async function understandSources(
       retrievalScore: candidate.score,
       rerankScore: candidate.score,
       queryEmbedding: candidate.queryEmbedding,
+      documentEmbedding: candidate.documentEmbedding,
     }));
   }
 
