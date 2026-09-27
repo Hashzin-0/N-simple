@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { normalizeTopic, sourceKeyFromTitle } from '@/lib/topicExtractor';
 import { UnderstoodSource } from '@/lib/semantic/relevanceEngine';
