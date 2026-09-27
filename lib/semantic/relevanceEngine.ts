@@ -251,81 +251,71 @@ async function understandOne(
  * PERSISTIR a fonte em vez de descartá-la e perder o progresso do scraper.
  */
 async function understandOneLight(
-  queryEmbedding: number[],
+  query: string,
   source: ScientificSource,
   domain: DomainKey,
 ): Promise<UnderstoodSource> {
   const analysisText = buildAnalysisText(source, '', false);
-  const chunkTexts = chunkText(analysisText);
-  const safeChunks = chunkTexts.length > 0 ? chunkTexts : [source.title];
-
-  let chunkEmbeddings: number[][] = [];
-  try {
-    chunkEmbeddings = await embedTexts(safeChunks, 'RETRIEVAL_DOCUMENT');
-  } catch {
-    chunkEmbeddings = [];
-  }
-
-  const chunkScores = chunkEmbeddings.map((emb) => cosineSimilarity(emb, queryEmbedding));
-  const avgCos =
-    chunkScores.length > 0
-      ? chunkScores.reduce((a, b) => a + b, 0) / chunkScores.length
-      : 0;
-  const biEncoderPct = cosineToPercentage(avgCos);
-  // Sem cross-encoder: score só bi-encoder (0.7) + neutral 50 no peso 0.3.
-  const semanticScore =
-    Math.round((biEncoderPct * BI_ENCODER_WEIGHT + 50 * CROSS_ENCODER_WEIGHT) * 10) / 10;
-
-  let docEmbedding: number[] = [];
-  try {
-    docEmbedding = chunkEmbeddings.length > 0 ? centroid(chunkEmbeddings) : [];
-  } catch {
-    docEmbedding = [];
-  }
-
-  let domainScore = 0;
-  let inAgroDomain = false;
-  try {
-    if (docEmbedding.length > 0) {
-      const anchor = await getDomainAnchorEmbedding(domain);
-      domainScore = cosineToPercentage(cosineSimilarity(docEmbedding, anchor));
-      inAgroDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
-    }
-  } catch {
-    // sem embedding de domínio → assume candidata a domínio para não perder
-    inAgroDomain = true;
-    domainScore = AGRO_DOMAIN_RELEVANCE_THRESHOLD + 1;
-  }
-
+  const chunks = chunkText(analysisText).slice(0, MAX_CHUNKS_PER_SOURCE);
+  const candidates = chunks.length > 0 ? chunks : [source.abstract || source.title || ''];
+  const scored = await Promise.all(
+    candidates.map(async (chunk) => ({
+      text: chunk,
+      score: await crossEncoderScore(query, `${source.title}. ${chunk}`),
+    })),
+  );
+  scored.sort((x, y) => y.score - x.score);
+  const semanticScore = Math.round((scored[0]?.score ?? 0.5) * 1000) / 10;
+  const domainScore = Math.round(
+    (await crossEncoderScore(
+      DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR,
+      analysisText.slice(0, 1200),
+    )) * 100,
+  ) / 10;
+  const inDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
   const discarded = semanticScore <= SEMANTIC_DISCARD_THRESHOLD;
-  const bestExcerpt = (source.abstract || source.title || '').slice(0, 600);
-
   return {
     ...source,
     semanticScore,
     semanticCategories: [],
-    bestExcerpt,
+    bestExcerpt: (scored[0]?.text || source.abstract || source.title || '').slice(0, 600),
     discarded,
-    docEmbedding,
+    docEmbedding: [],
     usedFullText: false,
     domainScore,
-    inAgroDomain,
-    // Fallback técnico: persiste se for do domínio OU se o score passou —
-    // nunca descarta por falha de infraestrutura.
-    shouldPersist: !discarded || inAgroDomain,
-    chunks: safeChunks.map((text, i) => ({
-      text,
-      embedding: chunkEmbeddings[i] || [],
-      score: chunkScores[i] || 0,
-    })),
+    inAgroDomain: inDomain,
+    shouldPersist: !discarded && inDomain,
+    chunks: scored.map((item) => ({ text: item.text, embedding: [], score: item.score })),
     trigonometricSimilarity: {
-      cosTheta: Math.round(Math.max(0, avgCos) * 1000) / 1000,
-      angleDegrees:
-        Math.round(Math.acos(Math.max(-1, Math.min(1, avgCos))) * (180 / Math.PI) * 10) / 10,
+      cosTheta: 0,
+      angleDegrees: 90,
       percentage: Math.round(semanticScore),
       alignmentQuality: angleQuality(semanticScore),
     },
   };
+}
+
+
+export async function understandSourcesLightFallback(
+  query: string,
+  sources: ScientificSource[],
+  domain: DomainKey = 'agro',
+  options?: UnderstandSourcesOptions,
+): Promise<UnderstoodSource[]> {
+  const results: UnderstoodSource[] = new Array(sources.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < sources.length) {
+      const index = cursor++;
+      results[index] = await understandOneLight(query, sources[index], domain);
+      if (options?.onSourceComplete) {
+        await options.onSourceComplete(results[index], { index, total: sources.length });
+      }
+    }
+  }
+  const count = Math.min(ENGINE_CONCURRENCY, Math.max(1, sources.length));
+  await Promise.all(Array.from({ length: count }, () => worker()));
+  return results;
 }
 
 export interface UnderstandSourcesOptions {
