@@ -68,6 +68,7 @@ export interface SourceSearchProgress {
     title?: string;
     verifiedCount: number;
     totalSources: number;
+    sourceName?: string;
     persistedCount: number;
     percentage: number;
     status: 'analyzed' | 'persisted' | 'error';
@@ -305,6 +306,8 @@ export async function searchSources(
               title: src.title,
               verifiedCount: meta.index + 1,
               totalSources: meta.total,
+              sourceName: src.sourceName,
+              sourceName: src.sourceName,
               persistedCount: partial?.indexed ?? 0,
               percentage: Math.round(((meta.index + 1) / Math.max(1, meta.total)) * 100),
               status: partial && partial.errors === 0 && partial.indexed > 0 ? 'persisted' : 'analyzed',
@@ -447,6 +450,7 @@ export async function searchSources(
       title: src.title,
       verifiedCount,
       totalSources: totalToAnalyze,
+      sourceName: src.sourceName,
       persistedCount,
       percentage: pct,
       status,
