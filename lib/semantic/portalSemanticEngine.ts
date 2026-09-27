@@ -77,23 +77,9 @@ class SemanticProviderPool {
   private queryVectors = new Map<string, Promise<number[]>>();
 
   current(): Provider {
-    return this.providers[this.currentIndex];
+    return this.providers[this.currentIndex]!;
   }
 
-  async queryEmbedding(provider: Provider, query: string): Promise<number[]> {
-    const key = `${provider.kind}:${provider.model}:${query}`;
-    const cached = this.queryVectors.get(key);
-    if (cached) return cached;
-
-    const promise = this.embed(provider, query, 'RETRIEVAL_QUERY');
-    this.queryVectors.set(key, promise);
-    try {
-      return await promise;
-    } catch (err) {
-      this.queryVectors.delete(key);
-      throw err;
-    }
-  }
 
   async embedDocumentAndQuery(
     documentText: string,
