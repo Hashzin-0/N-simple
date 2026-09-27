@@ -3,10 +3,13 @@ import { normalizeTopic, sourceKeyFromTitle } from '@/lib/topicExtractor';
 import { UnderstoodSource } from '@/lib/semantic/relevanceEngine';
 import { embedTexts, cosineSimilarity, cosineToPercentage } from '@/lib/semantic/embeddings';
 import { SEMANTIC_DISCARD_THRESHOLD } from '@/lib/semantic/config';
+import { enqueueFullSemantic } from '@/lib/semantic/enqueue';
 
 interface IndexedSource {
   id: string;
   source_key: string;
+  /** Status efetivamente gravado em `sources.semantic_status`. */
+  status: 'light' | 'full';
 }
 
 /**
@@ -221,7 +224,7 @@ export async function indexSource(
     }
   }
 
-  return { id: sourceId, source_key: key };
+  return { id: sourceId, source_key: key, status: nextStatus };
 }
 
 /**
@@ -231,18 +234,26 @@ export async function indexSource(
  *    salvas no banco (base futura), NUNCA mostradas nesta busca.
  *  - `discardedOutOfDomain`: fora do domínio agro inteiro — nunca salvas.
  *  - `errors`: falha de gravação.
- *  - `indexedIds`: ids das fontes efetivamente gravadas — é o que a
- *    fase 2 (Inngest) recebe para fazer o upgrade light → full.
+ *  - `indexedIds`: ids das fontes efetivamente gravadas.
+ *  - `lightIds`: ids gravados com `semantic_status='light'` — é a fila da
+ *    fase 2. Se não vazia, dispara a cadeia (Inngest) AGORA, logo após o
+ *    lote estar no banco: nenhuma gravação de fonte light fica esperando
+ *    varredura periódica. O evento drena a fila inteira (inclusive linhas
+ *    legadas), não só estes ids.
+ *
+ * `phase2.ts` chama esta função só com fontes 'full' → `lightIds` fica
+ * vazio → nenhum evento → sem re-entrância.
  */
 export async function indexSources(
   sources: UnderstoodSource[],
   topics: string[]
-): Promise<{ indexed: number; archivedOffTopic: number; discardedOutOfDomain: number; errors: number; indexedIds: string[] }> {
+): Promise<{ indexed: number; archivedOffTopic: number; discardedOutOfDomain: number; errors: number; indexedIds: string[]; lightIds: string[] }> {
   let indexed = 0;
   let archivedOffTopic = 0;
   let discardedOutOfDomain = 0;
   let errors = 0;
   const indexedIds: string[] = [];
+  const lightIds: string[] = [];
 
   // Embeddings de tópico calculados 1x para o lote inteiro (antes: N×M).
   const topicEmbeddings = await buildTopicEmbeddings(topics);
@@ -255,25 +266,37 @@ export async function indexSources(
         if (src.shouldPersist === false) return { kind: 'discardedOutOfDomain' as const };
         const result = await indexSource(src, topics, topicEmbeddings);
         if (!result) return { kind: 'error' as const };
-        return { kind: src.discarded ? ('archivedOffTopic' as const) : ('indexed' as const), id: result.id };
+        return { kind: src.discarded ? ('archivedOffTopic' as const) : ('indexed' as const), id: result.id, status: result.status };
       })
     );
     for (const result of results) {
-      if (result.status === 'fulfilled') {
-        const { kind, id } = result.value;
-        if (id) indexedIds.push(id);
-        if (kind === 'indexed') indexed++;
-        else if (kind === 'archivedOffTopic') archivedOffTopic++;
-        else if (kind === 'discardedOutOfDomain') discardedOutOfDomain++;
-        else errors++;
-      } else {
+      if (result.status !== 'fulfilled') {
         errors++;
         console.error('[EvidenceIndex] Falha ao indexar fonte:', result.reason);
+        continue;
+      }
+      const value = result.value;
+      if (value.kind === 'error') {
+        errors++;
+      } else if (value.kind === 'discardedOutOfDomain') {
+        discardedOutOfDomain++;
+      } else {
+        indexedIds.push(value.id);
+        if (value.status === 'light') lightIds.push(value.id);
+        if (value.kind === 'indexed') indexed++;
+        else archivedOffTopic++;
       }
     }
   }
 
-  return { indexed, archivedOffTopic, discardedOutOfDomain, errors, indexedIds };
+  // Gatilho da fase 2: qualquer lote que deixou fontes 'light' no banco
+  // aciona a cadeia imediatamente (debounce de 5s agrupa lotes da mesma
+  // busca num único disparo).
+  if (lightIds.length > 0) {
+    await enqueueFullSemantic({ query: topics.join(' ') || undefined });
+  }
+
+  return { indexed, archivedOffTopic, discardedOutOfDomain, errors, indexedIds, lightIds };
 }
 
 /**

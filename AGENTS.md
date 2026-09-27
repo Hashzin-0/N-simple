@@ -89,10 +89,12 @@ retornar > 0 com a query `adubação nitrogenada milho`).
 | `supabase/migration-tutor-plano2.sql` | Tutor Plano 2: `questions.origem` + `'artigo'`, `tutor_attempts.modo`/`resolved`, partial index for error queue. |
 | `supabase/migration-semantic-engine.sql` | Adds `sources.embedding` + semantic columns, `source_chunks`, `source_categories`, RPC `match_sources_by_embedding`, RLS for new tables. Required by `lib/semantic/**`, `lib/evidenceIndex.ts`, `lib/reuseDecision.ts`. |
 | `supabase/migration-semantic-status.sql` | Two-phase pipeline: `sources.semantic_status` (DEFAULT 'light' = backfill of existing rows) + `semantic_query`, partial index for the phase-2 queue, and recreates RPC `match_sources_by_embedding` returning `semantic_status`. Required by `lib/semantic/phase2.ts`, `lib/semantic/portalQueues.ts`, `lib/reuseDecision.ts`. |
+| `supabase/migration-semantic-webhook.sql` | Safety net da fase 2: trigger `trg_sources_light_webhook` em `sources` (WHEN `semantic_status='light'`, Insert + Update) → `public.notify_semantic_light()` (SECURITY DEFINER, REVOKE de PUBLIC/anon/authenticated) → `net.http_post` → `POST /api/semantic/light-registered`. URL/segredo vêm de `public.semantic_webhook_config` (1 linha, RLS sem policies + REVOKE = deny-by-default) — **não** de `ALTER DATABASE ... "app.settings.*"` (GUC placeholder exige superuser; no Supabase dá `42501 permission denied to set parameter`). GUC fica como override opcional; sem config o trigger fica inerte e sem pg_net só emite WARNING. Required by `app/api/semantic/light-registered`. |
 | `supabase/migration-libras-progress.sql` | Mini-curso Libras: ensures `libras_progress` table + unique `(user_id,word_id)`, drops conflicting RLS policies, installs permissive `FOR ALL USING (true)` (fixes POST 42501 with publishable key). |
 | `supabase/migration-tutor-documentos.sql` | Documentos enviados (PDF/TXT): `tutor_documents`, `tutor_document_chunks` (VECTOR 768) + RPC `match_document_chunks`, `tutor_flashcards` (SM-2), `review_artifacts` (simulado/quiz/mapa_mental/seminario/resumo/plano), `questions.origem += 'documento'`. Required by `lib/tutor/documents.ts`, `lib/tutor/review.ts`, `/api/tutor/documents*`, `/api/tutor/review`, `/api/tutor/flashcards`. |
 | `supabase/migration-tutor-prova-real.sql` | Questões de provas reais: `questions.origem += 'prova_real'`. Required by `lib/tutor/seeds.ts` (seeds de ética), badge "Prova real" em `components/TutorInteligente/QuestionCard.tsx`. |
 | `supabase/migration-user-settings.sql` | Preferências do usuário em nuvem: `user_settings` (PK `user_id`, `voice JSONB`) + RLS permissivo. Required by `app/api/user/settings` (sync do supressor de ruído via `hooks/useVoiceSettings.ts`). |
+| `supabase/migration-cefsa-verification.sql` | Aluno ativo do CEFSA: `cefsa_verifications` (PK `user_id`, `ra_rm`, `moodle_user_id`, `email`, `verified_at`/`expires_at`) + RLS permissivo. Required by `app/api/auth/verify-cefsa` (`lib/cefsa.ts`). |
 
 Rules:
 1. Never rewrite an already-applied baseline file with new DDL — create the next `migration-*.sql` instead.
@@ -100,13 +102,44 @@ Rules:
 3. Document each new migration in this table.
 4. After deploy, run the verification queries at the bottom of the migration file.
 
+## Verificação CEFSA (aluno ativo — gate do painel de admin)
+
+`POST /api/auth/verify-cefsa { ra, senha, userId? }` confirma se alguém é
+aluno **ativo** do Centro Educacional da Fundação Salvador Arena e grava a
+prova no Supabase (`cefsa_verifications`); `GET /api/auth/verify-cefsa?userId=`
+é o gate (`verified: true` ⇒ pode abrir o painel).
+
+- **Fonte**: Web Services do Moodle do CEFSA — `POST /login/token.php`
+  (service `moodle_mobile_app`) → `core_webservice_get_site_info` →
+  (opcional) `core_user_get_users_by_field` (e-mail/suspensão; se a função
+  não estiver liberada no service, segue sem). Config em `lib/cefsa.ts`
+  (`CEFSA_MOODLE_URL`, `CEFSA_MOODLE_SERVICE`).
+- **Endpoint REST real**: `/webservice/rest/server.php` (o canônico
+  `/webservice/rest.php` responde 404 nesse host — verificado em 2026-09).
+- **O que NÃO funciona**: o Portal do Aluno (`aluno.cefsa.edu.br`) é ASP.NET
+  MVC com reCAPTCHA v3 + `__RequestVerificationToken` — sem API. Se o Moodle
+  devolver `invalidlogin` mesmo com a senha correta, a conta é OIDC-only
+  (login Microsoft) e o caminho local não serve (ir para SSO/ADFS).
+- **Rate limit** (`lib/cefsa.ts`, module-level Map): 10 tentativas/10 min por
+  IP + trava de 15 min após 5 falhas seguidas no mesmo RA (429 +
+  `Retry-After`). É por instância do serverless — não gravar contador no
+  Supabase: a publishable key é pública e derrubaria o contador.
+- **LGPD**: a senha só vai para o Moodle, nunca é persistida; a linha guarda
+  identidade + `verified_at`/`expires_at` (validade 7 dias, revalidar via
+  POST). Revogar: `DELETE FROM cefsa_verifications WHERE user_id = '...'`.
+- **Identidade**: prefira `Authorization: Bearer <access_token>` (validado
+  com `supabase.auth.getUser`); sem token, cai no `userId` do corpo/query
+  (convenção do repo, mais fraca — mandar token assim que o painel existir).
+- Teste manual: `CEFSA_TEST_RA=... CEFSA_TEST_SENHA=... npx --yes tsx scripts/test-cefsa-verify.ts`.
+  Migration: `supabase/migration-cefsa-verification.sql`.
+
 ## Tutor research timeout
 
 `POST /api/tutor/research` runs a long cascade (reuse → optional light scrapers → ≤2 LLM extracts). It **must** stay under the Vercel function budget:
 
 - `vercel.json` → `functions["app/api/tutor/research/route.ts"].maxDuration = 300` (mirrors route `export const maxDuration = 300`). Without this entry, the platform default (~60s) kills the request with `FUNCTION_INVOCATION_FAILED`.
 - `lib/tutor/researchQuestions.ts` enforces a soft budget (`HEAVY_BUDGET_MS` for scrapers, `HARD_STOP_MS` for LLM, `MAX_LLM_EXTRACTS = 2`) and returns partial results + `errors` instead of hanging.
-- Tutor path calls `searchSources({ light: true, priorDecision, maxTopicsForSearch: 2, searchOptions.maxPerSource })` so it does not run full `understandSources` (retrieval/rerank/full-text) or topic×scraper fan-out. Light mode **still persists** scraped sources via `persistPartialBatch` (metadata only, `shouldPersist: true`) so research progress is not lost.
+- Tutor path calls `searchSources({ light: true, priorDecision, maxTopicsForSearch: 2, searchOptions.maxPerSource })` so it does not run full `understandSources` (retrieval/rerank/full-text) or topic×scraper fan-out. Light mode **still persists** scraped sources via `persistPartialBatch` (metadata only, `shouldPersist: true`, born `semantic_status='light'`) so research progress is not lost — and that write fires phase 2 like any other batch.
 
 When changing this route or `searchSources`, keep those three constraints (vercel.json entry, time budget, light mode) in sync.
 
@@ -118,27 +151,31 @@ Full (non-light) `searchSources` runs in **two phases** (portal queues + backgro
 
 1. Scrapers finish → `onProcessingStart(totalFound, 'Analisando filas por portal (fase leve)...')`.
 2. `runLightPhase` batches ALL sources (memory pool + scraper hits) — 1 embed per source, no full-text — scores them (query cosine + domain anchor) and builds `queues: Map<portal, sources[]>` sorted 1→2→3.
-3. `roundRobinQueueItems` walks the queues fairly (portal A pos 1, portal B pos 1, …) → `processLightPhase` persists in batches of 25 with `semantic_status='light'` + `semantic_query`, emitting `onPortalQueuesReady`, per-portal `onSourceVerified` (`portal`/`queueIndex`/`queueTotal`) and finally `onPhase2Enqueued`.
+3. `roundRobinQueueItems` walks the queues fairly (portal A pos 1, portal B pos 1, …) → `processLightPhase` persists in batches of 25 with `semantic_status='light'` + `semantic_query`, emitting `onPortalQueuesReady`, per-portal `onSourceVerified` (`portal`/`queueIndex`/`queueTotal`) and finally `onPhase2Enqueued`. **Each batch already fires phase 2 right after the write** (see below).
 4. If the phase throws (quota/OOM), everything is wrapped as light and persisted anyway (fallback path in `searchSources`).
 5. Final `persistSearchOutcome` is an idempotent upsert + `search_queries` log.
 
-### FASE 2 — full, background (Inngest — `lib/semantic/phase2.ts`)
+### FASE 2 — full, background (Inngest — `lib/semantic/phase2.ts` + `lib/semantic/enqueue.ts`)
 
-- `enqueueFullSemantic({query, sourceIds})` → event `semantic/full.requested`; chain step processes `PHASE2_CHUNK_SIZE=8` rows per invocation (`ENGINE_CONCURRENCY=2`), requeues until empty or `MAX_CHAIN_ROUNDS=120`. Checkpoint is the DB column — crash-safe/resumable by design.
-- Each row: `understandFullOne` (retrieve → rerank → full-text → chunks → categorias) → `indexSources` with `semanticStatus:'full'`. **Fallback leve (`understandOneLight`) does NOT promote** — stays `'light'` for a later backfill retry.
-- `semanticBackfillFn` (cron `*/10 * * * *`) kicks a chain for ALL remaining `'light'` rows (old DB rows backfilled by migration `DEFAULT 'light'`), ordered by `reuse_count` with portal round-robin.
+- **No cron — the trigger is write-driven.** Every batch that lands `semantic_status='light'` calls `enqueueFullSemantic()` from `lib/evidenceIndex.indexSources` (single write choke point for all writers) → event `semantic/light.registered` → `semantic-light-kick` (debounce `period: 5s`, `timeout: 30s`) → event `semantic/full.requested` → chain.
+- Chain step processes `PHASE2_CHUNK_SIZE=8` rows per invocation (`ENGINE_CONCURRENCY=2`), requeues until empty or `MAX_CHAIN_ROUNDS=120`. Checkpoint is the DB column — crash-safe/resumable by design.
+- The first chunk reads the **global** light queue (`reuse_count` desc + portal round-robin), never a `sourceIds` list — so every trigger also sweeps **legacy/orphan rows** written outside that request (migration `DEFAULT 'light'`, old rows).
+- The chain keeps going even when a chunk promotes **0** rows (full-text fallback), up to `MAX_STALLED_ROUNDS=3` consecutive empty chunks; after that it stops and the next light write reactivates it.
+- Each row: `understandFullOne` (retrieve → rerank → full-text → chunks → categorias) → `indexSources` with `semanticStatus:'full'`. **Fallback leve (`understandOneLight`) does NOT promote** — stays `'light'` and is retried on the next trigger. Because phase 2 only writes `'full'`, its own `indexSources` call emits no event (no re-entrancy).
+- Writers covered automatically: phase-1 batches, Tutor light path, phase-1 fallback, final `persistSearchOutcome`, `/api/evidence/index`. Paths that do **not** write (reuse-decision `pendingFullSemanticIds`) call `enqueueFullSemantic({query})` explicitly in `searchSources`.
+- Safety net for writes **outside the app** (manual SQL, seeds): either the Dashboard hook (Database → Webhooks) or `supabase/migration-semantic-webhook.sql` (row trigger, config in `public.semantic_webhook_config` — the SQL path must NOT use `ALTER DATABASE ... "app.settings.*"`: placeholder GUCs need superuser and Supabase returns `42501`) → `POST /api/semantic/light-registered` (auth `Authorization: Bearer $SEMANTIC_WEBHOOK_SECRET` **or** the `secret` column of that table; responds 503 when unset, so the webhook is inert until configured). Both may be enabled together — the route is cheap and the Inngest debounce coalesces duplicates.
 - Endpoint: `app/api/inngest/route.ts` (`maxDuration = 300` in `vercel.json`). Dev: `npx inngest-cli@latest dev` + `INNGEST_DEV=1` (see `.env.example`). Prod: `INNGEST_EVENT_KEY`/`INNGEST_SIGNING_KEY`.
 - Status polling: `GET /api/gemini/semantic-status` → `{pending, full, lightByPortal}` (chip "classificando em 2º plano" in `PesquisadorFontesCard.tsx`, polls every 10s).
 
 ### Reuse gate (`lib/reuseDecision.ts`)
 
 - `decideReuse` counts **only `semantic_status='full'`** in coverage/diversity (topic rows + `match_sources_by_embedding`, which now RETURNS `semantic_status`).
-- Light matches are excluded from `sourcesToReuse` and returned as `pendingFullSemanticIds` → `searchSources` enqueues them to phase 2 immediately (`enqueueFullSemantic` right after the decision).
+- Light matches are excluded from `sourcesToReuse` and returned as `pendingFullSemanticIds` → `searchSources` enqueues phase 2 immediately (`enqueueFullSemantic({query})` right after the decision — no write happens here, so nothing else triggers it).
 - `indexSource` never downgrades `'full'` → `'light'`; `understandFullOne` stamps the stage on every result.
 
 Progress events: SSE `processing_progress` → client `verifiedIds` (blue badges) + `%` counter + per-portal chips; `portal_queues` and `semantic_full_queued` carry phase transitions. `onSourceVerified`/`onPortalQueuesReady`/`onPhase2Enqueued` live on `SourceSearchProgress`.
 
-When changing this pipeline keep in sync: migration `supabase/migration-semantic-status.sql`, `vercel.json` inngest entry, `INNGEST_DEV` docs, and the SSE consumers in `PesquisadorFontesCard.tsx`.
+When changing this pipeline keep in sync: migrations `supabase/migration-semantic-status.sql` + `supabase/migration-semantic-webhook.sql`, `vercel.json` inngest entry, `INNGEST_DEV` docs, the webhook contract in `app/api/semantic/light-registered` + `SEMANTIC_WEBHOOK_SECRET` in `.env.example`, and the SSE consumers in `PesquisadorFontesCard.tsx`.
 
 ### Memory / SIGKILL (Vercel)
 

@@ -340,7 +340,7 @@ export async function understandFullOne(
     console.warn('[SemanticEngine] Pipeline completo falhou, fallback leve:', source.title, err);
     try {
       const light = await understandOneLight(queryEmbedding, source, domain);
-      // Fallback leve NÃO é 'full' — fica 'light' e a fase 2/backfill
+      // Fallback leve NÃO é 'full' — fica 'light' e a fase 2
       // tenta de novo mais tarde (indexSource nunca rebaixa 'full').
       return { ...light, semanticStatus: 'light', semanticQuery: query };
     } catch (lightErr) {

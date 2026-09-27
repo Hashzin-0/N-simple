@@ -1,4 +1,3 @@
-import { Inngest } from 'inngest';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { embedText } from '@/lib/semantic/embeddings';
@@ -7,6 +6,13 @@ import { indexSources } from '@/lib/evidenceIndex';
 import { extractTopics } from '@/lib/topicExtractor';
 import { buildSourceFromDb } from '@/lib/reuseDecision';
 import { ENGINE_CONCURRENCY, DomainKey } from '@/lib/semantic/config';
+import {
+  inngest,
+  SEMANTIC_FULL_EVENT,
+  SEMANTIC_LIGHT_EVENT,
+  FullSemanticEventData,
+  enqueueFullSemantic,
+} from '@/lib/semantic/enqueue';
 
 /**
  * FASE 2 — understandOne completo em segundo plano (Inngest).
@@ -15,33 +21,36 @@ import { ENGINE_CONCURRENCY, DomainKey } from '@/lib/semantic/config';
  * Aqui elas são reprocessadas com full-text + cross-encoder + categorias e
  * atualizadas para 'full' — só então a memória de evidências as reutiliza.
  *
+ * Gatilho: NÃO existe mais cron. Toda gravação de fonte 'light'
+ * (`lib/evidenceIndex.indexSources`) chama `enqueueFullSemantic()` →
+ * evento `semantic/light.registered` → função `semantic-light-kick`
+ * (debounce 5s) → evento `semantic/full.requested` → esta cadeia.
+ * O 1º lote lê a fila global, então o disparo também varre linhas
+ * legadas que ninguém acabou de gravar.
+ *
  * Retomável de onde parou: o checkpoint é a própria coluna
  * `semantic_status`; cada step processa um chunk pequeno e re-enfileira
  * o próximo. O budget "reseta" a cada invocação (300s na Vercel).
  *
  * Ordem: round-robin entre portais (nenhum espera o outro) com prioridade
- * para as mais reutilizadas (reuse_count) no backfill.
+ * para as mais reutilizadas (reuse_count).
  *
  * Dev local: `npx inngest-cli@latest dev` + INNGEST_DEV=1 no .env.
  */
 
-export const inngest = new Inngest({ id: 'agronomica-n-pro' });
-
-export const SEMANTIC_FULL_EVENT = 'semantic/full.requested';
+export { inngest, enqueueFullSemantic, SEMANTIC_FULL_EVENT, SEMANTIC_LIGHT_EVENT };
+export type { FullSemanticEventData };
 
 /** Fontes processadas por step (cada uma: fetch full-text + chunks + embeds). */
 export const PHASE2_CHUNK_SIZE = 8;
 /** Teto de re-encadeamentos de uma mesma cadeia (evita loop infinito). */
 export const MAX_CHAIN_ROUNDS = 120;
-
-export interface FullSemanticEventData {
-  /** Ids explícitos (ordem round-robin da busca que os enfileirou). */
-  sourceIds?: string[];
-  /** Query da busca que descobriu as fontes (fallback por linha). */
-  query?: string;
-  /** Índice do step na cadeia (0 = primeiro). */
-  round?: number;
-}
+/**
+ * Lotes seguidos sem nenhuma promoção antes de a cadeia desistir.
+ * Protege contra fontes que nunca sobem de 'light' (full-text fora do ar)
+ * sem travar o resto da fila — a próxima gravação reativa tudo.
+ */
+export const MAX_STALLED_ROUNDS = 3;
 
 export interface ChunkOutcome {
   loaded: number;
@@ -71,32 +80,14 @@ function toScientificSource(row: PendingRow): ScientificSource {
 
 /**
  * Carrega o próximo lote de fontes 'light' (fila da fase 2).
- *  - `sourceIds`: preserva a ordem round-robin enviada pela busca;
- *  - sem ids: ordena por reuse_count (mais reutilizáveis primeiro) e
- *    intercala portais para o chunk não vir todo de um portal só.
+ * Sempre a fila global: ordena por reuse_count (mais reutilizáveis
+ * primeiro) e intercala portais para o chunk não vir todo de um portal só.
+ * Por ser global, cada disparo também varre linhas legadas/órfãs.
  */
-async function loadPendingBatch(
-  opts: { sourceIds?: string[]; size: number },
-): Promise<PendingRow[]> {
+async function loadPendingBatch(opts: { size: number }): Promise<PendingRow[]> {
   if (!isSupabaseConfigured()) return [];
 
-  const { size, sourceIds } = opts;
-
-  if (sourceIds && sourceIds.length > 0) {
-    const { data, error } = await supabase!
-      .from('sources')
-      .select(SOURCE_COLUMNS)
-      .eq('semantic_status', 'light')
-      .in('id', sourceIds);
-    if (error || !data) {
-      console.warn('[Phase2] Falha ao carregar lote por ids:', error);
-      return [];
-    }
-    const order = new Map(sourceIds.map((id, i) => [id, i]));
-    return (data as unknown as PendingRow[])
-      .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
-      .slice(0, size);
-  }
+  const { size } = opts;
 
   const candidateCount = Math.min(Math.max(size * 5, 20), 60);
   const { data, error } = await supabase!
@@ -179,7 +170,7 @@ export async function processFullSemanticChunk(
   opts: FullSemanticEventData & { size?: number },
 ): Promise<ChunkOutcome> {
   const size = opts.size ?? PHASE2_CHUNK_SIZE;
-  const rows = await loadPendingBatch({ sourceIds: opts.sourceIds, size });
+  const rows = await loadPendingBatch({ size });
   if (rows.length === 0) return { loaded: 0, processed: 0, remaining: 0 };
 
   const domain: DomainKey = 'agro';
@@ -202,7 +193,7 @@ export async function processFullSemanticChunk(
 
         const full = await understandFullOne(query, queryEmbedding, source, domain);
         // Fallback leve (entendeu só o resumo) NÃO promove — a fonte fica
-        // 'light' e o backfill tenta de novo. Só 'full' entra no chunk.
+        // 'light' e a próxima gravação tenta de novo. Só 'full' entra no chunk.
         if (full.semanticStatus !== 'full') {
           console.warn('[Phase2] fallback leve — permanece light:', row.id);
           continue;
@@ -254,27 +245,11 @@ export async function processFullSemanticChunk(
 }
 
 /**
- * Enfileira a fase 2. Fire-and-forget: se o Inngest não estiver
- * configurado/rodando, avisa e o cron de backfill assume depois.
+ * Cadeia de chunks: processa um lote da fila 'light' e re-enfila o
+ * próximo até zerar. Também continua quando o lote não promoveu NADA
+ * (fallback de full-text) — mas só `MAX_STALLED_ROUNDS` vezes seguidas,
+ * para uma fonte ingovernável não segurar a cadeia para sempre.
  */
-export async function enqueueFullSemantic(data: FullSemanticEventData): Promise<boolean> {
-  if (!isSupabaseConfigured()) return false;
-  if (!data.sourceIds || data.sourceIds.length === 0) return false;
-
-  try {
-    await inngest.send({ name: SEMANTIC_FULL_EVENT, data });
-    return true;
-  } catch (err) {
-    console.warn(
-      '[Phase2] Não foi possível enfileirar a fase 2 (Inngest fora do ar?). ' +
-        'As fontes continuam light e o cron de backfill as assume. Erro:',
-      err instanceof Error ? err.message : err,
-    );
-    return false;
-  }
-}
-
-/** Cadeia de chunks: processa um lote e re-enfila o próximo até zerar. */
 export const semanticFullFn = inngest.createFunction(
   {
     id: 'semantic-full',
@@ -285,28 +260,33 @@ export const semanticFullFn = inngest.createFunction(
   async ({ event, step }) => {
     const data = (event.data ?? {}) as FullSemanticEventData;
     const round = typeof data.round === 'number' ? data.round : 0;
+    const stalledBefore = typeof data.stalled === 'number' ? data.stalled : 0;
 
     const outcome = await step.run('process-chunk', () =>
       processFullSemanticChunk({ ...data, size: PHASE2_CHUNK_SIZE }),
     );
 
+    const stalled = outcome.processed === 0 ? stalledBefore + 1 : 0;
+
     const shouldContinue =
       outcome.loaded > 0 &&
-      outcome.processed > 0 &&
       outcome.remaining > 0 &&
-      round < MAX_CHAIN_ROUNDS;
+      round < MAX_CHAIN_ROUNDS &&
+      stalled < MAX_STALLED_ROUNDS;
 
     if (shouldContinue) {
       await step.run('requeue', () =>
         inngest.send({
           name: SEMANTIC_FULL_EVENT,
-          // Próximo passo da cadeia: sem ids explícitos (os da busca já
-          // foram) — passa a alimentar o backfill geral round-robin.
-          data: { query: data.query, round: round + 1 },
+          data: { query: data.query, round: round + 1, stalled },
         }),
       );
     } else if (outcome.loaded > 0 && outcome.processed === 0) {
-      console.warn('[Phase2] Chunk não atualizou nenhuma fonte — cadeia interrompida.', outcome);
+      console.warn(
+        `[Phase2] Lote sem nenhuma promoção (stalled=${stalled}, round=${round}) — ` +
+          'cadeia encerrada; a próxima gravação light a reativa.',
+        outcome,
+      );
     }
 
     return outcome;
@@ -314,21 +294,34 @@ export const semanticFullFn = inngest.createFunction(
 );
 
 /**
- * Backfill contínuo: a cada 10 min dispara uma nova cadeia para as fontes
- * 'light' restantes (linhas antigas do banco + fontes órfãs de buscas).
+ * Gatilho da fase 2 com debounce: agrupa a chuva de
+ * `semantic/light.registered` (um por lote gravado) numa única
+ * reativação da cadeia. `period` 5s = latência típica depois da última
+ * gravação; `timeout` 30s = teto mesmo com escrita contínua.
+ *
+ * Só emite `semantic/full.requested` — a cadeia em si (debounce-free)
+ * continua disparando imediatamente quando é ela que re-enfila.
  */
-export const semanticBackfillFn = inngest.createFunction(
-  { id: 'semantic-backfill', retries: 1, triggers: [{ cron: '*/10 * * * *' }] },
-  async ({ step }) => {
-    await step.run('kick-backfill', async () => {
+export const semanticLightKickFn = inngest.createFunction(
+  {
+    id: 'semantic-light-kick',
+    retries: 1,
+    debounce: { period: '5s', timeout: '30s' },
+    triggers: [{ event: SEMANTIC_LIGHT_EVENT }],
+  },
+  async ({ event, step }) => {
+    const data = (event.data ?? {}) as FullSemanticEventData;
+    return await step.run('kick', async () => {
       if (!isSupabaseConfigured()) return 'sem supabase';
       try {
-        await inngest.send({ name: SEMANTIC_FULL_EVENT, data: { round: 0 } });
+        await inngest.send({
+          name: SEMANTIC_FULL_EVENT,
+          data: { query: data.query, round: 0 },
+        });
         return 'enfileirado';
       } catch (err) {
         return `falhou: ${err instanceof Error ? err.message : String(err)}`;
       }
     });
-    return 'ok';
   },
 );

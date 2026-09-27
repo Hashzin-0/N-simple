@@ -5,7 +5,7 @@ import { extractTopics, TopicExtractorConfig } from '@/lib/topicExtractor';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { filterAndRankRelevant, UnderstoodSource } from '@/lib/semantic/relevanceEngine';
 import { runLightPhase, roundRobinQueueItems } from '@/lib/semantic/portalQueues';
-import { enqueueFullSemantic } from '@/lib/semantic/phase2';
+import { enqueueFullSemantic } from '@/lib/semantic/enqueue';
 import { embedText } from '@/lib/semantic/embeddings';
 import { DomainKey } from '@/lib/semantic/config';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
@@ -171,11 +171,15 @@ async function persistSearchOutcome(
  * Persiste um lote parcial de fontes já analisadas (incremental).
  * Não registra search_queries (só no final). Retorna stats agregadas
  * + os ids gravados (alimento da fila da fase 2).
+ *
+ * A gravação em si já dispara a fase 2 (`indexSources` chama
+ * `enqueueFullSemantic` quando o lote deixa fontes 'light' no banco) —
+ * `lightIds` é só o relatório para a UI.
  */
 async function persistPartialBatch(
   topics: string[],
   batch: UnderstoodSource[],
-): Promise<{ indexed: number; errors: number; ids: string[] } | null> {
+): Promise<{ indexed: number; errors: number; ids: string[]; lightIds: string[] } | null> {
   if (!isSupabaseConfigured() || batch.length === 0) return null;
   try {
     const stats = await indexSources(batch, topics);
@@ -183,10 +187,11 @@ async function persistPartialBatch(
       indexed: stats.indexed + stats.archivedOffTopic,
       errors: stats.errors,
       ids: stats.indexedIds,
+      lightIds: stats.lightIds,
     };
   } catch (err) {
     console.warn('[ResearchService] Falha ao indexar lote parcial:', err);
-    return { indexed: 0, errors: batch.length, ids: [] };
+    return { indexed: 0, errors: batch.length, ids: [], lightIds: [] };
   }
 }
 
@@ -204,9 +209,10 @@ interface ProcessLightResult {
  *    sem full-text) e monta as filas por portal ordenadas 1→2→3;
  * 2. percorre as filas em round-robin justo (portal 1, portal 2, ...
  *    depois posição 2 de cada) emitindo progresso global + por portal;
- * 3. persiste incrementalmente em lotes de 25 (`semantic_status='light'`);
- * 4. enfileira a FASE 2 (Inngest) com os ids gravados — lá o
- *    understandOne completo roda em 2º plano e vira 'full' (reutilizável).
+ * 3. persiste incrementalmente em lotes de 25 (`semantic_status='light'`) —
+ *    cada lote já dispara a FASE 2 (Inngest) logo após gravar;
+ * 4. a FASE 2 (Inngest) faz o understandOne completo em 2º plano e as
+ *    fontes sobem para 'full' (reutilizáveis).
  */
 async function processLightPhase(opts: {
   query: string;
@@ -230,6 +236,7 @@ async function processLightPhase(opts: {
   let verifiedCount = 0;
   let persistedCount = 0;
   const indexedIds: string[] = [];
+  let lightCount = 0;
 
   const PERSIST_BATCH = 25;
   let pending: typeof items = [];
@@ -242,12 +249,13 @@ async function processLightPhase(opts: {
     pending = [];
     toPersist = [];
 
-    let stats: { indexed: number; errors: number; ids: string[] } | null = null;
+    let stats: { indexed: number; errors: number; ids: string[]; lightIds: string[] } | null = null;
     if (batch.length > 0) {
       stats = await persistPartialBatch(topics, batch);
       if (stats) {
         persistedCount += stats.indexed;
         indexedIds.push(...stats.ids);
+        lightCount += stats.lightIds.length;
       }
     }
 
@@ -284,11 +292,11 @@ async function processLightPhase(opts: {
   }
   await flush();
 
-  // Fase 2: enfileira o understandOne completo em 2º plano (retomável).
+  // Fase 2: cada lote gravado já disparou a cadeia (via indexSources);
+  // aqui só reportamos para a UI quantas fontes entraram na fila light.
   const uniqueIds = [...new Set(indexedIds)];
-  if (uniqueIds.length > 0) {
-    const enqueued = await enqueueFullSemantic({ query, sourceIds: uniqueIds });
-    onProgress?.onPhase2Enqueued?.(enqueued ? uniqueIds.length : 0);
+  if (lightCount > 0) {
+    onProgress?.onPhase2Enqueued?.(lightCount);
   }
 
   return {
@@ -366,13 +374,12 @@ export async function searchSources(
   onProgress?.onMemoryDecision?.(decision);
 
   // Matches 'light' da memória (decideReuse não os conta como reuso):
-  // enfileira na fase 2 AGORA — quando voltarem 'full' numa próxima
-  // busca, já entram no coverage.
+  // NADA é gravado aqui, então nenhum writer dispara sozinho — enfileira
+  // na fase 2 AGORA. O evento drena a fila light inteira (inclusive estas
+  // linhas), então não precisa mandar os ids; quando voltarem 'full',
+  // já entram no coverage da próxima busca.
   if (decision && decision.pendingFullSemanticIds.length > 0) {
-    await enqueueFullSemantic({
-      query,
-      sourceIds: decision.pendingFullSemanticIds,
-    });
+    await enqueueFullSemantic({ query });
   }
 
   // Pool de candidatas já conhecidas (memória Supabase + existingSources
@@ -484,7 +491,7 @@ export async function searchSources(
     // Caminho light do Tutor: ainda persiste o que os scrapers acharam
     // (formatado/documentado), para não perder o progresso da pesquisa.
     // shouldPersist=true força gravação mesmo sem score semântico cheio.
-    // Nasce 'light' — a fase 2 (backfill) completa o understandOne.
+    // Nasce 'light' — a gravação dispara a fase 2, que completa o understandOne.
     const lightToPersist = lightNew.map((s) => ({
       ...s,
       shouldPersist: true,
@@ -555,12 +562,10 @@ export async function searchSources(
         status: 'persisted',
       });
     });
-    if (partial && partial.ids.length > 0) {
-      const enqueued = await enqueueFullSemantic({
-        query,
-        sourceIds: partial.ids,
-      });
-      onProgress?.onPhase2Enqueued?.(enqueued ? partial.ids.length : 0);
+    // A gravação do lote já disparou a cadeia (via indexSources) — só
+    // reportamos o tamanho da fila para a UI.
+    if (partial && partial.lightIds.length > 0) {
+      onProgress?.onPhase2Enqueued?.(partial.lightIds.length);
     }
     processed = {
       understood: fallbackSources,
