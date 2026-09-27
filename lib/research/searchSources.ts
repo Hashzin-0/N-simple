@@ -10,10 +10,10 @@ import {
   classifyOutOfTopKForPersistence,
   UnderstoodSource,
 } from '@/lib/semantic/relevanceEngine';
-import { understandSourcesByPortalQueue } from '@/lib/semantic/portalSemanticEngine';
 import { embedText, embedTexts } from '@/lib/semantic/embeddings';
 import { DomainKey } from '@/lib/semantic/config';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
+import { understandSourcesByPortalQueue } from '@/lib/semantic/portalSemanticEngine';
 
 export interface SourceSearchRequest {
   query: string;
@@ -451,7 +451,9 @@ export async function searchSources(
         onSourceComplete: (src) => {
           emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
           if (src.shouldPersist) {
-            void persistPartialBatch(topics, [src]).then((partial) => {
+            void getSharedTopicEmbeddings().then((topicEmbeddings) =>
+              persistPartialBatch(topics, [src], topicEmbeddings)
+            ).then((partial) => {
               if (partial) persistedCount += partial.indexed;
             }).catch((err) => {
               console.warn('[ResearchService] Persistência semântica assíncrona falhou:', err);
@@ -460,16 +462,14 @@ export async function searchSources(
         },
         onPortalProgress: (progress) => {
           console.info(
-            `[SemanticQueue] ${progress.portal} ${progress.index}/${progress.total} — ${progress.model}`
+            `[SemanticQueue] ${progress.portal} ${progress.index}/${progress.total} — ${progress.model}`,
           );
         },
       },
     );
     understood = semanticResult.sources;
   } catch (err) {
-    // Se o motor morrer no meio (quota, erro de embed, OOM parcial),
-    // tenta um segundo passe "leve" para não perder a corrida dos scrapers.
-    console.warn('[ResearchService] understandSources falhou, retry light:', err);
+    console.warn('[ResearchService] Fila semântica falhou, retry light:', err);
     onProgress?.onProcessingStart?.(
       result.sources.length,
       'Análise semântica interrompida — retomando com modo leve...',
@@ -487,12 +487,10 @@ export async function searchSources(
       );
     } catch (retryErr) {
       console.warn('[ResearchService] retry light também falhou:', retryErr);
-      // Fallback final: envolve as fontes cruas como light e persiste.
       understood = result.sources.map(toLightUnderstood).map((s) => ({
         ...s,
         shouldPersist: true,
       }));
-      // Raw sources are already durable in source_persistence.
       for (const src of understood) {
         emitVerified(src, 'persisted');
       }
