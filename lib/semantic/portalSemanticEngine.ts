@@ -147,7 +147,7 @@ function buildUnderstood(
     usedFullText: false,
     domainScore: semanticScore,
     inAgroDomain,
-    shouldPersist: !discarded || inAgroDomain,
+    shouldPersist: !discarded || inAgroDomain,\n    semanticProvider: provider.kind,\n    semanticModel: provider.model,\n    semanticDimensions: provider.dimensions,
     trigonometricSimilarity: {
       cosTheta: Math.round(Math.max(-1, Math.min(1, cosine)) * 1000) / 1000,
       angleDegrees: Math.round(
@@ -228,7 +228,7 @@ export async function understandSourcesByPortalQueue(
         );
 
         results.push(understood);
-        usage[embedded.provider.model] = (usage[embedded.provider.model] || 0) + 1;
+        usage[embedded.provider.model] = (usage[embedded.provider.model] || 0) + 1;\n\n        if (providerBefore.model !== embedded.provider.model) {\n          console.info(\`[PortalSemanticEngine] ${portal}: modelo mudou durante a chamada; fonte concluída no espaço ${embedded.provider.model}.\`);\n        }
 
         options?.onPortalProgress?.({
           portal,
