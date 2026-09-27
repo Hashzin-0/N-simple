@@ -1,6 +1,6 @@
 import { searchAllSourcesWithProgress, SearchOptions, ScrapedResult } from '@/lib/scrapers';
 import { decideReuse, ReuseDecision } from '@/lib/reuseDecision';
-import { indexSources, logSearchQuery } from '@/lib/evidenceIndex';
+import { indexSources, logSearchQuery, enqueueSourcesForPersistence } from '@/lib/evidenceIndex';
 import { extractTopics, TopicExtractorConfig } from '@/lib/topicExtractor';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import {
@@ -386,6 +386,14 @@ export async function searchSources(
     searchOptions,
     onProgress,
   );
+
+  // Enfileira imediatamente tudo que os scrapers encontraram. A fila é durável
+  // no Supabase e continua sendo drenada mesmo se a Function da Vercel morrer.
+  try {
+    await enqueueSourcesForPersistence(result.sources);
+  } catch (err) {
+    console.warn('[ResearchService] Não foi possível enfileirar persistência:', err);
+  }
 
   if (light) {
     // Contexto de prompt semântico: top-K por score de título/reuso, sem
