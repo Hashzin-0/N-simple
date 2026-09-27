@@ -19,6 +19,12 @@ export const EMBEDDING_MODEL = 'gemini-embedding-2';
 /** Dimensão do vetor de saída do modelo acima (Matryoshka: 768 recomendado). */
 export const EMBEDDING_DIM = 768;
 
+/** Cross-encoder local legado — mantido apenas para compatibilidade de módulos antigos. */
+export const CROSS_ENCODER_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
+
+/** Máximo de chunks avaliado por módulos legados de reranking. */
+export const MAX_CHUNKS_PER_SOURCE = 6;
+
 /** Máximo de fontes avaliadas semanticamente na recuperação; 1000 evita pré-filtro lexical agressivo. */
 export const EMBEDDING_CANDIDATE_LIMIT = 1000;
 
