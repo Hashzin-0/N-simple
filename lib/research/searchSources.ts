@@ -419,19 +419,17 @@ export async function searchSources(
     };
   }
 
-  // Enfileira imediatamente tudo que os scrapers encontraram. A fila é durável
-  // no Supabase e continua sendo drenada mesmo se a Function da Vercel morrer.
-  try {
-    await enqueueSourcesForPersistence(result.sources);
-  } catch (err) {
-    console.warn('[ResearchService] Não foi possível enfileirar persistência:', err);
-  }
-
   const totalToAnalyze = result.sources.length;
   onProgress?.onProcessingStart?.(
     totalToAnalyze,
-    'Processando relevância semântica...',
+    'Processamento semântico iniciado — analisando relevância...',
   );
+
+  // A persistência bruta é durável e independente da análise. Não esperamos
+  // a RPC da fila aqui: ela não deve bloquear o início do processamento semântico.
+  void enqueueSourcesForPersistence(result.sources).catch((err) => {
+    console.warn('[ResearchService] Não foi possível enfileirar persistência:', err);
+  });
 
   // Persistência INCREMENTAL: cada fonte entendida pelo motor é gravada
   // assim que pronta (via onSourceComplete). Se o processo morrer no
@@ -528,9 +526,9 @@ export async function searchSources(
   const relevantNew = filterAndRankRelevant(understood);
   onProgress?.onProcessingComplete?.(understood.length, relevantNew.length);
 
-  // Fontes fora do top-K do rerank: classifica só por domínio (ex.: agro)
-  // e persiste se pertencerem ao domínio — descarta as não correspondidas
-  // que não têm relação com agronegócio/agropecuária.
+  // Fontes fora do top-K usam os embeddings documentais que o retrieval
+  // já calculou. Isso evita uma segunda rodada de dezenas de chamadas ao Gemini.
+  // A classificação residual continua sem bloquear o início da análise.
   let outOfTopK: UnderstoodSource[] = [];
   try {
     outOfTopK = await classifyOutOfTopKForPersistence(
@@ -539,15 +537,12 @@ export async function searchSources(
       understood,
       domain,
     );
-    // Persiste o restante em lotes (fora do top-K) — incremental também.
     const OUT_BATCH = 25;
     for (let i = 0; i < outOfTopK.length; i += OUT_BATCH) {
       const slice = outOfTopK.slice(i, i + OUT_BATCH);
       const partial = await persistPartialBatch(topics, slice, await getSharedTopicEmbeddings());
       if (partial) persistedCount += partial.indexed;
       for (const src of slice) {
-        // Emite para TODAS as classificadas (inclusive fora de domínio)
-        // para o chegar a 100% quando a fila terminar.
         emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
       }
     }
