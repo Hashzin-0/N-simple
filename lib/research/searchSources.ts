@@ -298,45 +298,21 @@ export async function searchSources(
       sharedQueryEmbedding,
       domain,
       {
-        onSourceComplete: async (src, meta) => {
-          if (src.shouldPersist) {
-            const partial = await persistPartialBatch(topics, [src], await getSharedTopicEmbeddings());
-            onProgress?.onSourceVerified?.({
-              sourceId: src.id,
-              title: src.title,
-              verifiedCount: meta.index + 1,
-              totalSources: meta.total,
-              sourceName: src.sourceName,
-              persistedCount: partial?.indexed ?? 0,
-              percentage: Math.round(((meta.index + 1) / Math.max(1, meta.total)) * 100),
-              status: partial && partial.errors === 0 && partial.indexed > 0 ? 'persisted' : 'analyzed',
-            });
-          } else {
-            onProgress?.onSourceVerified?.({
-              sourceId: src.id,
-              title: src.title,
-              verifiedCount: meta.index + 1,
-              totalSources: meta.total,
-              persistedCount: 0,
-              percentage: Math.round(((meta.index + 1) / Math.max(1, meta.total)) * 100),
-              status: 'analyzed',
-            });
-          }
+        onSourceComplete: (src, meta) => {
+          onProgress?.onSourceVerified?.({
+            sourceId: src.id,
+            title: src.title,
+            verifiedCount: meta.index + 1,
+            totalSources: meta.total,
+            sourceName: src.sourceName,
+            persistedCount: 0,
+            percentage: Math.round(((meta.index + 1) / Math.max(1, meta.total)) * 100),
+            status: src.shouldPersist ? 'persisted' : 'analyzed',
+          });
         },
-      },
-    );
     const relevant = filterAndRankRelevant(understood);
 
-    // Fontes vindas só do localStorage (existingSources) podem não estar no
-    // banco — indexa as que passam no filtro de domínio/relevância.
-    const indexingStats = await persistSearchOutcome(
-      query,
-      topics,
-      understood,
-      decision,
-      priorPool.length,
-      await getSharedTopicEmbeddings(),
-    );
+    const indexingStats = null;
 
     return {
       sources: relevant,
@@ -470,21 +446,16 @@ export async function searchSources(
       sharedQueryEmbedding,
       domain,
       {
-        onSourceComplete: async (src) => {
+        onSourceComplete: (src) => {
+          emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
           if (src.shouldPersist) {
-            const partial = await persistPartialBatch(topics, [src]);
-            if (partial && partial.indexed > 0) {
-              persistedCount += partial.indexed;
-              emitVerified(src, partial.errors > 0 ? 'error' : 'persisted');
-            } else {
-              emitVerified(src, partial ? 'error' : 'analyzed');
-            }
-          } else {
-            emitVerified(src, 'analyzed');
+            void persistPartialBatch(topics, [src]).then((partial) => {
+              if (partial) persistedCount += partial.indexed;
+            }).catch((err) => {
+              console.warn('[ResearchService] Persistência semântica assíncrona falhou:', err);
+            });
           }
         },
-      },
-    );
   } catch (err) {
     // Se o motor morrer no meio (quota, erro de embed, OOM parcial),
     // tenta um segundo passe "leve" para não perder a corrida dos scrapers.
@@ -499,15 +470,9 @@ export async function searchSources(
         result.sources,
         domain,
         {
-          onSourceComplete: async (src) => {
-            if (src.shouldPersist) {
-              const partial = await persistPartialBatch(topics, [src], await getSharedTopicEmbeddings());
-              if (partial) persistedCount += partial.indexed;
-            }
+          onSourceComplete: (src) => {
             emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
           },
-        },
-      );
     } catch (retryErr) {
       console.warn('[ResearchService] retry light também falhou:', retryErr);
       // Fallback final: envolve as fontes cruas como light e persiste.
@@ -515,8 +480,7 @@ export async function searchSources(
         ...s,
         shouldPersist: true,
       }));
-      const partial = await persistPartialBatch(topics, understood, await getSharedTopicEmbeddings());
-      if (partial) persistedCount += partial.indexed;
+      // Raw sources are already durable in source_persistence.
       for (const src of understood) {
         emitVerified(src, 'persisted');
       }
@@ -537,31 +501,25 @@ export async function searchSources(
       understood,
       domain,
     );
-    const OUT_BATCH = 25;
-    for (let i = 0; i < outOfTopK.length; i += OUT_BATCH) {
-      const slice = outOfTopK.slice(i, i + OUT_BATCH);
-      const partial = await persistPartialBatch(topics, slice, await getSharedTopicEmbeddings());
-      if (partial) persistedCount += partial.indexed;
-      for (const src of slice) {
-        emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
-      }
+    for (const src of outOfTopK) {
+      emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
+    }
     }
   } catch (err) {
     console.warn('[ResearchService] Falha ao classificar fontes fora do top-K:', err);
   }
 
-  // Indexa novas entendidas + fora do top-K do domínio + reutilizadas que
-  // podem ter vindo só do localStorage do cliente. Upsert idempotente —
-  // fontes já salvas incrementalmente são atualizadas.
-  const toIndex = [...understood, ...outOfTopK, ...reusedUnderstood];
-  const indexingStats = await persistSearchOutcome(
+  void logSearchQuery(
     query,
     topics,
-    toIndex,
-    decision,
     result.sources.length + priorPool.length,
-    await getSharedTopicEmbeddings(),
-  );
+    decision?.action ?? 'new_search',
+    decision?.coverageScore ?? 0,
+  ).catch((err) => {
+    console.warn('[ResearchService] Falha ao registrar search_queries:', err);
+  });
+
+  const indexingStats = null;
 
   // Combina contraponto (reutilizadas) + novas, sem duplicar por título.
   const seenTitles = new Set(reusedUnderstood.map(s => s.title));
