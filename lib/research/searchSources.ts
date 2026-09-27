@@ -5,11 +5,12 @@ import { extractTopics, TopicExtractorConfig } from '@/lib/topicExtractor';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import {
   understandSources,
+  understandSourcesLightFallback,
   filterAndRankRelevant,
   classifyOutOfTopKForPersistence,
   UnderstoodSource,
 } from '@/lib/semantic/relevanceEngine';
-import { embedText } from '@/lib/semantic/embeddings';
+import { embedText, embedTexts } from '@/lib/semantic/embeddings';
 import { DomainKey } from '@/lib/semantic/config';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
 
@@ -120,6 +121,7 @@ async function persistSearchOutcome(
   sourcesToIndex: UnderstoodSource[],
   decision: ReuseDecision | null,
   sourcesFound: number,
+  topicEmbeddings?: Map<string, number[]>,
 ): Promise<SourceSearchResult['indexingStats']> {
   if (!isSupabaseConfigured()) {
     console.warn(
@@ -135,7 +137,7 @@ async function persistSearchOutcome(
 
   let stats: SourceSearchResult['indexingStats'] = null;
   try {
-    stats = await indexSources(sourcesToIndex, topics);
+    stats = await indexSources(sourcesToIndex, topics, topicEmbeddings);
     console.info(
       `[ResearchService] Indexação: indexed=${stats?.indexed} archived=${stats?.archivedOffTopic} ` +
         `discarded=${stats?.discardedOutOfDomain} errors=${stats?.errors}`
@@ -166,10 +168,11 @@ async function persistSearchOutcome(
 async function persistPartialBatch(
   topics: string[],
   batch: UnderstoodSource[],
+  topicEmbeddings?: Map<string, number[]>,
 ): Promise<{ indexed: number; errors: number } | null> {
   if (!isSupabaseConfigured() || batch.length === 0) return null;
   try {
-    const stats = await indexSources(batch, topics);
+    const stats = await indexSources(batch, topics, topicEmbeddings);
     return { indexed: stats.indexed + stats.archivedOffTopic, errors: stats.errors };
   } catch (err) {
     console.warn('[ResearchService] Falha ao indexar lote parcial:', err);
@@ -215,6 +218,27 @@ export async function searchSources(
   const topics = customTopics && customTopics.length > 0
     ? customTopics
     : extractTopics(query, topicExtractorConfig);
+
+  let sharedTopicEmbeddings: Map<string, number[]> | undefined;
+  let sharedTopicEmbeddingsPromise: Promise<Map<string, number[]> | undefined> | null = null;
+  const getSharedTopicEmbeddings = async () => {
+    if (sharedTopicEmbeddings) return sharedTopicEmbeddings;
+    if (sharedTopicEmbeddingsPromise) return sharedTopicEmbeddingsPromise;
+
+    sharedTopicEmbeddingsPromise = (async () => {
+      const unique = [...new Set(topics.map((t) => t.replace(/_/g, ' ')))];
+      if (unique.length === 0) return undefined;
+      try {
+        const vectors = await embedTexts(unique, 'RETRIEVAL_DOCUMENT');
+        sharedTopicEmbeddings = new Map(unique.map((topic, i) => [topic, vectors[i]]));
+      } catch (err) {
+        console.warn('[ResearchService] Falha ao preparar embeddings de tópicos:', err);
+      }
+      return sharedTopicEmbeddings;
+    })();
+
+    return sharedTopicEmbeddingsPromise;
+  };
 
   // 1 única embed da query, reutilizada em todos os understandSources deste request.
   const sharedQueryEmbedding =
@@ -275,7 +299,7 @@ export async function searchSources(
       {
         onSourceComplete: async (src, meta) => {
           if (src.shouldPersist) {
-            const partial = await persistPartialBatch(topics, [src]);
+            const partial = await persistPartialBatch(topics, [src], await getSharedTopicEmbeddings());
             onProgress?.onSourceVerified?.({
               sourceId: src.id,
               title: src.title,
@@ -309,6 +333,7 @@ export async function searchSources(
       understood,
       decision,
       priorPool.length,
+      await getSharedTopicEmbeddings(),
     );
 
     return {
@@ -372,7 +397,7 @@ export async function searchSources(
     // (formatado/documentado), para não perder o progresso da pesquisa.
     // shouldPersist=true força gravação mesmo sem score semântico cheio.
     const lightToPersist = lightNew.map((s) => ({ ...s, shouldPersist: true }));
-    const lightStats = await persistPartialBatch(topics, lightToPersist);
+    const lightStats = await persistPartialBatch(topics, lightToPersist, await getSharedTopicEmbeddings());
 
     return {
       sources: [...reusedUnderstood, ...lightNew],
@@ -460,15 +485,14 @@ export async function searchSources(
       'Análise semântica interrompida — retomando com modo leve...',
     );
     try {
-      understood = await understandSources(
+      understood = await understandSourcesLightFallback(
         query,
         result.sources,
-        sharedQueryEmbedding,
         domain,
         {
           onSourceComplete: async (src) => {
             if (src.shouldPersist) {
-              const partial = await persistPartialBatch(topics, [src]);
+              const partial = await persistPartialBatch(topics, [src], await getSharedTopicEmbeddings());
               if (partial) persistedCount += partial.indexed;
             }
             emitVerified(src, src.shouldPersist ? 'persisted' : 'analyzed');
@@ -482,7 +506,7 @@ export async function searchSources(
         ...s,
         shouldPersist: true,
       }));
-      const partial = await persistPartialBatch(topics, understood);
+      const partial = await persistPartialBatch(topics, understood, await getSharedTopicEmbeddings());
       if (partial) persistedCount += partial.indexed;
       for (const src of understood) {
         emitVerified(src, 'persisted');
@@ -508,7 +532,7 @@ export async function searchSources(
     const OUT_BATCH = 25;
     for (let i = 0; i < outOfTopK.length; i += OUT_BATCH) {
       const slice = outOfTopK.slice(i, i + OUT_BATCH);
-      const partial = await persistPartialBatch(topics, slice);
+      const partial = await persistPartialBatch(topics, slice, await getSharedTopicEmbeddings());
       if (partial) persistedCount += partial.indexed;
       for (const src of slice) {
         // Emite para TODAS as classificadas (inclusive fora de domínio)
@@ -530,6 +554,7 @@ export async function searchSources(
     toIndex,
     decision,
     result.sources.length + priorPool.length,
+    await getSharedTopicEmbeddings(),
   );
 
   // Combina contraponto (reutilizadas) + novas, sem duplicar por título.

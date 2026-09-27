@@ -22,6 +22,9 @@ export const EMBEDDING_DIM = 768;
 /** Cross-encoder local, usado como sinal secundário de reranqueamento. */
 export const CROSS_ENCODER_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
 
+/** Máximo de fontes novas que recebem embedding na recuperação. */
+export const EMBEDDING_CANDIDATE_LIMIT = 50;
+
 /** Top-K para recuperação vetorial (primeira etapa do pipeline). */
 export const RETRIEVAL_TOP_K = 50;
 
@@ -34,8 +37,8 @@ export const CHUNK_TARGET_CHARS = 900;
 /** Sobreposição entre chunks consecutivos, em caracteres. */
 export const CHUNK_OVERLAP_CHARS = 150;
 
-/** Máximo de chunks avaliados por fonte (limita custo computacional por documento). */
-export const MAX_CHUNKS_PER_SOURCE = 8;
+/** Máximo de chunks avaliados pelo cross-encoder por fonte. */
+export const MAX_CHUNKS_PER_SOURCE = 6;
 
 /** Timeout ao buscar o texto completo da página/PDF de uma fonte. */
 export const FULL_TEXT_FETCH_TIMEOUT_MS = 12000;
@@ -50,8 +53,8 @@ export const ENGINE_CONCURRENCY = 2;
 export const TOP_K_CHUNKS_FOR_SCORE = 3;
 
 /** Peso do bi-encoder (embeddings densos) vs. cross-encoder no score combinado. */
-export const BI_ENCODER_WEIGHT = 0.7;
-export const CROSS_ENCODER_WEIGHT = 0.3;
+export const BI_ENCODER_WEIGHT = 0.6;
+export const CROSS_ENCODER_WEIGHT = 0.4;
 
 /** Quantas categorias semânticas (índice de assunto) extrair por fonte. */
 export const MAX_CATEGORIES_PER_SOURCE = 4;
