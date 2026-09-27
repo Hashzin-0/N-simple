@@ -257,6 +257,56 @@ export async function indexSources(
 }
 
 /**
+ * Coloca fontes brutas em uma fila durável antes da análise semântica.
+ * Se a função da Vercel morrer, o worker do Supabase continua a persistência.
+ */
+export async function enqueueSourcesForPersistence(
+  sources: ScientificSource[],
+): Promise<number> {
+  if (!supabaseAdmin || sources.length === 0) return 0;
+
+  let queued = 0;
+  const BATCH = 100;
+  for (let i = 0; i < sources.length; i += BATCH) {
+    const batch = sources.slice(i, i + BATCH).filter((source) => source.title?.trim());
+    if (batch.length === 0) continue;
+
+    const payloads = batch.map((source) => ({
+      sourceKey: sourceKeyFromTitle(source.title),
+      title: source.title,
+      authors: source.authors,
+      year: source.year,
+      publication: source.publication,
+      sourceName: source.sourceName,
+      sourceType: source.sourceType,
+      abstract: source.abstract,
+      keywords: source.keywords || [],
+      directUrl: source.directUrl,
+      searchUrl: source.searchUrl,
+      doi: source.doi,
+      abntCitation: source.abntCitation,
+      vantagens: source.vantagens || [],
+      desvantagens: source.desvantagens || [],
+      caracteristicas: source.caracteristicas || [],
+    }));
+
+    const { data, error } = await supabaseAdmin
+      .rpc('enqueue_source_persistence_batch', { payloads });
+
+    if (error) {
+      console.warn('[EvidenceIndex] Falha ao enfileirar fontes:', error);
+      continue;
+    }
+    queued += Array.isArray(data) ? data.length : batch.length;
+  }
+
+  if (queued > 0) {
+    console.info(`[EvidenceIndex] Fila de persistência: ${queued} fontes enfileiradas.`);
+  }
+  return queued;
+}
+
+/**
  * Incrementa o contador de reutilização de uma fonte.
  */
 export async function incrementReuseCount(sourceId: string): Promise<void> {
