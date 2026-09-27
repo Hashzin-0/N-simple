@@ -24,7 +24,7 @@ export const OPENROUTER_FREE_EMBEDDING_MODELS: OpenRouterEmbeddingModel[] = [
     inputType: 'text',
   },
   {
-    id: 'liquid/lfm2.5-embedding-350m:free',
+    id: 'liquid/lfm-2.5-embedding-350m:free',
     name: 'Liquid LFM2.5-Embedding-350M',
     dimensions: 1024,
     contextTokens: 512,
