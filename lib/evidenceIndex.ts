@@ -146,9 +146,15 @@ export async function indexSource(
   if (delChunksError) {
     console.error('[EvidenceIndex] Erro ao limpar chunks:', delChunksError);
   }
-  if (source.chunks.length > 0) {
+  // O motor atual trabalha com o embedding documental da fonte e não
+  // gera embeddings individuais para chunks. Nunca envie vetor vazio para
+  // uma coluna pgvector: isso gera 22P02/erros de dimensão e polui os logs.
+  const validChunks = (source.chunks || []).filter(
+    (chunk) => Array.isArray(chunk.embedding) && chunk.embedding.length > 0
+  );
+  if (validChunks.length > 0) {
     const { error: chunksError } = await supabaseAdmin!.from('source_chunks').insert(
-      source.chunks.map((chunk, idx) => ({
+      validChunks.map((chunk, idx) => ({
         source_id: sourceId,
         chunk_index: idx,
         chunk_text: chunk.text,
