@@ -136,7 +136,7 @@ export default React.memo(function LibrasPractice({ onBack, pendingTemplate }: L
     };
     window.addEventListener('libras:voice-practice', handleVoicePractice);
     return () => window.removeEventListener('libras:voice-practice', handleVoicePractice);
-  }, [templates]);
+  }, [templates, handleSelectTemplate]);
 
   // Envia o resultado estruturado para o Tutor de voz.
   const lastVoiceResultRef = useRef('');
