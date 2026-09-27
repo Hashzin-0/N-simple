@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Mic, MicOff, Send, Video, Hand, BookOpen, Target, RotateCcw, Sparkles, Play } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useTheme } from '@/components/ThemeProvider';
