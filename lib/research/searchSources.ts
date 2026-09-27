@@ -9,7 +9,8 @@ import {
   filterAndRankRelevant,
   classifyOutOfTopKForPersistence,
   UnderstoodSource,
-} from '@/lib/semantic/relevanceEngine';\nimport { understandSourcesByPortalQueue } from '@/lib/semantic/portalSemanticEngine';
+} from '@/lib/semantic/relevanceEngine';
+import { understandSourcesByPortalQueue } from '@/lib/semantic/portalSemanticEngine';
 import { embedText, embedTexts } from '@/lib/semantic/embeddings';
 import { DomainKey } from '@/lib/semantic/config';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
