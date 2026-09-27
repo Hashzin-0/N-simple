@@ -13,6 +13,9 @@ declare global {
         position: string
       ) => void;
     };
+    VLibrasWidget?: {
+      initBtn?: HTMLElement;
+    };
   }
 }
 
@@ -82,6 +85,18 @@ export default function VLibrasWidget() {
       return () => clearInterval(timer);
     }
   }, [settings.widgetEnabled, settings.widgetAvatar, settings.widgetPosition]);
+
+  // Voice Tutor: abre o Widget sob comando do agente de voz.
+  useEffect(() => {
+    const handleVoiceOpen = () => {
+      const button = window.VLibrasWidget?.initBtn as HTMLElement | undefined;
+      if (button) {
+        button.click();
+      }
+    };
+    window.addEventListener('libras:open-vlibras', handleVoiceOpen);
+    return () => window.removeEventListener('libras:open-vlibras', handleVoiceOpen);
+  }, []);
 
   // Reinitialize widget when settings change
   useEffect(() => {
