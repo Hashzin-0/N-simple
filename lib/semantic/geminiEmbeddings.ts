@@ -254,7 +254,7 @@ async function geminiEmbedTextInternal(
 
 /**
  * Gera embeddings para múltiplos textos usando Batch API.
- * Cada lote conta como 1 request no orçamento RPM da chave.
+ * Cada lote conta como 1 request no orçamento RPM da chave, independentemente do número de textos.
  *
  * @param texts Array de textos
  * @param batchSize Tamanho do lote (default: 50)
@@ -295,7 +295,7 @@ export async function geminiEmbedTexts(
 
 /**
  * Envia um lote de textos para a Batch Embed API.
- * Adquire orçamento RPM por lote; rotaciona e penaliza keys em quota.
+ * Adquire 1 unidade de RPM por lote HTTP; rotaciona e penaliza keys em quota.
  */
 async function embedBatch(
   keys: string[],
@@ -315,7 +315,7 @@ async function embedBatch(
   // seu próprio slot no orçamento RPM (retries de backoff também).
   for (let pass = 0; pass < keys.length; pass++) {
     for (let attempt = 0; attempt <= retries; attempt++) {
-      const slot = await rateLimiter.acquire(keys, texts.length);
+      const slot = await rateLimiter.acquire(keys, 1);
       const url = `${GEMINI_API_BASE}/models/gemini-embedding-2:batchEmbedContents?key=${keys[slot]}`;
 
       try {

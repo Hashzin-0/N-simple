@@ -3,7 +3,7 @@
  *
  * Arquitetura híbrida:
  * - Bi-encoder: Gemini Embedding 2 (API, 768 dims via Matryoshka)
- * - Cross-encoder: ONNX local (~90MB) para reranking de precisão
+ * - Reranking: ordenação pelos scores de retrieval, sem modelo local
  *
  * Este arquivo é a ÚNICA fonte de verdade para o corte de relevância.
  * Antes existiam dois limiares desconectados. Agora existe um único
@@ -19,11 +19,14 @@ export const EMBEDDING_MODEL = 'gemini-embedding-2';
 /** Dimensão do vetor de saída do modelo acima (Matryoshka: 768 recomendado). */
 export const EMBEDDING_DIM = 768;
 
-/** Cross-encoder local, usado como sinal secundário de reranqueamento. */
+/** Cross-encoder local legado — mantido apenas para compatibilidade de módulos antigos. */
 export const CROSS_ENCODER_MODEL = 'Xenova/ms-marco-MiniLM-L-6-v2';
 
-/** Máximo de fontes novas que recebem embedding na recuperação. */
-export const EMBEDDING_CANDIDATE_LIMIT = 50;
+/** Máximo de chunks avaliado por módulos legados de reranking. */
+export const MAX_CHUNKS_PER_SOURCE = 6;
+
+/** Máximo de fontes avaliadas semanticamente na recuperação; 1000 evita pré-filtro lexical agressivo. */
+export const EMBEDDING_CANDIDATE_LIMIT = 1000;
 
 /** Top-K para recuperação vetorial (primeira etapa do pipeline). */
 export const RETRIEVAL_TOP_K = 50;
@@ -37,9 +40,6 @@ export const CHUNK_TARGET_CHARS = 900;
 /** Sobreposição entre chunks consecutivos, em caracteres. */
 export const CHUNK_OVERLAP_CHARS = 150;
 
-/** Máximo de chunks avaliados pelo cross-encoder por fonte. */
-export const MAX_CHUNKS_PER_SOURCE = 6;
-
 /** Timeout ao buscar o texto completo da página/PDF de uma fonte. */
 export const FULL_TEXT_FETCH_TIMEOUT_MS = 12000;
 
@@ -52,7 +52,7 @@ export const ENGINE_CONCURRENCY = 2;
 /** Quantos chunks de maior similaridade entram na média ponderada do score final. */
 export const TOP_K_CHUNKS_FOR_SCORE = 3;
 
-/** Peso do bi-encoder (embeddings densos) vs. cross-encoder no score combinado. */
+/** Pesos legados mantidos para compatibilidade; o motor atual não usa cross-encoder. */
 export const BI_ENCODER_WEIGHT = 0.6;
 export const CROSS_ENCODER_WEIGHT = 0.4;
 

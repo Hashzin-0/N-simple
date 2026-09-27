@@ -1,6 +1,7 @@
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { normalizeTopic, sourceKeyFromTitle } from '@/lib/topicExtractor';
+import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { UnderstoodSource } from '@/lib/semantic/relevanceEngine';
 import { embedTexts, cosineSimilarity, cosineToPercentage } from '@/lib/semantic/embeddings';
 import { SEMANTIC_DISCARD_THRESHOLD } from '@/lib/semantic/config';
@@ -66,7 +67,7 @@ export async function indexSource(
   topics: string[],
   topicEmbeddings?: Map<string, number[]>
 ): Promise<IndexedSource | null> {
-  if (!isSupabaseConfigured()) return null;
+  if (!isSupabaseConfigured() || !supabaseAdmin) return null;
 
   // shouldPersist === false explícito → fora do domínio agro e irrelevante.
   // undefined (fonte crua do cliente) ainda é indexada após classificação.
@@ -77,7 +78,7 @@ export async function indexSource(
 
   const key = sourceKeyFromTitle(source.title);
 
-  const { data: existingSource, error: selectError } = await supabase!
+  const { data: existingSource, error: selectError } = await supabaseAdmin!
     .from('sources')
     .select('id, source_key')
     .eq('source_key', key)
@@ -115,7 +116,7 @@ export async function indexSource(
 
   if (existingSource) {
     sourceId = existingSource.id;
-    const { error: updateError } = await supabase!
+    const { error: updateError } = await supabaseAdmin!
       .from('sources')
       .update({ ...sharedFields, last_verified: new Date().toISOString() })
       .eq('id', sourceId);
@@ -124,7 +125,7 @@ export async function indexSource(
       return null;
     }
   } else {
-    const { data: inserted, error } = await supabase!
+    const { data: inserted, error } = await supabaseAdmin!
       .from('sources')
       .insert({ source_key: key, ...sharedFields })
       .select('id, source_key')
@@ -138,7 +139,7 @@ export async function indexSource(
   }
 
   // Substitui os chunks e categorias (índice de reuso rápido) desta fonte.
-  const { error: delChunksError } = await supabase!
+  const { error: delChunksError } = await supabaseAdmin!
     .from('source_chunks')
     .delete()
     .eq('source_id', sourceId);
@@ -159,7 +160,7 @@ export async function indexSource(
     }
   }
 
-  const { error: delCatsError } = await supabase!
+  const { error: delCatsError } = await supabaseAdmin!
     .from('source_categories')
     .delete()
     .eq('source_id', sourceId);
@@ -188,7 +189,7 @@ export async function indexSource(
     const evidenceStrength = emb ? computeEvidenceStrength(source, emb) : 0;
     const hasEvidence = evidenceStrength * 100 > SEMANTIC_DISCARD_THRESHOLD;
 
-    const { error: topicError } = await supabase!
+    const { error: topicError } = await supabaseAdmin!
       .from('source_topics')
       .upsert(
         {
@@ -313,7 +314,7 @@ export async function incrementReuseCount(sourceId: string): Promise<void> {
   if (!isSupabaseConfigured()) return;
 
   try {
-    const { data, error: selectError } = await supabase!
+    const { data, error: selectError } = await supabaseAdmin!
       .from('sources')
       .select('reuse_count')
       .eq('id', sourceId)
@@ -324,7 +325,7 @@ export async function incrementReuseCount(sourceId: string): Promise<void> {
     }
 
     if (data) {
-      const { error: updateError } = await supabase!
+      const { error: updateError } = await supabaseAdmin!
         .from('sources')
         .update({ reuse_count: (data.reuse_count || 0) + 1 })
         .eq('id', sourceId);
@@ -349,7 +350,7 @@ export async function logSearchQuery(
 ): Promise<void> {
   if (!isSupabaseConfigured()) return;
 
-  const { error } = await supabase!
+  const { error } = await supabaseAdmin!
     .from('search_queries')
     .insert({
       query_text: query,
