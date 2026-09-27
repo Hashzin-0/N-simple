@@ -10,7 +10,7 @@ import {
   classifyOutOfTopKForPersistence,
   UnderstoodSource,
 } from '@/lib/semantic/relevanceEngine';
-import { embedText } from '@/lib/semantic/embeddings';
+import { embedText, embedTexts } from '@/lib/semantic/embeddings';
 import { DomainKey } from '@/lib/semantic/config';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
 
