@@ -95,12 +95,22 @@ class SemanticProviderPool {
     }
   }
 
-  async embedCurrent(text: string, taskType: EmbedTaskType): Promise<{ provider: Provider; vector: number[] }> {
+  async embedDocumentAndQuery(
+    documentText: string,
+    query: string,
+  ): Promise<{ provider: Provider; documentVector: number[]; queryVector: number[] }> {
     for (;;) {
       const provider = this.current();
       try {
-        const vector = await this.embed(provider, text, taskType);
-        return { provider, vector };
+        const documentVector = await this.embed(provider, documentText, 'RETRIEVAL_DOCUMENT');
+        const queryKey = `${provider.kind}:${provider.model}:${query}`;
+        let queryPromise = this.queryVectors.get(queryKey);
+        if (!queryPromise) {
+          queryPromise = this.embed(provider, query, 'RETRIEVAL_QUERY');
+          this.queryVectors.set(queryKey, queryPromise);
+        }
+        const queryVector = await queryPromise;
+        return { provider, documentVector, queryVector };
       } catch (err) {
         const switched = await this.switchAfterFailure(provider, err);
         if (!switched) throw err;
@@ -242,13 +252,10 @@ export async function understandSourcesByPortalQueue(
 
     for (let i = 0; i < portalSources.length; i++) {
       const source = portalSources[i];
-      const { provider, vector } = await pool.embedCurrent(
-        sourceText(source),
-        'RETRIEVAL_DOCUMENT',
-      );
-      const queryVector = await pool.queryEmbedding(provider, query);
-      const understood = makeUnderstood(source, queryVector, vector, provider);
-      const localScore = cosineSimilarity(queryVector, vector);
+      const { provider, documentVector, queryVector } =
+        await pool.embedDocumentAndQuery(sourceText(source), query);
+      const understood = makeUnderstood(source, queryVector, documentVector, provider);
+      const localScore = cosineSimilarity(queryVector, documentVector);
       results.push({
         source: understood,
         providerKey: `${provider.kind}:${provider.model}`,
