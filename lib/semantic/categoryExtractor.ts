@@ -1,4 +1,4 @@
-import { embedTexts, cosineSimilarity } from './embeddings';
+import { crossEncoderScore } from '@/lib/scrapers/semanticFilter';
 import { MAX_CATEGORIES_PER_SOURCE } from './config';
 
 /**
@@ -100,21 +100,21 @@ function dedupeOverlapping(ranked: SemanticCategory[]): SemanticCategory[] {
  */
 export async function extractSemanticCategories(
   fullText: string,
-  docEmbedding: number[]
+  _docEmbedding: number[],
 ): Promise<SemanticCategory[]> {
   const candidates = extractCandidatePhrases(fullText).slice(0, MAX_CATEGORIES_PER_SOURCE * 3);
   if (candidates.length === 0) return [];
 
-  // Mesmo taskType dos chunks/docEmbedding (RETRIEVAL_DOCUMENT) para o
-  // cosseno candidata×documento viver no mesmo espaço vetorial.
-  const candidateEmbeddings = await embedTexts(candidates, 'RETRIEVAL_DOCUMENT');
-
-  const ranked = candidates
-    .map((label, idx) => ({
+  // Categorias são auxiliares ao índice; não devem consumir quota de embeddings.
+  const scored = await Promise.all(
+    candidates.map(async (label) => ({
       label,
-      score: Math.round(Math.max(0, cosineSimilarity(candidateEmbeddings[idx], docEmbedding)) * 1000) / 10,
-    }))
-    .sort((a, b) => b.score - a.score);
+      score: Math.round(
+        (await crossEncoderScore(label, fullText.slice(0, 1800))) * 1000,
+      ) / 10,
+    })),
+  );
 
-  return dedupeOverlapping(ranked).slice(0, MAX_CATEGORIES_PER_SOURCE);
+  scored.sort((a, b) => b.score - a.score);
+  return dedupeOverlapping(scored).slice(0, MAX_CATEGORIES_PER_SOURCE);
 }
