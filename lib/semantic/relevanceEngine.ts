@@ -228,7 +228,7 @@ async function understandOne(
 /**
  * Fallback "semântico leve" quando o pipeline completo falha (OOM,
  * timeout de full-text, cross-encoder, etc.). Usa só abstract/título,
- * sem full-text nem ONNX — suficiente para classificar domínio e
+ * sem full-text nem embeddings remotos; usa apenas o cross-encoder local para
  * PERSISTIR a fonte em vez de descartá-la e perder o progresso do scraper.
  */
 async function understandOneLight(
@@ -236,7 +236,6 @@ async function understandOneLight(
   source: ScientificSource,
   domain: DomainKey,
 ): Promise<UnderstoodSource> {
-  const analysisText = buildAnalysisText(source, '', false);
   const docText = [source.title, source.abstract, (source.keywords || []).join(' ')]
     .filter(Boolean)
     .join(' ')
@@ -313,13 +312,50 @@ export async function understandSourcesLightFallback(
  */
 export async function classifyOutOfTopKForPersistence(
   _query: string,
-  _sources: ScientificSource[],
-  _understood: UnderstoodSource[],
-  _domain: DomainKey = 'agro',
+  sources: ScientificSource[],
+  understood: UnderstoodSource[],
+  domain: DomainKey = 'agro',
 ): Promise<UnderstoodSource[]> {
-  // Não gera embeddings adicionais para centenas de fontes fora do retrieval.
-  // O retrieval é a etapa responsável por decidir quais fontes merecem análise.
-  return [];
+  const seen = new Set(understood.map((s) => (s.title || '').trim().toLowerCase()));
+  const remaining = sources.filter((s) => {
+    const title = (s.title || '').trim().toLowerCase();
+    return title && !seen.has(title);
+  });
+  if (remaining.length === 0) return [];
+
+  const descriptor = DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR;
+  const out: UnderstoodSource[] = [];
+  const BATCH = 10;
+
+  for (let i = 0; i < remaining.length; i += BATCH) {
+    const batch = remaining.slice(i, i + BATCH);
+    const classified = await Promise.all(
+      batch.map(async (source) => {
+        const text = [source.title, source.abstract, (source.keywords || []).join(' ')]
+          .filter(Boolean)
+          .join(' ')
+          .slice(0, 1800);
+        const domainScore = Math.round((await crossEncoderScore(descriptor, text)) * 1000) / 10;
+        const inDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
+        return {
+          ...source,
+          semanticScore: 0,
+          semanticCategories: [],
+          bestExcerpt: (source.abstract || source.title || '').slice(0, 600),
+          discarded: true,
+          docEmbedding: [],
+          usedFullText: false,
+          domainScore,
+          inAgroDomain: inDomain,
+          shouldPersist: inDomain,
+          chunks: [],
+        } satisfies UnderstoodSource;
+      }),
+    );
+    out.push(...classified);
+  }
+
+  return out;
 }
 
 /** Aplica a regra de descarte e ordena por relevância. */
