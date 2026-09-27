@@ -8,6 +8,16 @@ export interface OpenRouterEmbeddingModel {
   inputType: 'text' | 'multimodal';
 }
 
+/**
+ * Somente rotas :free de EMBEDDINGS atualmente catalogadas pelo OpenRouter
+ * e adequadas para recuperação semântica. A ordem é deliberadamente prática:
+ * o primeiro é obrigatório pelo produto; depois priorizamos o Nemotron 3
+ * para recuperação textual; por último fica o modelo Liquid, que tem apenas
+ * 512 tokens de contexto.
+ *
+ * Cada modelo possui um espaço vetorial próprio. Nunca compare cossenos entre
+ * modelos diferentes; o orquestrador faz fusão por ranking.
+ */
 export const OPENROUTER_FREE_EMBEDDING_MODELS: OpenRouterEmbeddingModel[] = [
   {
     id: 'nvidia/llama-nemotron-embed-vl-1b-v2:free',
@@ -32,111 +42,138 @@ export const OPENROUTER_FREE_EMBEDDING_MODELS: OpenRouterEmbeddingModel[] = [
   },
 ];
 
-const OPENROUTER_EMBEDDINGS_URL = 'https://openrouter.ai/api/v1/embeddings';
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/embeddings';
+
+export class OpenRouterEmbeddingError extends Error {
+  status: number;
+  retryable: boolean;
+
+  constructor(message: string, status = 500, retryable = false) {
+    super(message);
+    this.name = 'OpenRouterEmbeddingError';
+    this.status = status;
+    this.retryable = retryable;
+  }
+}
 
 function getApiKey(): string {
   const key = process.env.OPENROUTER_API_KEY?.trim();
   if (!key) {
-    throw new Error('[OpenRouterEmbeddings] OPENROUTER_API_KEY não configurada.');
+    throw new OpenRouterEmbeddingError(
+      'OPENROUTER_API_KEY não configurada.',
+      500,
+      false,
+    );
   }
   return key;
 }
 
-function getInputType(taskType: EmbedTaskType): 'search_query' | 'search_document' {
-  return taskType === 'RETRIEVAL_QUERY' ? 'search_query' : 'search_document';
+function getInput(taskType: EmbedTaskType, text: string): string {
+  const clean = text.trim();
+  if (taskType === 'RETRIEVAL_QUERY') return clean;
+  if (taskType === 'RETRIEVAL_DOCUMENT') {
+    return clean.includes('title:') && clean.includes('| text:')
+      ? clean
+      : `title: none | text: ${clean}`;
+  }
+  return clean;
 }
 
-function isRetryable(status: number): boolean {
-  return status === 408 || status === 409 || status === 429 || status === 500 ||
-    status === 502 || status === 503 || status === 504 || status === 524 || status === 529;
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
 }
 
-export async function openRouterEmbed(
+async function requestEmbedding(
   model: OpenRouterEmbeddingModel,
   input: string,
-  taskType: EmbedTaskType = 'SEMANTIC_SIMILARITY',
 ): Promise<number[]> {
-  const clean = (input || '').trim();
-  if (!clean) return new Array(model.dimensions).fill(0);
-
-  const response = await fetch(OPENROUTER_EMBEDDINGS_URL, {
+  const response = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${getApiKey()}`,
       'Content-Type': 'application/json',
       ...(process.env.APP_URL ? { 'HTTP-Referer': process.env.APP_URL } : {}),
-      'X-Title': 'Agrotools',
+      'X-Title': 'AgroTools Semantic Researcher',
     },
     body: JSON.stringify({
       model: model.id,
-      input: clean,
+      input,
       encoding_format: 'float',
-      input_type: getInputType(taskType),
     }),
-    signal: AbortSignal.timeout(45_000),
   });
 
   const body = await response.text();
-
   if (!response.ok) {
-    const error = new Error(
-      `OpenRouter ${model.id} HTTP ${response.status}: ${body.slice(0, 500)}`,
+    throw new OpenRouterEmbeddingError(
+      `OpenRouter ${model.id} HTTP ${response.status}: ${body.slice(0, 800)}`,
+      response.status,
+      isRetryableStatus(response.status),
     );
-    (error as Error & { status?: number; retryable?: boolean }).status = response.status;
-    (error as Error & { status?: number; retryable?: boolean }).retryable = isRetryable(response.status);
-    throw error;
   }
 
-  let data: { data?: Array<{ embedding?: number[] }> };
+  let parsed: { data?: Array<{ embedding?: number[] }> };
   try {
-    data = JSON.parse(body);
+    parsed = JSON.parse(body);
   } catch {
-    throw new Error(`[OpenRouterEmbeddings] Resposta JSON inválida de ${model.id}.`);
+    throw new OpenRouterEmbeddingError(
+      `OpenRouter ${model.id} retornou JSON inválido.`,
+      502,
+      true,
+    );
   }
 
-  const vector = data.data?.[0]?.embedding;
+  const vector = parsed.data?.[0]?.embedding;
   if (!Array.isArray(vector) || vector.length === 0) {
-    throw new Error(`[OpenRouterEmbeddings] ${model.id} retornou vetor vazio.`);
+    throw new OpenRouterEmbeddingError(
+      `OpenRouter ${model.id} não retornou um vetor de embedding.`,
+      502,
+      true,
+    );
   }
 
   return vector;
 }
 
 const cache = new Map<string, number[]>();
-const inflight = new Map<string, Promise<number[]>>();
-const CACHE_MAX = 1500;
+const inFlight = new Map<string, Promise<number[]>>();
+const CACHE_MAX = 1000;
 
-function cacheKey(modelId: string, taskType: EmbedTaskType, text: string): string {
-  return `${modelId}\u0000${taskType}\u0000${text}`;
+function cacheSet(key: string, vector: number[]) {
+  cache.set(key, vector);
+  while (cache.size > CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
 }
 
-export async function cachedOpenRouterEmbed(
+export async function openRouterEmbed(
   model: OpenRouterEmbeddingModel,
-  input: string,
-  taskType: EmbedTaskType,
+  text: string,
+  taskType: EmbedTaskType = 'SEMANTIC_SIMILARITY',
 ): Promise<number[]> {
-  const clean = (input || '').trim();
-  const key = cacheKey(model.id, taskType, clean);
+  const input = getInput(taskType, text);
+  if (!input) return new Array(model.dimensions).fill(0);
+
+  const key = `${model.id}\u0000${taskType}\u0000${input}`;
   const hit = cache.get(key);
   if (hit) return hit;
 
-  const pending = inflight.get(key);
-  if (pending) return pending;
+  const running = inFlight.get(key);
+  if (running) return running;
 
-  const promise = openRouterEmbed(model, clean, taskType)
-    .then((vector) => {
-      cache.set(key, vector);
-      while (cache.size > CACHE_MAX) {
-        const oldest = cache.keys().next().value;
-        if (oldest !== undefined) cache.delete(oldest);
-        else break;
-      }
-      return vector;
-    })
-    .finally(() => {
-      inflight.delete(key);
-    });
+  const promise = requestEmbedding(model, input).then((vector) => {
+    if (vector.length !== model.dimensions) {
+      console.warn(
+        `[OpenRouterEmbeddings] ${model.id}: dimensão declarada=${model.dimensions}, recebida=${vector.length}; usando dimensão recebida.`,
+      );
+    }
+    cacheSet(key, vector);
+    return vector;
+  }).finally(() => {
+    inFlight.delete(key);
+  });
 
-  inflight.set(key, promise);
+  inFlight.set(key, promise);
   return promise;
 }
