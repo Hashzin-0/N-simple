@@ -131,7 +131,13 @@ export async function rerank(
   query: string,
   candidates: { source: ScientificSource; score: number; queryEmbedding: number[]; documentEmbedding: number[] }[],
   topK: number = RERANK_TOP_K,
-): Promise<{ source: ScientificSource; retrievalScore: number; rerankScore: number; queryEmbedding: number[] }[]> {
+): Promise<{
+  source: ScientificSource;
+  retrievalScore: number;
+  rerankScore: number;
+  queryEmbedding: number[];
+  documentEmbedding: number[];
+}[]> {
   const reranked = await Promise.all(
     candidates.map(async (c) => {
       const docText = [c.source.title, c.source.abstract, (c.source.keywords || []).join(' ')]
