@@ -147,6 +147,9 @@ export default function PesquisadorFontesCard({
   }, [onSearchProgress]);
   const fontesCountsRef = useRef<Record<string, number>>({});
   const semanticPortalProgressRef = useRef<Record<string, number>>({});
+  const semanticPortalSourceIdsRef = useRef<Record<string, Set<string>>>({});
+  const semanticSourcePortalRef = useRef<Record<string, string>>({});
+  const semanticProcessedSourceIdsRef = useRef<Set<string>>(new Set());
   const reportSearchProgress = useCallback(
     (phase: FontesSearchProgress['phase'], total = 0) => {
       onSearchProgressRef.current?.({
@@ -360,6 +363,9 @@ export default function PesquisadorFontesCard({
     setVerifyProgress(null);
     fontesCountsRef.current = {};
     semanticPortalProgressRef.current = {};
+    semanticPortalSourceIdsRef.current = {};
+    semanticSourcePortalRef.current = {};
+    semanticProcessedSourceIdsRef.current = new Set();
     reportSearchProgress('searching');
 
     try {
@@ -410,6 +416,16 @@ export default function PesquisadorFontesCard({
                   reportSearchProgress('searching');
                 }
                 if (data.results && data.results.length > 0) {
+                  const portal = String(data.name);
+                  const portalIds = semanticPortalSourceIdsRef.current[portal] ?? new Set<string>();
+                  for (const source of data.results as ScientificSource[]) {
+                    if (!source?.id) continue;
+                    portalIds.add(String(source.id));
+                    if (!semanticSourcePortalRef.current[String(source.id)]) {
+                      semanticSourcePortalRef.current[String(source.id)] = portal;
+                    }
+                  }
+                  semanticPortalSourceIdsRef.current[portal] = portalIds;
                   setDynamicSources(prev => deduplicateSources([...prev, ...data.results]));
                 }
               } else if (event === 'scraper_error') {
@@ -436,18 +452,29 @@ export default function PesquisadorFontesCard({
                 }
               } else if (event === 'processing_progress') {
                 // Fonte verificada (analisada/salva) — contador por portal + global.
-                if (data?.sourceName) {
-                  const portal = String(data.sourceName);
-                  const nextCount = (semanticPortalProgressRef.current[portal] || 0) + 1;
-                  semanticPortalProgressRef.current[portal] = nextCount;
-                  setScraperProgress(prev => ({
-                    ...prev,
-                    [portal]: {
-                      ...(prev[portal] || {}),
-                      status: 'loading',
-                      count: nextCount,
-                    },
-                  }));
+                if (data?.sourceId) {
+                  const sourceId = String(data.sourceId);
+                  const portal = semanticSourcePortalRef.current[sourceId] || (
+                    data.sourceName ? String(data.sourceName) : null
+                  );
+
+                  // Uma fonte só pode contar uma vez e deve ser atribuída ao
+                  // portal que realmente a devolveu. Isso evita que o contador
+                  // do Crossref, por exemplo, absorva fontes de outros portais.
+                  if (portal && !semanticProcessedSourceIdsRef.current.has(sourceId)) {
+                    semanticProcessedSourceIdsRef.current.add(sourceId);
+                    const nextCount = (semanticPortalProgressRef.current[portal] || 0) + 1;
+                    const portalTotal = semanticPortalSourceIdsRef.current[portal]?.size || fontesCountsRef.current[portal] || 0;
+                    semanticPortalProgressRef.current[portal] = Math.min(nextCount, portalTotal || nextCount);
+                    setScraperProgress(prev => ({
+                      ...prev,
+                      [portal]: {
+                        ...(prev[portal] || {}),
+                        status: 'loading',
+                        count: semanticPortalProgressRef.current[portal],
+                      },
+                    }));
+                  }
                 }
                 if (data?.sourceId) {
                   const id = String(data.sourceId);
@@ -872,12 +899,12 @@ export default function PesquisadorFontesCard({
                     <span className="font-medium">{name === '_processing' ? '🧠 Processamento Semântico' : name}</span>
                     {name !== '_processing' && status.status === 'loading' && (
                       <span className="ml-auto font-mono font-bold tabular-nums">
-                        {status.count ?? 0}/{fontesCountsRef.current[name] ?? '?'}
+                        {Math.min(status.count ?? 0, semanticPortalSourceIdsRef.current[name]?.size || fontesCountsRef.current[name] || status.count || 0)}/{semanticPortalSourceIdsRef.current[name]?.size || fontesCountsRef.current[name] || '?'}
                       </span>
                     )}
                     {name !== '_processing' && status.status === 'complete' && status.count !== undefined && (
                       <span className="ml-auto font-mono font-bold tabular-nums">
-                        {status.count}/{fontesCountsRef.current[name] ?? status.count}
+                        {Math.min(status.count, semanticPortalSourceIdsRef.current[name]?.size || fontesCountsRef.current[name] || status.count)}/{semanticPortalSourceIdsRef.current[name]?.size || fontesCountsRef.current[name] || status.count}
                       </span>
                     )}
                     {status.status === 'error' && <span className="ml-1">Erro</span>}
