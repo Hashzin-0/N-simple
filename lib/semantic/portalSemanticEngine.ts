@@ -147,7 +147,10 @@ function buildUnderstood(
     usedFullText: false,
     domainScore: semanticScore,
     inAgroDomain,
-    shouldPersist: !discarded || inAgroDomain,\n    semanticProvider: provider.kind,\n    semanticModel: provider.model,\n    semanticDimensions: provider.dimensions,
+    shouldPersist: !discarded || inAgroDomain,
+    semanticProvider: provider.kind,
+    semanticModel: provider.model,
+    semanticDimensions: provider.dimensions,
     trigonometricSimilarity: {
       cosTheta: Math.round(Math.max(-1, Math.min(1, cosine)) * 1000) / 1000,
       angleDegrees: Math.round(
