@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { normalizeTopic, sourceKeyFromTitle } from '@/lib/topicExtractor';
 import { UnderstoodSource } from '@/lib/semantic/relevanceEngine';
 import { embedTexts, cosineSimilarity, cosineToPercentage } from '@/lib/semantic/embeddings';
@@ -145,7 +146,7 @@ export async function indexSource(
     console.error('[EvidenceIndex] Erro ao limpar chunks:', delChunksError);
   }
   if (source.chunks.length > 0) {
-    const { error: chunksError } = await supabase!.from('source_chunks').insert(
+    const { error: chunksError } = await supabaseAdmin!.from('source_chunks').insert(
       source.chunks.map((chunk, idx) => ({
         source_id: sourceId,
         chunk_index: idx,
@@ -166,7 +167,7 @@ export async function indexSource(
     console.error('[EvidenceIndex] Erro ao limpar categorias:', delCatsError);
   }
   if (source.semanticCategories.length > 0) {
-    const { error: catsError } = await supabase!.from('source_categories').insert(
+    const { error: catsError } = await supabaseAdmin!.from('source_categories').insert(
       source.semanticCategories.map((cat) => ({
         source_id: sourceId,
         label: cat.label,
