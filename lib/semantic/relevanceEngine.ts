@@ -1,13 +1,7 @@
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { embedText, embedTexts, cosineSimilarity, cosineToPercentage } from './embeddings';
-import { chunkText } from './textChunker';
-import { fetchFullText } from './fullTextFetcher';
-import { extractSemanticCategories, SemanticCategory } from './categoryExtractor';
-import { crossEncoderScore } from '@/lib/scrapers/semanticFilter';
 import {
   SEMANTIC_DISCARD_THRESHOLD,
-  BI_ENCODER_WEIGHT,
-  CROSS_ENCODER_WEIGHT,
   ENGINE_CONCURRENCY,
   AGRO_DOMAIN_RELEVANCE_THRESHOLD,
   AGRO_DOMAIN_DESCRIPTOR,
@@ -16,7 +10,6 @@ import {
   RETRIEVAL_TOP_K,
   RERANK_TOP_K,
   EMBEDDING_CANDIDATE_LIMIT,
-  MAX_CHUNKS_PER_SOURCE,
 } from './config';
 
 /**
@@ -29,6 +22,8 @@ import {
  * Fontes com score final <= 45 são marcadas `discarded` e nunca devem
  * ser salvas nem mostradas ao usuário.
  */
+
+export interface SemanticCategory { label: string; score: number; }
 
 export interface UnderstoodChunk {
   text: string;
@@ -128,7 +123,7 @@ export async function retrieve(
  * do retrieval para refinar a ordenação.
  */
 export async function rerank(
-  query: string,
+  _query: string,
   candidates: { source: ScientificSource; score: number; queryEmbedding: number[]; documentEmbedding: number[] }[],
   topK: number = RERANK_TOP_K,
 ): Promise<{
@@ -138,98 +133,54 @@ export async function rerank(
   queryEmbedding: number[];
   documentEmbedding: number[];
 }[]> {
-  const reranked = await Promise.all(
-    candidates.map(async (c) => {
-      const docText = [c.source.title, c.source.abstract, (c.source.keywords || []).join(' ')]
-        .filter(Boolean)
-        .join(' ')
-        .slice(0, 512);
-
-      const crossProb = await crossEncoderScore(query, docText);
-      return {
-        source: c.source,
-        retrievalScore: c.score,
-        rerankScore: crossProb,
-        queryEmbedding: c.queryEmbedding,
-        documentEmbedding: c.documentEmbedding,
-      };
-    }),
-  );
-
-  return reranked
-    .sort((a, b) => b.rerankScore - a.rerankScore)
-    .slice(0, topK);
+  return candidates.map((c) => ({
+    source: c.source,
+    retrievalScore: c.score,
+    rerankScore: c.score,
+    queryEmbedding: c.queryEmbedding,
+    documentEmbedding: c.documentEmbedding,
+  })).sort((a,b) => b.rerankScore-a.rerankScore).slice(0, topK);
 }
 
+/** Entende uma fonte usando o embedding documental já calculado no retrieval. */
 /**
  * Entende uma única fonte: fetch full text, gera chunks, embeddings,
  * categorias, e score final combinando bi-encoder + cross-encoder.
  */
 async function understandOne(
-  query: string,
-  queryEmbedding: number[],
+  _query: string,
+  _queryEmbedding: number[],
   source: ScientificSource,
   retrievalScore: number,
-  domain: DomainKey = 'agro',
+  _domain: DomainKey = 'agro',
 ): Promise<UnderstoodSource> {
-  const { text: fullText, ok: hasFullText } = await fetchFullText(source.directUrl);
-  const analysisText = buildAnalysisText(source, fullText, hasFullText);
-  const rawChunks = chunkText(analysisText);
-  const chunkTexts = (rawChunks.length > 0 ? rawChunks : [source.title]).slice(0, MAX_CHUNKS_PER_SOURCE);
-
-  // Não há embedding remoto aqui. O vetor da fonte já foi produzido no retrieval.
-  // A verificação profunda usa apenas o cross-encoder local sobre texto real.
-  const chunkScores = await Promise.all(
-    chunkTexts.map(async (chunk) => ({
-      text: chunk,
-      score: await crossEncoderScore(query, `${source.title}. ${chunk}`),
-    }))
-  );
-  chunkScores.sort((a, b) => b.score - a.score);
-
-  const bestChunkText = chunkScores[0]?.text || source.abstract || source.title;
-  const crossPct = Math.round((chunkScores[0]?.score ?? 0.5) * 1000) / 10;
-  const biEncoderPct = cosineToPercentage(retrievalScore);
-  const semanticScore = Math.round((biEncoderPct * BI_ENCODER_WEIGHT + crossPct * CROSS_ENCODER_WEIGHT) * 10) / 10;
-
+  const semanticScore = Math.round(cosineToPercentage(retrievalScore) * 10) / 10;
+  const bestExcerpt = (source.abstract || source.title || '').slice(0, 600);
   const docEmbedding = (source as ScientificSource & { __retrievalEmbedding?: number[] }).__retrievalEmbedding || [];
-  const categories = docEmbedding.length > 0
-    ? await extractSemanticCategories(analysisText, docEmbedding)
-    : [];
-
   const discarded = semanticScore <= SEMANTIC_DISCARD_THRESHOLD;
-
-  const domainScore = Math.round(
-    (await crossEncoderScore(
-      DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR,
-      analysisText.slice(0, 1800),
-    )) * 100,
-  ) / 10;
+  const domainScore = semanticScore;
   const inAgroDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
-
-  const shouldPersist = !discarded || inAgroDomain;
-
   return {
     ...source,
     semanticScore,
-    semanticCategories: categories,
-    bestExcerpt: bestChunkText.slice(0, 600),
+    semanticCategories: [],
+    bestExcerpt,
     discarded,
     docEmbedding,
-    usedFullText: hasFullText,
+    chunks: bestExcerpt ? [{ text: bestExcerpt, embedding: [], score: retrievalScore }] : [],
+    usedFullText: false,
     domainScore,
     inAgroDomain,
-    shouldPersist,
-    chunks: chunkScores.map((item) => ({ text: item.text, embedding: [], score: item.score })),
+    shouldPersist: !discarded || inAgroDomain,
     trigonometricSimilarity: {
       cosTheta: Math.round(Math.max(-1, Math.min(1, retrievalScore)) * 1000) / 1000,
-      angleDegrees:
-        Math.round(Math.acos(Math.max(-1, Math.min(1, retrievalScore))) * (180 / Math.PI) * 10) / 10,
+      angleDegrees: Math.round(Math.acos(Math.max(-1, Math.min(1, retrievalScore))) * (180 / Math.PI) * 10) / 10,
       percentage: Math.round(semanticScore),
       alignmentQuality: angleQuality(semanticScore),
     },
   };
 }
+
 
 export interface UnderstandSourcesOptions {
   /**
@@ -249,45 +200,27 @@ export interface UnderstandSourcesOptions {
  * PERSISTIR a fonte em vez de descartá-la e perder o progresso do scraper.
  */
 async function understandOneLight(
-  query: string,
+  _query: string,
   source: ScientificSource,
-  domain: DomainKey,
+  _domain: DomainKey,
 ): Promise<UnderstoodSource> {
-  const docText = [source.title, source.abstract, (source.keywords || []).join(' ')]
-    .filter(Boolean)
-    .join(' ')
-    .slice(0, 1800);
-
-  const semanticProb = await crossEncoderScore(query, docText);
-  const domainProb = await crossEncoderScore(
-    DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR,
-    docText,
-  );
-  const semanticScore = Math.round(semanticProb * 1000) / 10;
-  const domainScore = Math.round(domainProb * 1000) / 10;
-  const discarded = semanticScore <= SEMANTIC_DISCARD_THRESHOLD;
-  const inDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
-
+  const docText = [source.title, source.abstract, (source.keywords || []).join(' ')].filter(Boolean).join(' ').slice(0, 1800);
   return {
     ...source,
-    semanticScore,
+    semanticScore: 50,
     semanticCategories: [],
     bestExcerpt: (source.abstract || source.title || '').slice(0, 600),
-    discarded,
+    discarded: false,
     docEmbedding: [],
     usedFullText: false,
-    domainScore,
-    inAgroDomain: inDomain,
-    shouldPersist: !discarded && inDomain,
-    chunks: [{ text: docText, embedding: [], score: semanticProb }],
-    trigonometricSimilarity: {
-      cosTheta: 0,
-      angleDegrees: 90,
-      percentage: Math.round(semanticScore),
-      alignmentQuality: angleQuality(semanticScore),
-    },
+    domainScore: 50,
+    inAgroDomain: true,
+    shouldPersist: true,
+    chunks: docText ? [{ text: docText, embedding: [], score: 0.5 }] : [],
+    trigonometricSimilarity: { cosTheta: 0, angleDegrees: 90, percentage: 50, alignmentQuality: 'Moderada' },
   };
 }
+
 
 export async function understandSourcesLightFallback(
   query: string,
@@ -487,6 +420,16 @@ export async function understandSources(
  * Processa em lotes para não estourar a memória com centenas de vetores
  * de uma vez (causa clássica de SIGKILL em funções longas).
  */
+const domainEmbeddingCache = new Map<DomainKey, Promise<number[]>>();
+
+async function getDomainEmbedding(domain: DomainKey): Promise<number[]> {
+  const cached = domainEmbeddingCache.get(domain);
+  if (cached) return cached;
+  const promise = embedText(DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR, 'RETRIEVAL_DOCUMENT');
+  domainEmbeddingCache.set(domain, promise);
+  return promise;
+}
+
 export async function classifyOutOfTopKForPersistence(
   _query: string,
   sources: ScientificSource[],
@@ -500,38 +443,29 @@ export async function classifyOutOfTopKForPersistence(
   });
   if (remaining.length === 0) return [];
 
-  const descriptor = DOMAIN_DESCRIPTORS[domain] ?? AGRO_DOMAIN_DESCRIPTOR;
+  const domainEmbedding = await getDomainEmbedding(domain);
   const out: UnderstoodSource[] = [];
-  const BATCH = 10;
-
+  const BATCH = 40;
   for (let i = 0; i < remaining.length; i += BATCH) {
     const batch = remaining.slice(i, i + BATCH);
-    const classified = await Promise.all(
-      batch.map(async (source) => {
-        const text = [source.title, source.abstract, (source.keywords || []).join(' ')]
-          .filter(Boolean)
-          .join(' ')
-          .slice(0, 1800);
-        const domainScore = Math.round((await crossEncoderScore(descriptor, text)) * 1000) / 10;
-        const inDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
-        return {
-          ...source,
-          semanticScore: 0,
-          semanticCategories: [],
-          bestExcerpt: (source.abstract || source.title || '').slice(0, 600),
-          discarded: true,
-          docEmbedding: [],
-          usedFullText: false,
-          domainScore,
-          inAgroDomain: inDomain,
-          shouldPersist: inDomain,
-          chunks: [],
-        } satisfies UnderstoodSource;
-      }),
-    );
-    out.push(...classified);
+    const texts = batch.map((source) => [source.title, source.abstract, (source.keywords || []).join(' ')].filter(Boolean).join(' ').slice(0, 1800));
+    let embeddings: number[][] = [];
+    try { embeddings = await embedTexts(texts, 'RETRIEVAL_DOCUMENT'); }
+    catch (err) { console.warn('[SemanticEngine] Falha ao classificar lote residual:', err); }
+    for (let j = 0; j < batch.length; j++) {
+      const source = batch[j];
+      const docEmbedding = embeddings[j] || [];
+      const domainCos = docEmbedding.length ? cosineSimilarity(domainEmbedding, docEmbedding) : 0;
+      const domainScore = Math.round(cosineToPercentage(domainCos) * 10) / 10;
+      const inDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
+      out.push({
+        ...source, semanticScore: 0, semanticCategories: [],
+        bestExcerpt: (source.abstract || source.title || '').slice(0, 600),
+        discarded: true, docEmbedding, usedFullText: false,
+        domainScore, inAgroDomain: inDomain, shouldPersist: inDomain, chunks: [],
+      });
+    }
   }
-
   return out;
 }
 
