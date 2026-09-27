@@ -16,6 +16,8 @@ import {
   DomainKey,
   RETRIEVAL_TOP_K,
   RERANK_TOP_K,
+  EMBEDDING_CANDIDATE_LIMIT,
+  MAX_CHUNKS_PER_SOURCE,
 } from './config';
 
 /**
@@ -91,26 +93,53 @@ function angleQuality(pct: number): 'Excepcional' | 'Muito Alta' | 'Alta' | 'Mod
  * As candidatas são embedadas em lote (batch API): N textos = ceil(N/50)
  * requests no orçamento RPM, em vez de N requests individuais.
  */
+function normalizeForPrefilter(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function prefilterForEmbedding(query: string, sources: ScientificSource[], limit: number): ScientificSource[] {
+  if (sources.length <= limit) return sources;
+  const normalizedQuery = normalizeForPrefilter(query);
+  const terms = normalizedQuery.split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+  return sources
+    .map((source, index) => {
+      const title = normalizeForPrefilter(source.title || '');
+      const abstract = normalizeForPrefilter(source.abstract || '');
+      const keywords = normalizeForPrefilter((source.keywords || []).join(' '));
+      const topics = normalizeForPrefilter((source.matchedTopics || []).join(' '));
+      let score = title.includes(normalizedQuery) ? 100 : 0;
+      for (const term of terms) {
+        if (title.includes(term)) score += 8;
+        if (keywords.includes(term)) score += 5;
+        if (topics.includes(term)) score += 4;
+        if (abstract.includes(term)) score += 2;
+      }
+      return { source, score, index };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, limit)
+    .map((x) => x.source);
+}
+
 export async function retrieve(
   query: string,
   sources: ScientificSource[],
   topK: number = RETRIEVAL_TOP_K,
   queryEmbedding?: number[],
-): Promise<{ source: ScientificSource; score: number; queryEmbedding: number[] }[]> {
+): Promise<{ source: ScientificSource; score: number; queryEmbedding: number[]; documentEmbedding: number[] }[]> {
   const emb = queryEmbedding ?? (await embedText(query, 'RETRIEVAL_QUERY'));
-
-  const texts = sources.map((source) =>
-    [source.title, source.abstract, (source.keywords || []).join(' ')]
-      .filter(Boolean)
-      .join(' '),
+  const candidates = prefilterForEmbedding(query, sources, EMBEDDING_CANDIDATE_LIMIT);
+  const texts = candidates.map((source) =>
+    `title: ${source.title || 'none'} | text: ${[source.abstract, (source.keywords || []).join(' '), (source.matchedTopics || []).join(' ')].filter(Boolean).join(' ')}`
   );
   const sourceEmbeddings = await embedTexts(texts, 'RETRIEVAL_DOCUMENT');
 
-  return sources
+  return candidates
     .map((source, i) => ({
       source,
       score: cosineSimilarity(emb, sourceEmbeddings[i]),
       queryEmbedding: emb,
+      documentEmbedding: sourceEmbeddings[i],
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
@@ -122,7 +151,7 @@ export async function retrieve(
  */
 export async function rerank(
   query: string,
-  candidates: { source: ScientificSource; score: number; queryEmbedding: number[] }[],
+  candidates: { source: ScientificSource; score: number; queryEmbedding: number[]; documentEmbedding: number[] }[],
   topK: number = RERANK_TOP_K,
 ): Promise<{ source: ScientificSource; retrievalScore: number; rerankScore: number; queryEmbedding: number[] }[]> {
   const reranked = await Promise.all(
@@ -138,6 +167,7 @@ export async function rerank(
         retrievalScore: c.score,
         rerankScore: crossProb,
         queryEmbedding: c.queryEmbedding,
+        documentEmbedding: c.documentEmbedding,
       };
     }),
   );
@@ -160,39 +190,33 @@ async function understandOne(
 ): Promise<UnderstoodSource> {
   const { text: fullText, ok: hasFullText } = await fetchFullText(source.directUrl);
   const analysisText = buildAnalysisText(source, fullText, hasFullText);
-
   const rawChunks = chunkText(analysisText);
-  const chunkTexts = rawChunks.length > 0 ? rawChunks : [source.title];
+  const chunkTexts = (rawChunks.length > 0 ? rawChunks : [source.title]).slice(0, MAX_CHUNKS_PER_SOURCE);
 
-  // Mesmo taskType do queryEmbedding (RETRIEVAL_*) — alinhado ao espaço
-  // vetorial do retrieve/consulta (Gemini exige mesmo task family).
-  const chunkEmbeddings = await embedTexts(chunkTexts, 'RETRIEVAL_DOCUMENT');
-  const chunkScores = chunkEmbeddings.map((emb) => cosineSimilarity(emb, queryEmbedding));
+  // Não há embedding remoto aqui. O vetor da fonte já foi produzido no retrieval.
+  // A verificação profunda usa apenas o cross-encoder local sobre texto real.
+  const chunkScores = await Promise.all(
+    chunkTexts.map(async (chunk) => ({
+      text: chunk,
+      score: await crossEncoderScore(query, `${source.title}. ${chunk}`),
+    }))
+  );
+  chunkScores.sort((a, b) => b.score - a.score);
 
-  const orderedIdx = chunkScores
-    .map((score, idx) => ({ score, idx }))
-    .sort((a, b) => b.score - a.score);
+  const bestChunkText = chunkScores[0]?.text || source.abstract || source.title;
+  const crossPct = Math.round((chunkScores[0]?.score ?? 0.5) * 1000) / 10;
+  const biEncoderPct = cosineToPercentage(retrievalScore);
+  const semanticScore = Math.round((biEncoderPct * BI_ENCODER_WEIGHT + crossPct * CROSS_ENCODER_WEIGHT) * 10) / 10;
 
-  const topK = orderedIdx.slice(0, TOP_K_CHUNKS_FOR_SCORE);
-  const avgTopKCos = topK.reduce((sum, c) => sum + c.score, 0) / Math.max(1, topK.length);
-  const biEncoderPct = cosineToPercentage(avgTopKCos);
-
-  const bestIdx = orderedIdx[0]?.idx ?? 0;
-  const bestChunkText = chunkTexts[bestIdx] || chunkTexts[0] || source.abstract || source.title;
-
-  const crossProb = await crossEncoderScore(query, `${source.title}. ${bestChunkText}`);
-  const crossPct = Math.round(crossProb * 1000) / 10;
-
-  const semanticScore =
-    Math.round((biEncoderPct * BI_ENCODER_WEIGHT + crossPct * CROSS_ENCODER_WEIGHT) * 10) / 10;
-
-  const docEmbedding = centroid(chunkEmbeddings);
-  const categories = await extractSemanticCategories(analysisText, docEmbedding);
+  const docEmbedding = (source as ScientificSource & { __retrievalEmbedding?: number[] }).__retrievalEmbedding || [];
+  const categories = docEmbedding.length > 0
+    ? await extractSemanticCategories(analysisText, docEmbedding)
+    : [];
 
   const discarded = semanticScore <= SEMANTIC_DISCARD_THRESHOLD;
 
-  const domainAnchor = await getDomainAnchorEmbedding(domain);
-  const domainCos = cosineSimilarity(docEmbedding, domainAnchor);
+  const domainAnchor = docEmbedding.length > 0 ? await getDomainAnchorEmbedding(domain) : [];
+  const domainCos = docEmbedding.length > 0 && domainAnchor.length > 0 ? cosineSimilarity(docEmbedding, domainAnchor) : 0;
   const domainScore = cosineToPercentage(domainCos);
   const inAgroDomain = domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
 
@@ -209,11 +233,7 @@ async function understandOne(
     domainScore,
     inAgroDomain,
     shouldPersist,
-    chunks: chunkTexts.map((text, i) => ({
-      text,
-      embedding: chunkEmbeddings[i],
-      score: chunkScores[i],
-    })),
+    chunks: chunkScores.map((item) => ({ text: item.text, embedding: [], score: item.score })),
     trigonometricSimilarity: {
       cosTheta: Math.round(Math.max(0, avgTopKCos) * 1000) / 1000,
       angleDegrees:
@@ -339,6 +359,9 @@ export async function understandSources(
 
   // Etapa 1: Retrieval (Gemini Embedding, em lote)
   const retrieved = await retrieve(query, sources, RETRIEVAL_TOP_K, sharedQueryEmbedding);
+  for (const candidate of retrieved) {
+    (candidate.source as ScientificSource & { __retrievalEmbedding?: number[] }).__retrievalEmbedding = candidate.documentEmbedding;
+  }
 
   // Etapa 2: Reranking (Cross-Encoder ONNX)
   let reranked: Awaited<ReturnType<typeof rerank>> = [];
@@ -439,86 +462,14 @@ export async function understandSources(
  * de uma vez (causa clássica de SIGKILL em funções longas).
  */
 export async function classifyOutOfTopKForPersistence(
-  query: string,
-  sources: ScientificSource[],
-  understood: UnderstoodSource[],
-  domain: DomainKey = 'agro',
+  _query: string,
+  _sources: ScientificSource[],
+  _understood: UnderstoodSource[],
+  _domain: DomainKey = 'agro',
 ): Promise<UnderstoodSource[]> {
-  if (sources.length === 0) return [];
-
-  const seen = new Set(understood.map((s) => (s.title || '').trim().toLowerCase()));
-  const remaining = sources.filter((s) => {
-    const t = (s.title || '').trim().toLowerCase();
-    return t && !seen.has(t);
-  });
-  if (remaining.length === 0) return [];
-
-  const CLASSIFY_BATCH = 40;
-  const out: UnderstoodSource[] = [];
-
-  try {
-    const anchor = await getDomainAnchorEmbedding(domain);
-
-    for (let i = 0; i < remaining.length; i += CLASSIFY_BATCH) {
-      const batch = remaining.slice(i, i + CLASSIFY_BATCH);
-      const texts = batch.map((s) =>
-        [s.title, s.abstract, (s.keywords || []).join(' ')].filter(Boolean).join(' ')
-      );
-
-      let docEmbeddings: number[][] = [];
-      try {
-        docEmbeddings = await embedTexts(texts, 'RETRIEVAL_DOCUMENT');
-      } catch (err) {
-        console.warn('[SemanticEngine] classify batch embed falhou:', err);
-        docEmbeddings = texts.map(() => []);
-      }
-
-      batch.forEach((s, j) => {
-        const docEmbedding = docEmbeddings[j] || [];
-        const domainScore =
-          docEmbedding.length > 0
-            ? cosineToPercentage(cosineSimilarity(docEmbedding, anchor))
-            : 0;
-        const inDomain =
-          docEmbedding.length === 0
-            ? true // sem embedding: mantém candidata (não perder progresso)
-            : domainScore > AGRO_DOMAIN_RELEVANCE_THRESHOLD;
-        out.push({
-          ...s,
-          semanticScore: 0,
-          semanticCategories: [],
-          bestExcerpt: (s.abstract || '').slice(0, 600),
-          discarded: true,
-          docEmbedding,
-          usedFullText: false,
-          domainScore,
-          inAgroDomain: inDomain,
-          shouldPersist: inDomain,
-          chunks: [],
-        } satisfies UnderstoodSource);
-      });
-    }
-  } catch (err) {
-    console.warn('[SemanticEngine] classifyOutOfTopKForPersistence falhou:', err);
-    // Fallback: persiste o restante como candidatas de domínio.
-    for (const s of remaining) {
-      out.push({
-        ...s,
-        semanticScore: 0,
-        semanticCategories: [],
-        bestExcerpt: (s.abstract || '').slice(0, 600),
-        discarded: true,
-        docEmbedding: [],
-        usedFullText: false,
-        domainScore: 0,
-        inAgroDomain: true,
-        shouldPersist: true,
-        chunks: [],
-      } satisfies UnderstoodSource);
-    }
-  }
-
-  return out;
+  // Não gera embeddings adicionais para centenas de fontes fora do retrieval.
+  // O retrieval é a etapa responsável por decidir quais fontes merecem análise.
+  return [];
 }
 
 /** Aplica a regra de descarte e ordena por relevância. */
