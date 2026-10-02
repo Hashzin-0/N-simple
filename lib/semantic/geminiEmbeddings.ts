@@ -319,11 +319,15 @@ async function embedBatch(
   texts: string[],
   retries = 2,
 ): Promise<number[][]> {
+  // outputDimensionality OBRIGATÓRIO em cada request: sem ele a API
+  // devolve o default 3072 e o insert em vector(768) falha com 22000
+  // ("expected 768 dimensions, not 3072") — mesmo valor do single acima.
   const requests = texts.map((text) => ({
     model: 'models/gemini-embedding-2',
     content: {
       parts: [{ text }],
     },
+    outputDimensionality: EMBEDDING_DIM,
   }));
 
   let lastError: unknown = null;

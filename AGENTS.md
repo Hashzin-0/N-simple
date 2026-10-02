@@ -95,6 +95,7 @@ retornar > 0 com a query `adubação nitrogenada milho`).
 | `supabase/migration-tutor-prova-real.sql` | Questões de provas reais: `questions.origem += 'prova_real'`. Required by `lib/tutor/seeds.ts` (seeds de ética), badge "Prova real" em `components/TutorInteligente/QuestionCard.tsx`. |
 | `supabase/migration-user-settings.sql` | Preferências do usuário em nuvem: `user_settings` (PK `user_id`, `voice JSONB`) + RLS permissivo. Required by `app/api/user/settings` (sync do supressor de ruído via `hooks/useVoiceSettings.ts`). |
 | `supabase/migration-cefsa-verification.sql` | Aluno ativo do CEFSA: `cefsa_verifications` (PK `user_id`, `ra_rm`, `moodle_user_id`, `email`, `verified_at`/`expires_at`) + RLS permissivo. Required by `app/api/auth/verify-cefsa` (`lib/cefsa.ts`). |
+| `supabase/migration-rls-pipeline-writes.sql` | Escritas da pipeline semântica via publishable key: dropa as policies de DASHBOARD ("Public can read sources" = só SELECT → `UPDATE sources` silencioso com 0 linhas; deny em `search_queries`) e instala `Allow all ... FOR ALL USING (true) WITH CHECK (true)` em `sources`/`source_chunks`/`source_categories`/`source_topics` + **só INSERT** em `search_queries` (histórico fica privado). Required by `lib/evidenceIndex.ts`. |
 
 Rules:
 1. Never rewrite an already-applied baseline file with new DDL — create the next `migration-*.sql` instead.

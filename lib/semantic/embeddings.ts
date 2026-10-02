@@ -47,6 +47,42 @@ function makeKey(text: string, taskType: string): string {
   return `${taskType}\u0000${text}`;
 }
 
+/**
+ * Guard central de dimensão — TODO vetor do provider passa por aqui antes
+ * de ir para cache/banco. As colunas do Supabase são `vector(768)` e um
+ * vetor de outra dimensão derruba o insert com 22000
+ * ("expected 768 dimensions, not 3072").
+ *
+ * - veio maior (ex.: default 3072 da API): trunca para EMBEDDING_DIM
+ *   (Matryoshka — corte preserva qualidade) e avisa uma vez no console;
+ * - veio menor e não-vazio: lança erro explícito (nunca é esperado;
+ *   preencher com zeros mascararia o problema).
+ */
+function enforceEmbeddingDim(vector: number[], context: string): number[] {
+  if (vector.length === EMBEDDING_DIM) return vector;
+
+  if (vector.length > EMBEDDING_DIM) {
+    if (!warnedTruncation) {
+      warnedTruncation = true;
+      console.warn(
+        `[Embeddings] Provider devolveu ${vector.length} dims (esperado ${EMBEDDING_DIM}) em ${context} ` +
+          '— truncando (Matryoshka). Verifique lib/semantic/geminiEmbeddings.ts.',
+      );
+    }
+    return vector.slice(0, EMBEDDING_DIM);
+  }
+
+  if (vector.length > 0) {
+    throw new Error(
+      `[Embeddings] Vetor com ${vector.length} dims (< ${EMBEDDING_DIM}) em ${context} — ` +
+        'entrada inválida, não será persistido.',
+    );
+  }
+  return vector;
+}
+
+let warnedTruncation = false;
+
 /** Apenas para testes/diagnóstico — não usar na lógica de negócio. */
 export function __getEmbedCacheSize(): number {
   return embedCache.size;
@@ -68,7 +104,10 @@ export async function embedText(
   const cached = cacheGet(key);
   if (cached) return cached;
 
-  const vector = await geminiEmbedText(clean, taskType);
+  const vector = enforceEmbeddingDim(
+    await geminiEmbedText(clean, taskType),
+    `embedText(${taskType})`,
+  );
   cacheSet(key, vector);
   return vector;
 }
@@ -111,7 +150,7 @@ export async function embedTexts(
     const vectors = await geminiEmbedTexts(missTexts, 50, taskType);
     let m = 0;
     for (const [key, indices] of missIndexByKey) {
-      const vector = vectors[m++];
+      const vector = enforceEmbeddingDim(vectors[m++], `embedTexts(${taskType})`);
       cacheSet(key, vector);
       for (const idx of indices) results[idx] = vector;
     }
@@ -123,9 +162,28 @@ export async function embedTexts(
 /**
  * Similaridade de cosseno real entre dois vetores densos.
  * cos(θ) = (A · B) / (||A|| * ||B||)
+ *
+ * Dimensões diferentes → 0, mas **avisando no console** (uma vez por par
+ * de dims): um 0 silencioso aqui zera o score semântico inteiro e a fonte
+ * acaba descartada sem nenhum log — foi assim que a busca de 630 fontes
+ * persistiu nada.
  */
+const warnedDimPairs = new Set<string>();
+
 export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
+  if (a.length !== b.length || a.length === 0) {
+    if (a.length !== b.length) {
+      const pair = `${Math.min(a.length, b.length)}x${Math.max(a.length, b.length)}`;
+      if (!warnedDimPairs.has(pair)) {
+        warnedDimPairs.add(pair);
+        console.warn(
+          `[Embeddings] cosineSimilarity com dims diferentes (${a.length} vs ${b.length}) ` +
+            '— retornando 0. Vetores de origens diferentes (single vs batch?).',
+        );
+      }
+    }
+    return 0;
+  }
 
   let dot = 0;
   let normA = 0;

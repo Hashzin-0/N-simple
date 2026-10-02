@@ -264,6 +264,37 @@ async function runTest() {
   console.log(`Rerank TOP_K: ${RERANK_TOP_K}`);
   console.log(`Consultas: ${TEST_QUERIES.length}\n`);
 
+  // Step 0: Sanidade de dimensões (bug do batch sem outputDimensionality
+  // devolvia 3072 e quebrava os inserts em vector(768) com 22000).
+  console.log('▸ Verificando dimensões (single + batch)...');
+  const sanitySingle = await embedText('adubação nitrogenada em milho', 'RETRIEVAL_QUERY');
+  const sanityBatch = await embedTexts(
+    ['adubação nitrogenada em milho', 'manejo de solo para soja'],
+    'RETRIEVAL_DOCUMENT',
+  );
+  const dimIssues: string[] = [];
+  if (sanitySingle.length !== EMBEDDING_DIM) {
+    dimIssues.push(`embedText = ${sanitySingle.length} (esperado ${EMBEDDING_DIM})`);
+  }
+  sanityBatch.forEach((v, i) => {
+    if (v.length !== EMBEDDING_DIM) {
+      dimIssues.push(`embedTexts[${i}] = ${v.length} (esperado ${EMBEDDING_DIM})`);
+    }
+  });
+  const sanityCos = cosineSimilarity(sanitySingle, sanityBatch[0] ?? []);
+  if (!(sanityCos > 0)) {
+    dimIssues.push(`cosineSimilarity(query, doc) = ${sanityCos} (esperado > 0)`);
+  }
+  if (dimIssues.length > 0) {
+    console.error('  ✗ Dimensões inválidas:');
+    for (const issue of dimIssues) console.error(`    - ${issue}`);
+    process.exit(1);
+  }
+  console.log(
+    `  ✓ single=${sanitySingle.length} batch=${sanityBatch.map((v) => v.length).join(',')} ` +
+      `cos(query,doc)=${sanityCos.toFixed(3)}\n`,
+  );
+
   // Step 1: Gerar embeddings de todas as consultas (uma por vez para free tier)
   console.log('▸ Gerando embeddings das consultas...');
   const startEmbed = Date.now();

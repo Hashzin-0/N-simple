@@ -174,7 +174,12 @@ export async function indexSource(
       }))
     );
     if (chunksError) {
-      console.error('[EvidenceIndex] Erro ao inserir chunks:', chunksError);
+      console.error(
+        '[EvidenceIndex] Erro ao inserir chunks:',
+        chunksError,
+        `(fonte=${sourceId}, chunks=${source.chunks.length}, ` +
+          `dims=${source.chunks[0]?.embedding?.length ?? 'vazio'})`,
+      );
     }
   }
 
