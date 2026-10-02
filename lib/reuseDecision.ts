@@ -1,4 +1,6 @@
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+// Cliente privilegiado da pipeline semântica (SUPABASE_SECRET_KEY →
+// service_role bypassa RLS; fallback publishable com aviso — ver lib/supabase.ts).
+import { supabaseSemantic as supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { ScientificSource } from '@/components/PesquisadorAgro/types';
 import { extractTopics, normalizeTopic } from '@/lib/topicExtractor';
 import { SEMANTIC_DISCARD_THRESHOLD } from '@/lib/semantic/config';

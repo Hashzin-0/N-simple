@@ -27,6 +27,7 @@ Core env vars (see `.env.example`):
 - `GEMINI_API_KEY` — injected by AI Studio at runtime from user secrets
 - `APP_URL` — injected by AI Studio with Cloud Run service URL
 - `SUPABASE_URL` / `SUPABASE_PUBLISHABLE_KEY` — server-side Supabase; passed to the client via `AuthProvider` props from `app/layout.tsx` (**do not use `NEXT_PUBLIC_*`** — deployment constraint)
+- `SUPABASE_SECRET_KEY` — privileged key (Dashboard → JWT Signing Keys → `sb_secret_*`; legacy `SUPABASE_SERVICE_ROLE_KEY` accepted as fallback) used by `supabaseSemantic` in `lib/supabase.ts` for ALL semantic-pipeline writes (`sources`/`source_chunks`/`source_categories`/`source_topics`/`search_queries` — `lib/evidenceIndex.ts`, `lib/semantic/phase2.ts`, `lib/reuseDecision.ts`). Without it the client falls back to publishable key and (after `migration-semantic-privileged-writes.sql`) writes fail loudly by design
 - `YOUTUBE_API_KEY` — YouTube Data API v3 (server-side; Libras search + research scraper)
 - `LIBRAS_CHANNEL_HANDLES` — optional, comma-separated `@handles` prioritized for Libras sign search (default `@angelagirardi,@academiadelibras,@netolibras`); preferred channels first, then global fallback
 
@@ -95,7 +96,8 @@ retornar > 0 com a query `adubação nitrogenada milho`).
 | `supabase/migration-tutor-prova-real.sql` | Questões de provas reais: `questions.origem += 'prova_real'`. Required by `lib/tutor/seeds.ts` (seeds de ética), badge "Prova real" em `components/TutorInteligente/QuestionCard.tsx`. |
 | `supabase/migration-user-settings.sql` | Preferências do usuário em nuvem: `user_settings` (PK `user_id`, `voice JSONB`) + RLS permissivo. Required by `app/api/user/settings` (sync do supressor de ruído via `hooks/useVoiceSettings.ts`). |
 | `supabase/migration-cefsa-verification.sql` | Aluno ativo do CEFSA: `cefsa_verifications` (PK `user_id`, `ra_rm`, `moodle_user_id`, `email`, `verified_at`/`expires_at`) + RLS permissivo. Required by `app/api/auth/verify-cefsa` (`lib/cefsa.ts`). |
-| `supabase/migration-rls-pipeline-writes.sql` | Escritas da pipeline semântica via publishable key: dropa as policies de DASHBOARD ("Public can read sources" = só SELECT → `UPDATE sources` silencioso com 0 linhas; deny em `search_queries`) e instala `Allow all ... FOR ALL USING (true) WITH CHECK (true)` em `sources`/`source_chunks`/`source_categories`/`source_topics` + **só INSERT** em `search_queries` (histórico fica privado). Required by `lib/evidenceIndex.ts`. |
+| `supabase/migration-rls-pipeline-writes.sql` | Escritas da pipeline semântica via publishable key: dropa as policies de DASHBOARD ("Public can read sources" = só SELECT → `UPDATE sources` silencioso com 0 linhas; deny em `search_queries`) e instala `Allow all ... FOR ALL USING (true) WITH CHECK (true)` em `sources`/`source_chunks`/`source_categories`/`source_topics` + **só INSERT** em `search_queries` (histórico fica privado). Required by `lib/evidenceIndex.ts`. **Applied — superseded in part by the next migration** (the `FOR ALL` policies were `roles={public}`). |
+| `supabase/migration-semantic-privileged-writes.sql` | Lockdown da pipeline semântica + escrita privilegiada: dropa as `Allow all ... FOR ALL` (public) das 4 tabelas → **só SELECT público**; `REVOKE` de `INSERT/UPDATE/DELETE/TRUNCATE` de `anon`/`authenticated` nas 4 tabelas (`SELECT` mantido) e de `UPDATE/DELETE/TRUNCATE/SELECT` em `search_queries` (policy INSERT-only recriada); recria `match_sources_by_embedding` com `SET search_path = public, extensions`; confirma `semantic_webhook_config` deny-by-default. **Apply AFTER** `SUPABASE_SECRET_KEY` is configured and `npx tsx scripts/test-persistence.ts` is green (modo=admin) — otherwise semantic writes fail loudly by design. Required by `supabaseSemantic` in `lib/supabase.ts`. |
 
 Rules:
 1. Never rewrite an already-applied baseline file with new DDL — create the next `migration-*.sql` instead.
@@ -147,6 +149,12 @@ When changing this route or `searchSources`, keep those three constraints (verce
 ## Semantic analysis persistence (two-phase pipeline)
 
 Full (non-light) `searchSources` runs in **two phases** (portal queues + background understanding):
+
+### Writes & guards (privileged surface)
+
+- **All** semantic-pipeline DB access goes through `supabaseSemantic` (alias kept as `supabase` inside `lib/evidenceIndex.ts`, `lib/semantic/phase2.ts`, `lib/reuseDecision.ts`): `SUPABASE_SECRET_KEY`/`SUPABASE_SERVICE_ROLE_KEY` when configured (service_role bypasses RLS), else publishable-key fallback with a module-load warning. No browser component touches `sources`/`source_chunks`/`source_categories`/`source_topics`/`search_queries`.
+- Dimension guard `enforceEmbeddingDim` (`lib/semantic/embeddings.ts`) **throws** on any non-empty vector ≠ 768 — no silent Matryoshka truncation. `cosineSimilarity` returns 0 only for empty vectors; non-empty dim mismatch **throws** (never silently scores 0 = "irrelevant"). `embedBatch()` must always send `outputDimensionality` (`lib/semantic/geminiEmbeddings.ts`).
+- E2E test: `npx tsx scripts/test-persistence.ts` — embeds 768 → `indexSource` synthetic source → verifies 4 tables + public SELECT + anon-write diagnostic → cascade cleanup. Unit asserts live in `scripts/test-embeddings.ts` Step 0.
 
 ### FASE 1 — light, no foreground (`lib/semantic/portalQueues.ts`)
 

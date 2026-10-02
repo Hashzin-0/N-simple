@@ -49,39 +49,23 @@ function makeKey(text: string, taskType: string): string {
 
 /**
  * Guard central de dimensão — TODO vetor do provider passa por aqui antes
- * de ir para cache/banco. As colunas do Supabase são `vector(768)` e um
- * vetor de outra dimensão derruba o insert com 22000
- * ("expected 768 dimensions, not 3072").
+ * de ir para cache/banco. As colunas do Supabase são `vector(768)`.
  *
- * - veio maior (ex.: default 3072 da API): trunca para EMBEDDING_DIM
- *   (Matryoshka — corte preserva qualidade) e avisa uma vez no console;
- * - veio menor e não-vazio: lança erro explícito (nunca é esperado;
- *   preencher com zeros mascararia o problema).
+ * ERRO EXPLÍCITO em vez de truncar (revisão pós-fix): um corte silencioso
+ * (Matryoshka) esconderia uma regressão de `outputDimensionality` no
+ * geminiEmbeddings.ts — aqui o pipeline falha ruidosamente e não grava
+ * embedding errado. Vetor vazio é permitido (= "sem embedding"; o
+ * chamador decide o que fazer).
  */
-function enforceEmbeddingDim(vector: number[], context: string): number[] {
-  if (vector.length === EMBEDDING_DIM) return vector;
+export function enforceEmbeddingDim(vector: number[], context: string): number[] {
+  if (vector.length === EMBEDDING_DIM || vector.length === 0) return vector;
 
-  if (vector.length > EMBEDDING_DIM) {
-    if (!warnedTruncation) {
-      warnedTruncation = true;
-      console.warn(
-        `[Embeddings] Provider devolveu ${vector.length} dims (esperado ${EMBEDDING_DIM}) em ${context} ` +
-          '— truncando (Matryoshka). Verifique lib/semantic/geminiEmbeddings.ts.',
-      );
-    }
-    return vector.slice(0, EMBEDDING_DIM);
-  }
-
-  if (vector.length > 0) {
-    throw new Error(
-      `[Embeddings] Vetor com ${vector.length} dims (< ${EMBEDDING_DIM}) em ${context} — ` +
-        'entrada inválida, não será persistido.',
-    );
-  }
-  return vector;
+  throw new Error(
+    `[Embeddings] ${context} devolveu ${vector.length} dims (esperado ${EMBEDDING_DIM}) — ` +
+      'recusado para não persistir embedding inconsistente. Verifique ' +
+      'outputDimensionality em lib/semantic/geminiEmbeddings.ts.',
+  );
 }
-
-let warnedTruncation = false;
 
 /** Apenas para testes/diagnóstico — não usar na lógica de negócio. */
 export function __getEmbedCacheSize(): number {
@@ -163,26 +147,31 @@ export async function embedTexts(
  * Similaridade de cosseno real entre dois vetores densos.
  * cos(θ) = (A · B) / (||A|| * ||B||)
  *
- * Dimensões diferentes → 0, mas **avisando no console** (uma vez por par
- * de dims): um 0 silencioso aqui zera o score semântico inteiro e a fonte
- * acaba descartada sem nenhum log — foi assim que a busca de 630 fontes
- * persistiu nada.
+ * - um dos vetores vazio → 0 (sem embedding = sem evidência — é dado,
+ *   não erro; os callers já guardam doc/query vazio);
+ * - ambos não-vazios com dims diferentes → ERRO controlado, nunca 0:
+ *   um 0 silencioso zera o score e descarta a fonte sem log — foi assim
+ *   que a busca de 630 fontes não persistiu nada. Com o guard de dims,
+ *   esse caminho só acontece com bug; falhar é preferível a classificar
+ *   como "irrelevante".
  */
 const warnedDimPairs = new Set<string>();
 
 export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) {
-    if (a.length !== b.length) {
-      const pair = `${Math.min(a.length, b.length)}x${Math.max(a.length, b.length)}`;
-      if (!warnedDimPairs.has(pair)) {
-        warnedDimPairs.add(pair);
-        console.warn(
-          `[Embeddings] cosineSimilarity com dims diferentes (${a.length} vs ${b.length}) ` +
-            '— retornando 0. Vetores de origens diferentes (single vs batch?).',
-        );
-      }
+  if (a.length === 0 || b.length === 0) return 0;
+
+  if (a.length !== b.length) {
+    const pair = `${Math.min(a.length, b.length)}x${Math.max(a.length, b.length)}`;
+    if (!warnedDimPairs.has(pair)) {
+      warnedDimPairs.add(pair);
+      console.warn(
+        `[Embeddings] cosineSimilarity com dims diferentes (${a.length} vs ${b.length}; par ${pair}).`,
+      );
     }
-    return 0;
+    throw new Error(
+      `[Embeddings] cosineSimilarity com dims diferentes (${a.length} vs ${b.length}) — ` +
+        'vetor inconsistente, score não calculado (a fonte não é classificada como irrelevante).',
+    );
   }
 
   let dot = 0;

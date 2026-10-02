@@ -22,7 +22,7 @@ import { resolve } from 'path';
 config({ path: resolve(__dirname, '../.env') });
 config({ path: resolve(__dirname, '../.env.local') });
 
-import { embedText, embedTexts, cosineSimilarity } from '../lib/semantic/embeddings';
+import { embedText, embedTexts, cosineSimilarity, enforceEmbeddingDim } from '../lib/semantic/embeddings';
 import { EMBEDDING_DIM, RETRIEVAL_TOP_K, RERANK_TOP_K } from '../lib/semantic/config';
 
 // ─── Consultas de teste (queries agronômicas representativas) ───
@@ -266,7 +266,46 @@ async function runTest() {
 
   // Step 0: Sanidade de dimensões (bug do batch sem outputDimensionality
   // devolvia 3072 e quebrava os inserts em vector(768) com 22000).
-  console.log('▸ Verificando dimensões (single + batch)...');
+  console.log('▸ Verificando dimensões (unitário + single + batch)...');
+
+  // Guard estrito: erro explícito em vez de truncar (revisão pós-fix).
+  const unitIssues: string[] = [];
+  try {
+    enforceEmbeddingDim(new Array(EMBEDDING_DIM).fill(0), 'unit');
+  } catch {
+    unitIssues.push('enforceEmbeddingDim rejeitou vetor 768 válido');
+  }
+  try {
+    enforceEmbeddingDim(new Array(3072).fill(0), 'unit-3072');
+    unitIssues.push('enforceEmbeddingDim NÃO rejeitou 3072 dims');
+  } catch {
+    /* esperado */
+  }
+  try {
+    enforceEmbeddingDim(new Array(512).fill(0), 'unit-512');
+    unitIssues.push('enforceEmbeddingDim NÃO rejeitou 512 dims');
+  } catch {
+    /* esperado */
+  }
+  if (enforceEmbeddingDim([], 'unit-vazio').length !== 0) {
+    unitIssues.push('enforceEmbeddingDim não preservou vetor vazio');
+  }
+  try {
+    cosineSimilarity([1, 2, 3], [1, 2]);
+    unitIssues.push('cosineSimilarity NÃO lançou erro com dims diferentes');
+  } catch {
+    /* esperado — nunca deve classificar como irrelevante com 0 silencioso */
+  }
+  if (cosineSimilarity([], new Array(EMBEDDING_DIM).fill(1)) !== 0) {
+    unitIssues.push('cosineSimilarity com vetor vazio deveria retornar 0');
+  }
+  if (unitIssues.length > 0) {
+    console.error('  ✗ Guards unitários:');
+    for (const issue of unitIssues) console.error(`    - ${issue}`);
+    process.exit(1);
+  }
+  console.log('  ✓ guard de dims rejeita 3072/512, aceita 768/vazio; cosine lança erro em mismatch');
+
   const sanitySingle = await embedText('adubação nitrogenada em milho', 'RETRIEVAL_QUERY');
   const sanityBatch = await embedTexts(
     ['adubação nitrogenada em milho', 'manejo de solo para soja'],
