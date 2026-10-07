@@ -123,6 +123,7 @@ async function uploadPdfToGemini(ai: GoogleGenAI, pdf: Buffer, fileName: string)
   const deadline = Date.now() + 90_000;
   while (current.state === 'PROCESSING' && Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, 2500));
+    if (!current.name) throw new Error('O Gemini não retornou o identificador do PDF processado.');
     current = await ai.files.get({ name: current.name });
   }
   if (current.state === 'FAILED') throw new Error('O Gemini não conseguiu processar o PDF visual.');
