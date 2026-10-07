@@ -6,7 +6,8 @@ import { getTractor, TRACTORS, type TractorSpec } from '@/lib/tratoresData';
 import { COURSE_MODULES as DETAILED_MODULES, COURSE_TOTAL_HOURS } from '@/lib/tratoristaCurso';
 
 const clamp=(n:number,min:number,max:number)=>Math.min(max,Math.max(min,n));
-const fmt=(n:number,d=1)=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:d}).format(Number.isFinite(n)?n:0);\nconst OPERATION_TYPES=[{id:'transporte',label:'Transporte'},{id:'preparo',label:'Preparo do solo'},{id:'plantio',label:'Plantio/semeadura'},{id:'cultivo',label:'Cultivo entre linhas'},{id:'pulverizacao',label:'Pulverização'},{id:'distribuicao',label:'Distribuição'},{id:'personalizada',label:'Outra operação'}];
+const fmt=(n:number,d=1)=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:d}).format(Number.isFinite(n)?n:0);
+const OPERATION_TYPES=[{id:'transporte',label:'Transporte'},{id:'preparo',label:'Preparo do solo'},{id:'plantio',label:'Plantio/semeadura'},{id:'cultivo',label:'Cultivo entre linhas'},{id:'pulverizacao',label:'Pulverização'},{id:'distribuicao',label:'Distribuição'},{id:'personalizada',label:'Outra operação'}];
 
 function calculate(p:{tractor:TractorSpec;load:number;slope:number;rolling:number;mu:number;driveFraction:number;eff:number;target:number}){
   const g=9.80665, mass=p.tractor.massKg+Math.max(0,p.load), weight=mass*g;
