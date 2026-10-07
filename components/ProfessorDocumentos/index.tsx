@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { FileText, Presentation, Upload, Brain, CheckCircle2, AlertTriangle, Sparkles, Image as ImageIcon, Wand2, SearchCheck, MessageCircle, Accessibility, ChevronRight } from 'lucide-react';
+import { FileText, Upload, Brain, CheckCircle2, AlertTriangle, Sparkles, Image as ImageIcon, Wand2, SearchCheck, MessageCircle, Accessibility, ChevronRight } from 'lucide-react';
 
 type Analysis = {
   documentType: 'word' | 'powerpoint';
