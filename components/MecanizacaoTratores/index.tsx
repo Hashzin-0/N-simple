@@ -56,7 +56,6 @@ export default function MecanizacaoTratores(){
   const [checkedAnswers,setCheckedAnswers]=useState<Record<string,boolean>>({});
 
   const tractor=getTractor(tractorId);
-  const preset=operation?OPERATION_SPEEDS[operation]:null;
   const calc=useMemo(()=>{
     if(load===null||slope===null||rolling===null||mu===null||driveFraction===null||eff===null||target===null) return null;
     return calculate({tractor,load,slope,rolling,mu,driveFraction,eff,target});
