@@ -26,8 +26,7 @@ type Session = {
     animations: number; transitions: number; notes: number; title: string;
   };
   analysis: Analysis;
-  geminiFileUri: string;
-  geminiFileMimeType: string;
+  documentContext: string;
 };
 
 const starterPrompts = [
@@ -104,8 +103,7 @@ export default function ProfessorDocumentos() {
         body: JSON.stringify({
           question: value,
           analysis: session.analysis,
-          geminiFileUri: session.geminiFileUri,
-          geminiFileMimeType: session.geminiFileMimeType,
+          documentContext: session.documentContext,
         }),
       });
       const data = await res.json();
