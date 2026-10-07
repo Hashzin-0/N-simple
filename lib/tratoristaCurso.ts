@@ -1,9 +1,9 @@
-export type CourseQuestion = {
-  question: string;
-  options: string[];
-  answer: number;
-  explanation: string;
-};
+export type QuestionType = 'multiple' | 'trueFalse' | 'discursive' | 'matching';
+
+export type CourseQuestion =
+  | { type: 'multiple' | 'trueFalse'; question: string; options: string[]; answer: number; explanation: string }
+  | { type: 'discursive'; question: string; modelAnswer: string; evaluationCriteria: string[] }
+  | { type: 'matching'; question: string; left: string[]; right: string[]; answer: number[]; explanation: string };
 
 export type CourseModule = {
   id: string;
@@ -14,279 +14,193 @@ export type CourseModule = {
   theory: string[];
   keyPoints: string[];
   activities: string[];
-  practicalTask: string;
   assessment: CourseQuestion[];
 };
 
 export const COURSE_MODULES: CourseModule[] = [
   {
-    id: 'm1',
-    title: 'Fundamentos, responsabilidades e segurança',
-    hours: 3,
-    source: 'SENAR-PR — Prática Operacional; NR-31.12',
-    objective: 'Reconhecer os riscos da operação, interpretar as responsabilidades do operador e preparar uma jornada de trabalho segura antes de ligar o trator.',
-    theory: [
-      'O operador é responsável por avaliar máquina, implemento, ambiente, rota, pessoas próximas e condições de trabalho antes da partida.',
-      'EPI e EPC são barreiras de prevenção. A seleção deve considerar o risco real da atividade e as orientações do fabricante e das normas aplicáveis.',
-      'A simbologia universal permite identificar comandos, advertências e riscos mesmo quando o painel ou manual utiliza poucos textos.',
-      'Manual do fabricante, procedimentos da propriedade e capacitação compatível com a função são referências obrigatórias para uma operação segura.'
+    id:'m1', title:'Fundamentos, responsabilidades e segurança', hours:3,
+    source:'SENAR-PR — Prática Operacional; NR-31.12',
+    objective:'Compreender responsabilidades, riscos, EPI/EPC, limites de atuação e princípios de segurança sem transformar o curso em autorização para operação prática.',
+    theory:[
+      'O operador deve reconhecer riscos associados à máquina, implemento, ambiente, circulação de pessoas, terreno e energia mecânica antes de qualquer operação.',
+      'EPI e EPC são medidas de prevenção e devem ser definidos conforme os riscos reais, a atividade, as normas aplicáveis e as orientações do fabricante.',
+      'Capacitação teórica não equivale a habilitação ou autorização operacional. O curso do N-simple é material educacional e não substitui treinamento prático formal.',
+      'Manual do fabricante, NR-31 e procedimentos de segurança da organização são referências essenciais para determinar limites e procedimentos.'
     ],
-    keyPoints: [
-      'Inspeção visual antes da partida',
-      'Pontos de esmagamento, queda, tombamento e atropelamento',
-      'EPI, EPC e sinalização',
-      'Responsabilidades do operador',
-      'Leitura do manual e identificação dos limites da máquina'
+    keyPoints:['responsabilidade do operador','EPI/EPC','riscos de tombamento, esmagamento e atropelamento','manual do fabricante','limites entre conhecimento teórico e autorização operacional'],
+    activities:[
+      'Elabore um checklist teórico pré-operacional com 15 itens e classifique cada um em segurança, funcionamento ou manutenção.',
+      'Analise um cenário hipotético de trator em área com pessoas, declive e implemento acoplado: identifique pelo menos seis perigos e seis medidas preventivas.',
+      'Explique por escrito por que conhecer os comandos de uma máquina não significa estar autorizado a operá-la.'
     ],
-    activities: [
-      'Monte um checklist pré-operacional com pelo menos 12 itens e classifique cada item como segurança, funcionamento ou manutenção.',
-      'Analise uma situação hipotética de operação próxima a pessoas e identifique cinco riscos e cinco medidas preventivas.'
-    ],
-    practicalTask: 'Com o motor desligado, faça uma inspeção externa completa e explique em voz alta por que cada item verificado é importante.',
-    assessment: [
-      {
-        question: 'Qual é a primeira prioridade antes de iniciar uma operação com trator?',
-        options: ['Atingir a maior velocidade possível', 'Garantir condições seguras da máquina, implemento e ambiente', 'Aumentar a rotação do motor', 'Engatar a marcha mais alta'],
-        answer: 1,
-        explanation: 'A operação deve começar pela avaliação de riscos e pelas condições seguras da máquina, do implemento e do ambiente.'
-      }
+    assessment:[
+      {type:'multiple',question:'Qual deve ser a prioridade antes de uma operação?',options:['Atingir a maior velocidade','Garantir condições seguras da máquina, implemento e ambiente','Escolher a maior marcha','Aumentar a rotação'],answer:1,explanation:'A segurança e a avaliação das condições precedem o desempenho.'},
+      {type:'trueFalse',question:'A leitura do manual do fabricante pode ser dispensada quando o operador já conhece outro modelo de trator.',options:['Verdadeiro','Falso'],answer:1,explanation:'Modelos diferentes podem ter comandos, limites e procedimentos diferentes.'},
+      {type:'discursive',question:'Explique por que um curso on-line pode ensinar conceitos de operação sem autorizar o aluno a executar a operação.',modelAnswer:'Porque conhecimento teórico não comprova competência prática, domínio da máquina específica, avaliação de ambiente nem cumprimento dos requisitos de capacitação e supervisão aplicáveis.',evaluationCriteria:['diferenciar teoria de competência prática','mencionar máquina específica e ambiente','reconhecer limites de segurança e capacitação']},
+      {type:'matching',question:'Relacione cada conceito ao significado correto.',left:['EPI','EPC','Manual do fabricante','NR-31'],right:['Equipamento de proteção individual','Medida/equipamento de proteção coletiva','Referência específica da máquina','Norma de segurança e saúde no trabalho rural'],answer:[0,1,2,3],explanation:'Cada item possui função distinta na gestão de segurança.'}
     ]
   },
   {
-    id: 'm2',
-    title: 'Comandos, controles e operação segura',
-    hours: 4,
-    source: 'SENAR-PR — Prática Operacional e NR-31.12',
-    objective: 'Identificar os comandos da estação do operador e executar procedimentos seguros de partida, deslocamento, parada, engate e desengate.',
-    theory: [
-      'Antes de movimentar o trator, o operador deve conhecer pedais, alavancas, direção, freios, acelerador, controles hidráulicos, TDP, bloqueio do diferencial e TDA quando existentes.',
-      'A partida e a parada devem seguir a sequência definida pelo fabricante. Não se deve presumir que tratores diferentes possuem a mesma lógica de comandos.',
-      'Engate e desengate exigem controle de energia e prevenção contra movimento inesperado, esmagamento e queda de implementos.',
-      'Deslocamento em aclives, declives, curvas, estradas e áreas de manobra requer velocidade compatível e atenção à estabilidade.'
+    id:'m2', title:'Simbologia de máquinas agrícolas: símbolos, botões e comandos', hours:4,
+    source:'ISO 3767-1:2016 + Amd.1:2020; ISO 3767-2:2016 + Amd.1:2020; ISO 7000; SENAR-PR',
+    objective:'Aprender a reconhecer símbolos padronizados, compreender o que representam, relacioná-los aos comandos/indicadores e diferenciar símbolo normatizado de ícone específico de fabricante.',
+    theory:[
+      'A ISO 3767-1 padroniza símbolos comuns para comandos e displays; a ISO 3767-2 trata especificamente de tratores e máquinas agrícolas. A família ISO 7000 fornece registros individuais de símbolos.',
+      'Um botão ou comando pode ter um símbolo gráfico que identifica a função. O símbolo não deve ser interpretado por semelhança visual; deve ser associado à sua definição normativa e ao manual da máquina.',
+      'Nem todo símbolo encontrado em um painel é universal. Fabricantes podem usar combinações, símbolos específicos de funções e telas proprietárias; nesses casos, o manual do modelo exato é a autoridade.',
+      'Cores também têm significado em determinados displays. Na família ISO 3767, vermelho é associado a falha/avaria grave, amarelo/âmbar a condição fora dos limites normais e verde a condição normal; outras cores têm usos específicos.'
     ],
-    keyPoints: [
-      'Partida e parada segura',
-      'Pedais, direção e freios',
-      'Comandos hidráulicos',
-      'Engate e desengate',
-      'Deslocamento e manobras'
+    keyPoints:['ISO 3767-1','ISO 3767-2','ISO 7000','símbolo × comando × indicador','cores de estado','símbolos específicos do fabricante'],
+    activities:[
+      'Estude o catálogo de símbolos abaixo e, para cada símbolo, escreva: nome, número ISO, função e situação em que pode aparecer.',
+      'Escolha cinco símbolos e explique a diferença entre o significado do símbolo e a ação que o botão/comando efetivamente executa em um modelo específico.',
+      'Compare um símbolo universal com um símbolo proprietário de fabricante e explique por que não se deve substituir um pelo outro.',
+      'Monte uma tabela de memorização com 10 símbolos: símbolo → nome → número ISO → função → risco de interpretação incorreta.'
     ],
-    activities: [
-      'Identifique no painel ou manual todos os símbolos de segurança e operação e registre a função de cada um.',
-      'Simule uma sequência de engate e desengate sem aproximar partes do corpo entre o trator e o implemento.'
-    ],
-    practicalTask: 'Com instrutor ou responsável habilitado, execute a sequência de inspeção, partida, deslocamento lento, parada e estacionamento seguindo o manual do trator utilizado.',
-    assessment: [
-      {
-        question: 'Por que o procedimento de engate não deve ser tratado apenas como uma sequência mecânica?',
-        options: ['Porque o implemento sempre pesa menos que o trator', 'Porque há riscos de movimento inesperado, esmagamento e queda', 'Porque o motor deve estar acelerado', 'Porque a TDP deve estar ligada'],
-        answer: 1,
-        explanation: 'O engate envolve riscos mecânicos e de energia armazenada; o procedimento deve impedir movimentos inesperados e exposição do operador.'
-      }
+    assessment:[
+      {type:'multiple',question:'Qual referência deve ser usada para interpretar com precisão um símbolo de comando de um trator?',options:['A semelhança visual com outro ícone','O manual do modelo e a simbologia normativa aplicável','A cor escolhida pelo usuário','A opinião de outro operador'],answer:1,explanation:'A norma padroniza símbolos, mas a função efetiva do comando no modelo específico deve ser confirmada no manual.'},
+      {type:'trueFalse',question:'Todo símbolo exibido em um terminal agrícola é obrigatoriamente um símbolo ISO e possui exatamente a mesma função em qualquer marca.',options:['Verdadeiro','Falso'],answer:1,explanation:'Há símbolos normatizados e funções proprietárias; a função do modelo deve ser confirmada.'},
+      {type:'discursive',question:'Explique por que o aluno deve aprender o número ISO/ISO 7000 junto com o desenho do símbolo.',modelAnswer:'O número permite identificar a referência normativa exata, reduzindo ambiguidade entre símbolos visualmente próximos e facilitando consulta técnica.',evaluationCriteria:['mencionar identificação normativa','redução de ambiguidade','consulta a fonte técnica']},
+      {type:'matching',question:'Relacione o símbolo/função ao número ISO 7000.',left:['Motor','TDP/PTO','Bloqueio do diferencial','Patinagem das rodas'],right:['1156','1572','1662','1665'],answer:[0,1,2,3],explanation:'Os registros identificam funções padronizadas específicas.'}
     ]
   },
   {
-    id: 'm3',
-    title: 'Motor diesel, transmissão e TDP',
-    hours: 4,
-    source: 'SENAR-PR — Operação de Tratores e Implementos',
-    objective: 'Compreender o funcionamento básico do motor diesel e relacionar rotação, torque, transmissão, velocidade e tomada de potência.',
-    theory: [
-      'O motor ciclo Diesel converte a energia química do combustível em trabalho mecânico por meio dos processos de admissão, compressão, combustão/expansão e escape.',
-      'Sistemas de alimentação de ar e combustível, lubrificação, arrefecimento e sistema elétrico trabalham de forma integrada; falhas em um deles alteram o desempenho do conjunto.',
-      'A transmissão adapta torque e rotação do motor às necessidades de deslocamento. Marchas mais baixas favorecem força na roda; marchas mais altas favorecem velocidade.',
-      'A TDP transmite potência rotacional ao implemento. A rotação exigida deve ser a indicada pelo fabricante do implemento e do trator.'
+    id:'m3', title:'Comandos, controles e estação do operador', hours:4,
+    source:'SENAR-PR — Operação de Tratores e Implementos; NR-31.12',
+    objective:'Compreender a função dos principais comandos da estação do operador sem executar procedimentos em máquina real.',
+    theory:[
+      'Pedais, direção, freios, acelerador, alavancas, controles hidráulicos, TDP, bloqueio do diferencial, tração dianteira e instrumentos possuem funções distintas.',
+      'A localização física varia entre modelos. O símbolo ajuda a identificar a função, mas a sequência e a lógica de acionamento devem ser confirmadas no manual.',
+      'Comandos relacionados a energia, movimento e implementos exigem atenção especial porque um acionamento pode produzir movimento ou liberar energia.',
+      'O treinamento teórico deve priorizar reconhecimento, interpretação e tomada de decisão segura.'
     ],
-    keyPoints: [
-      'Ciclo de quatro tempos',
-      'Sistemas periféricos do motor',
-      'Torque × rotação × potência',
-      'Escalonamento da transmissão',
-      'TDP 540, 540E e 1000 rpm quando disponíveis'
+    keyPoints:['pedais e direção','freios','controles hidráulicos','TDP','TDA e diferencial','instrumentos do painel'],
+    activities:[
+      'Faça um mapa teórico da estação do operador, separando comandos de condução, transmissão, hidráulica, TDP e instrumentos.',
+      'Explique o que pode acontecer se um comando for interpretado incorretamente e dê três exemplos.',
+      'Crie cinco perguntas de identificação de comandos usando fotografias reais de um manual de trator.'
     ],
-    activities: [
-      'Desenhe o fluxo de energia desde a combustão até as rodas e, separadamente, até a TDP.',
-      'Compare duas marchas do trator cadastrado e explique o que muda em velocidade, torque disponível e força requerida.'
-    ],
-    practicalTask: 'Localize os comandos de transmissão e TDP no manual do modelo utilizado e demonstre, com o motor desligado, a sequência correta para selecioná-los.',
-    assessment: [
-      {
-        question: 'Qual é a relação fundamental entre potência, torque e rotação?',
-        options: ['Potência depende apenas da massa do trator', 'Potência mecânica é proporcional ao produto entre torque e velocidade angular', 'Torque e rotação nunca se relacionam', 'A velocidade de deslocamento define diretamente a potência do motor'],
-        answer: 1,
-        explanation: 'Em termos mecânicos, potência é o produto do torque pela velocidade angular; a transmissão modifica a relação entre rotação e torque nas rodas.'
-      }
+    assessment:[
+      {type:'multiple',question:'Por que a posição de um comando não deve ser generalizada entre tratores?',options:['Porque todos os fabricantes escondem comandos','Porque layout e lógica de controle variam conforme o modelo','Porque símbolos não existem','Porque o motor muda de combustível'],answer:1,explanation:'A localização e a lógica dos controles dependem do projeto do modelo.'},
+      {type:'trueFalse',question:'Um mesmo símbolo pode ser combinado com outros símbolos para representar uma função mais específica.',options:['Verdadeiro','Falso'],answer:0,explanation:'A ISO prevê símbolos e combinações para ampliar a especificidade da informação.'},
+      {type:'discursive',question:'Descreva como você confirmaria a função de um botão desconhecido sem acioná-lo.',modelAnswer:'Identificaria o símbolo, consultaria o manual do modelo exato e verificaria a descrição do comando, estado e condições de uso.',evaluationCriteria:['identificação visual','manual do modelo','não acionar sem confirmação']},
+      {type:'matching',question:'Relacione o sistema à função.',left:['TDP','Sistema hidráulico','Transmissão','Bloqueio do diferencial'],right:['Transmite potência rotacional ao implemento','Aciona atuadores/circuitos hidráulicos','Adapta torque e rotação para o deslocamento','Conecta a rotação das rodas do eixo conforme a função de bloqueio'],answer:[0,1,2,3],explanation:'São sistemas distintos e devem ser reconhecidos separadamente.'}
     ]
   },
   {
-    id: 'm4',
-    title: 'Pneus, bitola, TDA, patinagem e lastreamento',
-    hours: 4,
-    source: 'SENAR-PR — Operação de Tratores e Implementos',
-    objective: 'Preparar o conjunto trator-pneu para transferir força ao solo sem excesso de patinagem, compactação ou desgaste.',
-    theory: [
-      'Pneu, pressão, carga por eixo, tipo de solo e velocidade interferem na área de contato, deformação e capacidade de tração.',
-      'A bitola deve ser ajustada conforme a cultura, o implemento e as recomendações do fabricante, mantendo alinhamento e estabilidade.',
-      'Em tratores com TDA, o avanço entre os eixos deve permanecer dentro da faixa indicada pelo fabricante; configuração incorreta pode aumentar desgaste e comprometer a tração.',
-      'Patinagem excessiva representa perda de energia e pode elevar o consumo e o dano ao solo. A solução pode envolver pressão, lastro, relação de marcha e condição do conjunto.',
-      'O lastreamento deve ser dimensionado para a operação. Peso excessivo também pode aumentar compactação e resistência ao rolamento.'
+    id:'m4', title:'Motor diesel, transmissão e TDP', hours:4,
+    source:'SENAR-PR — Operação de Tratores e Implementos',
+    objective:'Compreender fundamentos de motor, torque, potência, transmissão e tomada de potência.',
+    theory:[
+      'O ciclo Diesel envolve admissão, compressão, combustão/expansão e escape.',
+      'Alimentação de ar e combustível, lubrificação, arrefecimento e sistema elétrico trabalham de forma integrada.',
+      'A transmissão adapta torque e rotação às necessidades de deslocamento.',
+      'A TDP transmite potência rotacional ao implemento e deve operar segundo as especificações do conjunto.'
     ],
-    keyPoints: [
-      'Nomenclatura e aplicação dos pneus',
-      'Pressão e carga',
-      'Bitola e alinhamento',
-      'Avanço da TDA',
-      'Medição de patinagem',
-      'Lastro líquido e contrapesos'
+    keyPoints:['ciclo de quatro tempos','sistemas do motor','torque e potência','transmissão','TDP 540/540E/1000 quando disponíveis'],
+    activities:[
+      'Explique, em texto, o fluxo de energia do combustível até as rodas e até a TDP.',
+      'Compare marcha baixa e alta em termos de torque e velocidade.',
+      'Resolva três questões conceituais sobre potência, torque e rotação sem usar valores inventados de um trator.'
     ],
-    activities: [
-      'Calcule a patinagem a partir de uma distância medida com e sem carga e interprete o resultado.',
-      'Monte uma matriz de decisão: aumentar lastro, reduzir lastro, alterar pressão, reduzir velocidade ou trocar marcha.'
-    ],
-    practicalTask: 'Sob supervisão, meça a patinagem em uma condição de campo e registre solo, pneu, pressão, marcha, distância e número de voltas.',
-    assessment: [
-      {
-        question: 'Qual situação normalmente indica perda de eficiência de tração?',
-        options: ['Patinagem excessiva', 'Pressão sempre igual em qualquer solo', 'Uso do manual do fabricante', 'Velocidade compatível com o implemento'],
-        answer: 0,
-        explanation: 'Patinagem excessiva representa parte da energia disponível sendo dissipada no contato pneu-solo sem produzir avanço útil.'
-      }
+    assessment:[
+      {type:'multiple',question:'A potência mecânica do motor é relacionada principalmente a:',options:['Torque e velocidade angular','Massa do pneu','Cor do trator','Largura da cabine'],answer:0,explanation:'Potência mecânica é torque multiplicado pela velocidade angular.'},
+      {type:'trueFalse',question:'A TDP transmite potência rotacional para equipamentos que utilizam esse acionamento.',options:['Verdadeiro','Falso'],answer:0,explanation:'Essa é a finalidade fundamental da tomada de potência.'},
+      {type:'discursive',question:'Explique por que uma marcha mais baixa pode aumentar a força disponível nas rodas sem aumentar a potência do motor.',modelAnswer:'A transmissão altera a relação entre rotação e torque; idealmente, reduzindo a velocidade de saída, aumenta-se o torque disponível, descontadas as perdas.',evaluationCriteria:['relação de transmissão','torque nas rodas','potência do motor não é criada']},
+      {type:'matching',question:'Relacione sistema e função.',left:['Arrefecimento','Lubrificação','Alimentação de combustível','Transmissão'],right:['Controla temperatura','Reduz atrito e remove calor','Fornece combustível ao processo de combustão','Adapta torque e rotação'],answer:[0,1,2,3],explanation:'Cada sistema possui uma função específica.'}
     ]
   },
   {
-    id: 'm5',
-    title: 'Implementos, engates e regulagem',
-    hours: 4,
-    source: 'SENAR-PR — Operação de Tratores e Implementos',
-    objective: 'Selecionar, acoplar e regular implementos de acordo com potência, sistema de engate, condição do solo e objetivo agronômico.',
-    theory: [
-      'Implementos de preparo do solo apresentam diferentes resistências e profundidades de trabalho. Não existe uma potência universal para todos os solos e configurações.',
-      'O engate de três pontos, a barra de tração e os sistemas hidráulicos possuem limites de carga e geometria que devem ser respeitados.',
-      'A regulagem deve buscar a qualidade agronômica desejada com o menor esforço desnecessário: profundidade, nivelamento, largura, rotação e velocidade são interdependentes.',
-      'O implemento deve ser compatível com a potência e capacidade hidráulica do trator, mas também com a capacidade estrutural e os limites de segurança do conjunto.'
+    id:'m5', title:'Pneus, bitola, TDA, patinagem e lastreamento', hours:4,
+    source:'SENAR-PR — Operação de Tratores e Implementos',
+    objective:'Compreender os fatores que controlam tração, patinagem, estabilidade e compactação.',
+    theory:[
+      'Pneu, pressão, carga por eixo, solo e velocidade influenciam a interação pneu-solo.',
+      'A bitola deve ser compatível com cultura, implemento e recomendações do fabricante.',
+      'Em tratores com TDA, o avanço entre eixos deve respeitar a especificação do fabricante.',
+      'Patinagem excessiva dissipa energia; lastro excessivo também pode aumentar compactação e resistência ao rolamento.'
     ],
-    keyPoints: [
-      'Barra de tração',
-      'Engate de três pontos',
-      'Sistema hidráulico',
-      'Arado, grade, escarificador, subsolador e cultivador',
-      'Profundidade e nivelamento',
-      'Compatibilidade trator × implemento'
+    keyPoints:['pressão dos pneus','bitola','avanço da TDA','patinagem','lastro líquido e contrapesos','compactação'],
+    activities:[
+      'Explique cinco causas possíveis de patinagem excessiva sem assumir um único culpado.',
+      'Analise três cenários teóricos e decida se a hipótese inicial deve ser pressão, lastro, marcha, solo ou combinação.',
+      'Calcule conceitualmente a patinagem a partir de distâncias medidas, sem transformar o resultado em recomendação automática.'
     ],
-    activities: [
-      'Escolha um implemento e faça uma ficha de regulagem contendo finalidade, profundidade, largura, velocidade, TDP quando aplicável e pontos de inspeção.',
-      'Analise um caso em que o trator não consegue manter a velocidade e liste as variáveis que devem ser verificadas antes de simplesmente aumentar a rotação.'
-    ],
-    practicalTask: 'Faça, com supervisão, o acoplamento e a regulagem de um implemento disponível na propriedade, documentando as configurações antes da operação.',
-    assessment: [
-      {
-        question: 'A potência nominal do trator, sozinha, determina se um implemento é adequado?',
-        options: ['Sim, sempre', 'Não; também devem ser considerados resistência, solo, regulagem, sistema de engate e limites do conjunto', 'Somente a largura importa', 'Somente o peso do implemento importa'],
-        answer: 1,
-        explanation: 'O dimensionamento é multidimensional e depende da resistência requerida, condição do solo, regulagens, engate, hidráulico, velocidade e limites do conjunto.'
-      }
+    assessment:[
+      {type:'multiple',question:'Patinagem excessiva normalmente representa:',options:['Aproveitamento perfeito da potência','Perda de energia no contato pneu-solo','Aumento obrigatório da produtividade','Ausência de resistência ao rolamento'],answer:1,explanation:'Parte da energia disponível é dissipada sem produzir avanço útil.'},
+      {type:'trueFalse',question:'Mais lastro é sempre melhor para a tração.',options:['Verdadeiro','Falso'],answer:1,explanation:'Peso excessivo pode aumentar compactação e resistência ao rolamento.'},
+      {type:'discursive',question:'Explique por que a mesma configuração de trator pode apresentar patinagem diferente em dois solos.',modelAnswer:'Porque a capacidade de interação pneu-solo depende das propriedades e condições do solo, além de umidade, carga, pressão e condição superficial.',evaluationCriteria:['interação pneu-solo','diferença entre solos','não atribuir tudo ao motor']},
+      {type:'matching',question:'Relacione variável e efeito.',left:['Pressão dos pneus','Lastro','Bitola','Patinagem'],right:['Altera área de contato/deformação','Altera distribuição de massa e carga','Define largura entre rodas','Diferença entre avanço real e avanço associado à rotação'],answer:[0,1,2,3],explanation:'São variáveis diferentes, embora interdependentes.'}
     ]
   },
   {
-    id: 'm6',
-    title: 'Marcha, rotação e velocidade de trabalho',
-    hours: 4,
-    source: 'SENAR-PR + referências de desempenho de tratores',
-    objective: 'Selecionar uma relação de marcha e rotação coerentes com a operação, diferenciando velocidade teórica de desempenho real em campo.',
-    theory: [
-      'A velocidade indicada em uma tabela de transmissão é uma condição de referência. A velocidade real pode variar com rotação, pneus, carga, patinagem e condições do terreno.',
-      'A seleção de marcha deve considerar a força requerida, velocidade desejada, faixa de torque do motor, capacidade de tração e qualidade da operação.',
-      'A mesma carga nominal pode exigir marchas diferentes em solo firme, solo solto, aclive ou declive.',
-      'A calculadora desta plataforma cruza dados documentados de transmissão com parâmetros fornecidos pelo usuário. Ela não inventa uma marcha quando faltam dados de campo ou do manual.'
+    id:'m6', title:'Implementos, potência e regulagem', hours:4,
+    source:'SENAR-PR — Operação de Tratores e Implementos; Embrapa',
+    objective:'Entender compatibilidade entre trator e implemento, resistência, engates, hidráulica e qualidade de regulagem.',
+    theory:[
+      'A potência necessária depende do implemento, largura, profundidade, velocidade, condição do solo e resistência específica.',
+      'Engate de três pontos, barra de tração e hidráulico têm limites estruturais e geométricos.',
+      'Profundidade, nivelamento, largura, velocidade e rotação podem interagir e alterar a qualidade do trabalho.',
+      'Não existe uma potência universal que garanta compatibilidade em qualquer solo.'
     ],
-    keyPoints: [
-      'Tabela de escalonamento',
-      'Velocidade teórica × real',
-      'Faixa de rotação',
-      'Força requerida e força disponível',
-      'Inclinação e resistência ao rolamento',
-      'Validação em manual e campo'
+    keyPoints:['barra de tração','três pontos','hidráulico','resistência específica','profundidade','qualidade agronômica'],
+    activities:[
+      'Monte uma ficha teórica de compatibilidade para um implemento: finalidade, largura, profundidade, velocidade, potência e limites.',
+      'Analise por que aumentar apenas a rotação pode não resolver perda de velocidade em um implemento de solo.',
+      'Compare arado, grade, subsolador, cultivador e pulverizador quanto ao tipo de demanda sobre o trator.'
     ],
-    activities: [
-      'Use a biblioteca de marchas para escolher três relações possíveis para uma velocidade-alvo e justifique a escolha.',
-      'Compare a mesma marcha em duas condições de solo e explique por que a velocidade real e a patinagem podem mudar.'
-    ],
-    practicalTask: 'Registre velocidade indicada, velocidade medida, rotação, marcha e patinagem durante uma operação supervisionada e compare os valores.',
-    assessment: [
-      {
-        question: 'Uma velocidade de tabela de transmissão deve ser interpretada como:',
-        options: ['Garantia da velocidade real no campo', 'Referência para uma condição específica de rotação e rodado', 'Velocidade mínima obrigatória', 'Velocidade universal para qualquer implemento'],
-        answer: 1,
-        explanation: 'Tabelas de transmissão são referências condicionadas à rotação, configuração de pneus e demais condições indicadas pelo fabricante.'
-      }
+    assessment:[
+      {type:'multiple',question:'Qual fator NÃO deve ser usado isoladamente para selecionar um implemento?',options:['Potência nominal','Condição do solo','Profundidade','Resistência requerida'],answer:0,explanation:'Potência nominal isolada não representa toda a demanda do conjunto.'},
+      {type:'trueFalse',question:'A qualidade do trabalho deve ser considerada junto com produtividade e consumo.',options:['Verdadeiro','Falso'],answer:0,explanation:'Eficiência operacional é multidimensional.'},
+      {type:'discursive',question:'Explique por que dois implementos da mesma largura podem exigir forças diferentes.',modelAnswer:'Porque geometria, profundidade, tipo de órgão ativo, velocidade e resistência do solo podem ser diferentes.',evaluationCriteria:['geometria','profundidade','solo/resistência']},
+      {type:'matching',question:'Relacione implemento à demanda típica.',left:['Subsolador','Pulverizador','Grade de discos','Cultivador'],right:['Tração profunda e elevada resistência','Deslocamento com demanda de bombeamento','Corte/mobilização superficial e resistência variável','Trabalho entre linhas com controle de velocidade e profundidade'],answer:[0,1,2,3],explanation:'As demandas variam conforme configuração e operação.'}
     ]
   },
   {
-    id: 'm7',
-    title: 'Manutenção preventiva e inspeção',
-    hours: 4,
-    source: 'SENAR Play — Manutenção de Tratores Agrícolas; SENAR-PR',
-    objective: 'Estabelecer uma rotina de inspeção e manutenção preventiva capaz de detectar falhas antes que comprometam segurança, disponibilidade e custo operacional.',
-    theory: [
-      'Manutenção preventiva reduz a probabilidade de falhas e deve seguir o plano do fabricante para o modelo e a severidade de uso.',
-      'Níveis, filtros, lubrificação, correias, pneus, freios, direção, sistema hidráulico, arrefecimento e sistema elétrico devem ser verificados conforme os intervalos prescritos.',
-      'O intervalo correto não deve ser generalizado: horas de serviço, condições de poeira, carga, temperatura e recomendações do fabricante podem alterar o plano.',
-      'Qualquer intervenção deve respeitar procedimentos de isolamento, motor desligado, implemento apoiado e eliminação de fontes de energia conforme o risco.'
+    id:'m7', title:'Marcha, rotação e velocidade de trabalho', hours:4,
+    source:'SENAR-PR + Embrapa + dados documentados dos tratores da plataforma',
+    objective:'Interpretar velocidades de transmissão e compreender por que a marcha real depende de condições de operação.',
+    theory:[
+      'A velocidade de tabela é uma referência condicionada à rotação, pneus e configuração indicadas pelo fabricante.',
+      'Velocidade real pode mudar por patinagem, carga, terreno, inclinação e condição do solo.',
+      'A seleção de marcha deve considerar força requerida, faixa de torque, velocidade desejada e qualidade da operação.',
+      'A calculadora da plataforma só produz estimativa quando os parâmetros reais são fornecidos e não usa faixas fictícias de velocidade por operação.'
     ],
-    keyPoints: [
-      'Checklist diário',
-      'Lubrificação',
-      'Filtros e fluidos',
-      'Arrefecimento',
-      'Hidráulico, freios e direção',
-      'Registros de manutenção'
+    keyPoints:['velocidade teórica × real','rotação','força requerida','patinagem','dados de manual','limites da calculadora'],
+    activities:[
+      'Escolha três marchas documentadas para uma velocidade-alvo fornecida e justifique a comparação sem afirmar que alguma é automaticamente correta.',
+      'Explique por que uma mesma marcha pode produzir velocidades reais diferentes em dois cenários.',
+      'Analise um resultado hipotético da calculadora e liste quais dados de campo deveriam ser conferidos antes de usá-lo como referência.'
     ],
-    activities: [
-      'Crie uma ficha de manutenção com item, periodicidade, condição encontrada, ação executada e responsável.',
-      'Classifique cinco falhas em: pode continuar monitorando, requer manutenção antes da próxima operação ou exige retirada imediata de serviço.'
-    ],
-    practicalTask: 'Execute uma inspeção diária seguindo o manual do trator e registre todas as anormalidades sem realizar intervenções para as quais você não esteja capacitado.',
-    assessment: [
-      {
-        question: 'Qual é a melhor referência para os intervalos de manutenção?',
-        options: ['Um intervalo universal para todos os tratores', 'O plano do fabricante, ajustado às condições de uso quando previsto', 'Somente a aparência do óleo', 'A experiência de qualquer operador'],
-        answer: 1,
-        explanation: 'Os intervalos dependem do modelo e das condições de uso; o manual do fabricante é a referência primária.'
-      }
+    assessment:[
+      {type:'multiple',question:'Uma velocidade de tabela de transmissão é:',options:['Garantia de velocidade no campo','Referência sob condições especificadas','Velocidade universal','Limite legal de operação'],answer:1,explanation:'É uma referência condicionada à configuração documentada.'},
+      {type:'trueFalse',question:'A carga sozinha determina a marcha correta de um trator.',options:['Verdadeiro','Falso'],answer:1,explanation:'Também entram implemento, solo, inclinação, tração, rotação, pneus e qualidade da operação.'},
+      {type:'discursive',question:'Explique por que a calculadora não deve preencher automaticamente carga, inclinação, aderência ou eficiência.',modelAnswer:'Porque esses valores variam entre operações e sua invenção produziria uma falsa precisão e poderia induzir a uma decisão operacional inadequada.',evaluationCriteria:['variabilidade dos dados','falsa precisão','segurança técnica']},
+      {type:'matching',question:'Relacione dado e efeito.',left:['Rotação do motor','Patinagem','Inclinação','Pneus'],right:['Altera velocidade de referência da transmissão','Reduz avanço real','Altera componente da força resistente','Afeta relação entre rotação e velocidade de deslocamento'],answer:[0,1,2,3],explanation:'Os quatro fatores interferem no desempenho de forma diferente.'}
     ]
   },
   {
-    id: 'm8',
-    title: 'Eficiência, tração e decisão operacional',
-    hours: 3,
-    source: 'SENAR-PR + Embrapa',
-    objective: 'Integrar segurança, tração, regulagem, desempenho e qualidade para tomar decisões operacionais justificadas.',
-    theory: [
-      'Eficiência operacional não é apenas velocidade. Deve considerar capacidade de campo, consumo, qualidade do trabalho, tempo improdutivo, desgaste e conservação do solo.',
-      'A força disponível na barra é limitada pela potência transmitida e pela capacidade de interação pneu-solo. A condição de tração pode ser tão importante quanto a potência nominal.',
-      'Uma decisão técnica deve ser validada por dados: marcha, rotação, patinagem, velocidade real, consumo quando disponível, profundidade e qualidade do implemento.',
-      'Quando a estimativa da calculadora divergir do comportamento de campo, a prioridade é verificar dados, manual, regulagem, pneus, lastro e condições reais antes de concluir que o modelo está errado.'
+    id:'m8', title:'Manutenção preventiva, diagnóstico e eficiência', hours:3,
+    source:'SENAR Play — Manutenção de Tratores Agrícolas; SENAR-PR; Embrapa',
+    objective:'Desenvolver raciocínio de inspeção, manutenção preventiva e diagnóstico sem orientar o aluno a executar intervenções perigosas.',
+    theory:[
+      'A manutenção preventiva deve seguir o plano do fabricante e considerar severidade de uso e condições ambientais quando previsto.',
+      'Níveis, filtros, lubrificação, pneus, freios, direção, arrefecimento, hidráulica e sistema elétrico exigem inspeção conforme o plano específico.',
+      'Diagnóstico técnico começa por sintoma, hipótese, evidência e documentação; não por troca aleatória de componentes.',
+      'Intervenções mecânicas devem ser realizadas somente por pessoas capacitadas e conforme procedimentos seguros.'
     ],
-    keyPoints: [
-      'Diagnóstico de patinagem',
-      'Força de tração',
-      'Capacidade operacional',
-      'Consumo e qualidade',
-      'Conservação do solo',
-      'Decisão baseada em medição'
+    keyPoints:['plano de manutenção','horas de serviço','inspeção','diagnóstico por evidência','limites de atuação','eficiência operacional'],
+    activities:[
+      'Crie uma ficha de manutenção preventiva com item, periodicidade, condição encontrada e ação recomendada.',
+      'Classifique cinco falhas hipotéticas em monitorar, programar manutenção ou retirar de serviço, justificando cada decisão.',
+      'Monte um fluxograma de diagnóstico: sintoma → hipóteses → evidências → decisão.'
     ],
-    activities: [
-      'Faça um diagnóstico completo de uma operação: problema observado → hipótese → medição → ajuste → nova medição.',
-      'Compare duas estratégias de operação e escolha a melhor usando pelo menos quatro indicadores técnicos.'
-    ],
-    practicalTask: 'Realize uma operação supervisionada, registre os indicadores disponíveis e produza um relatório curto justificando a marcha, velocidade, regulagem e condição de tração escolhidas.',
-    assessment: [
-      {
-        question: 'Qual é a melhor forma de validar uma decisão de operação?',
-        options: ['Escolher a maior marcha disponível', 'Basear-se apenas na potência nominal', 'Combinar manual, dados medidos, condição de campo e qualidade do trabalho', 'Usar sempre a mesma marcha'],
-        answer: 2,
-        explanation: 'A decisão robusta combina documentação técnica com medições e observação da qualidade e segurança da operação.'
-      }
+    assessment:[
+      {type:'multiple',question:'Qual é a referência primária para intervalo de manutenção?',options:['Um intervalo universal','Manual/plano do fabricante','Apenas aparência do óleo','Opinião de outro operador'],answer:1,explanation:'O plano do fabricante é a referência primária do modelo.'},
+      {type:'trueFalse',question:'Diagnóstico técnico deve partir de evidências e sintomas, não apenas de suposições.',options:['Verdadeiro','Falso'],answer:0,explanation:'O diagnóstico deve ser rastreável e baseado em evidências.'},
+      {type:'discursive',question:'Explique por que trocar peças sem diagnosticar a causa pode aumentar o custo e não resolver a falha.',modelAnswer:'Porque a peça substituída pode não ser a causa; o defeito original pode permanecer e ainda gerar custo, tempo parado e novos danos.',evaluationCriteria:['causa raiz','custo','tempo de indisponibilidade']},
+      {type:'matching',question:'Relacione atividade e finalidade.',left:['Lubrificação','Inspeção de pneus','Registro de manutenção','Manual'],right:['Reduzir atrito conforme especificação','Verificar condição e segurança do rodado','Rastrear serviços e ocorrências','Fonte específica de limites e procedimentos'],answer:[0,1,2,3],explanation:'Cada ação contribui para disponibilidade e segurança.'}
     ]
   }
 ];
