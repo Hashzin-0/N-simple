@@ -53,6 +53,7 @@ import type { LibrasSubTab } from '@/components/LibrasNoAgro';
 import type { LibrasVoiceSearchReport, LibrasCoachReport } from '@/lib/libras-types';
 import type { LibrasLiveBridgeContext } from '@/hooks/useLibrasLiveAgent';
 import type { Frase } from '@/lib/analiseMorfologica/types';
+import MecanizacaoTratores from '@/components/MecanizacaoTratores';
 import { smoothScrollToSection, waitForElement } from '@/lib/pageAutomator';
 
 /** Âncoras das sessões de Libras (ids no DOM de LibrasNoAgro). */
@@ -911,6 +912,17 @@ export default function Home() {
     [isDark, redacaoReq, onRedacaoReport],
   );
 
+  const tratoristaContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <MecanizacaoTratores />
+        </ScrollStack>
+      </div>
+    ),
+    [],
+  );
+
   const tutorContent = useMemo(
     () => (
       <div className="w-full">
@@ -1724,6 +1736,7 @@ export default function Home() {
           librasContent={librasContent}
           redacaoContent={redacaoContent}
           tutorContent={tutorContent}
+          tratoristaContent={tratoristaContent}
         />
 
         {/* GEMINI LIVE VOICE ASSISTANT HUD WITH 3D ORB */}
