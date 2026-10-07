@@ -159,7 +159,7 @@ ${structure.rawText}
 Faça uma leitura integral do PDF e do manifesto. Identifique conteúdo, relações visuais, gráficos, tabelas, imagens, hierarquia, acessibilidade e problemas acadêmicos. Não confunda o número da página PDF com um ID de objeto do Office.`;
 }
 
-async function analyzeNewFile(ai: GoogleGenAI, file: File) {
+const INITIAL_SYSTEM_PROMPT = SYSTEM_PROMPT + `\n\nPara a leitura inicial, retorne JSON no formato: {"analysis":{"documentType":"word|powerpoint","title":"","executiveSummary":"","purpose":"","audience":"","strengths":[],"priorityIssues":[],"contentMap":[],"visualDiagnosis":[],"questionsToStart":[],"suggestedActions":[],"confidence":0},"edits":[],"manualChanges":[]}.`;\n\nasync function analyzeNewFile(ai: GoogleGenAI, file: File) {
   const buffer = Buffer.from(await file.arrayBuffer());
   if (buffer.byteLength > 20 * 1024 * 1024) throw new Error('Por segurança, o Professor aceita arquivos de até 20 MB por análise.');
   if (!/\.(docx|pptx)$/i.test(file.name)) throw new Error('Envie um arquivo .docx ou .pptx.');
