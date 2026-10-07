@@ -113,7 +113,7 @@ export default function MecanizacaoTratores(){
                 <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><Info className="size-4 text-[#5A7D54]"/><h5 className="font-bold text-sm">Catálogo de símbolos reais</h5></div><p className="mt-1 text-xs leading-5 text-[#657063] dark:text-[#B6BDB2]">Os desenhos abaixo são referências ISO 7000 em SVG, não ícones redesenhados pelo N-simple. A função do comando no trator específico deve ser confirmada no manual.</p></div><a href="https://www.iso.org/standard/60092.html" target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-[#4E794A]">ISO 3767-2 ↗</a></div>
                 <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {TRACTOR_SYMBOLS.map(s=><article key={s.id} className="rounded-xl border border-[#DDE4D8] dark:border-[#364132] bg-white dark:bg-[#1B2119] p-3">
-                    <div className="h-24 rounded-lg bg-[#F3F5F0] dark:bg-[#252C23] flex items-center justify-center"><img src={s.imageUrl} alt={s.title+' — '+s.iso} className="h-20 w-20 object-contain" loading="lazy"/></div>
+                    <div className="h-24 rounded-lg bg-[#F3F5F0] dark:bg-[#252C23] flex items-center justify-center"><img src={s.imageUrl} alt={s.title+' — '+s.iso} className="h-20 w-20 object-contain" loading="lazy" onError={e=>{e.currentTarget.style.display="none";}}/></div>
                     <div className="mt-3 text-xs font-bold text-[#30382E] dark:text-[#EEF1E9]">{s.title}</div>
                     <div className="mt-1 text-[10px] font-bold text-[#5A7D54]">{s.iso}</div>
                     <p className="mt-1 text-[10px] leading-4 text-[#687064] dark:text-[#B6BDB2]">{s.meaning}</p>
@@ -147,10 +147,30 @@ export default function MecanizacaoTratores(){
                     if(q.type!=='matching') return null;
                     const mapping=Array.isArray(value)?value:[]; const complete=mapping.length===q.left.length&&mapping.every(x=>typeof x==='number'&&x>=0);
                     const correct=complete&&q.answer.every((x,i)=>mapping[i]===x);
+                    const options=q.right.map(id=>TRACTOR_SYMBOLS.find(s=>s.id===id)).filter(Boolean) as typeof TRACTOR_SYMBOLS;
                     return <div key={key} className="rounded-xl border border-[#E5E4DB] dark:border-[#353C30] p-4">
                       <div className="flex gap-2"><span className="text-[10px] font-bold text-[#5A7D54]">Q{qi+1}</span><p className="text-sm font-semibold">{q.question}</p></div>
-                      <div className="mt-3 space-y-2">{q.left.map((left,li)=><div key={left} className="grid sm:grid-cols-[1fr_1fr] gap-2 items-center"><span className="rounded-lg bg-[#F5F6F1] dark:bg-[#252C23] p-2 text-xs">{left}</span><select value={typeof mapping[li]==='number'?mapping[li]:''} onChange={e=>{const next=[...mapping];next[li]=Number(e.target.value);setAnswers(c=>({...c,[key]:next}));setCheckedAnswers(c=>({...c,[key]:false}));}} className="rounded-lg border border-[#DADDD5] dark:border-[#3A4235] bg-white dark:bg-[#20251D] p-2 text-xs"><option value="">Selecione</option>{q.right.map((right,ri)=><option key={right} value={ri}>{right}</option>)}</select></div>)}</div>
-                      <div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" disabled={!complete} onClick={()=>setCheckedAnswers(c=>({...c,[key]:true}))} className="rounded-xl bg-[#4E794A] px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Corrigir relação</button>{checked&&<span className={'text-xs font-semibold '+(correct?'text-[#4E794A]':'text-[#B47732]')}>{correct?'Todas as relações estão corretas.':'Há relações incorretas. '} {q.explanation}</span>}</div>
+                      <div className="mt-4 space-y-4">
+                        {q.left.map((targetIso,li)=>{
+                          const selected=typeof mapping[li]==='number'?mapping[li]:undefined;
+                          return <div key={targetIso} className="rounded-xl border border-[#DDE3D8] dark:border-[#354132] p-3">
+                            <div className="text-xs font-bold text-[#30382E] dark:text-[#EEF1E9]">{targetIso}</div>
+                            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              {options.map((symbol,oi)=>{
+                                const selectedHere=selected===oi, right=checked&&oi===q.answer[li], wrong=checked&&selectedHere&&!right;
+                                return <button type="button" key={symbol.id} title={symbol.title} aria-label={symbol.title+' — '+symbol.iso}
+                                  onClick={()=>{const next=[...mapping];next[li]=oi;setAnswers(c=>({...c,[key]:next}));setCheckedAnswers(c=>({...c,[key]:false}));}}
+                                  className={'rounded-xl border p-2 transition '+(right?'border-[#5A7D54] bg-[#EDF5E9]':wrong?'border-red-400/60 bg-red-50 dark:bg-red-950/20':selectedHere?'border-[#7A936B] bg-[#F4F7F0] dark:bg-[#273022]':'border-[#E0DFD6] dark:border-[#353C30] hover:border-[#7A936B]')}>
+                                  <span className="block h-16 rounded-lg bg-[#F5F6F1] dark:bg-[#252C23] p-2"><img src={symbol.imageUrl} alt="" className="h-full w-full object-contain" loading="lazy" onError={e=>{e.currentTarget.style.display='none';}}/></span>
+                                  <span className="mt-2 block text-[9px] font-semibold text-[#687064] dark:text-[#B6BDB2]">Símbolo</span>
+                                </button>;
+                              })}
+                            </div>
+                            {checked&&correct&&<div className="mt-2 text-[10px] text-[#4E794A] font-semibold">{options[q.answer[li]]?.title}</div>}
+                          </div>;
+                        })}
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" disabled={!complete} onClick={()=>setCheckedAnswers(c=>({...c,[key]:true}))} className="rounded-xl bg-[#4E794A] px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Corrigir associação</button>{checked&&<span className={'text-xs font-semibold '+(correct?'text-[#4E794A]':'text-[#B47732]')}>{correct?'Todas as associações estão corretas.':'Há associações incorretas. '} {q.explanation}</span>}</div>
                     </div>;
                   })}
                 </div>
