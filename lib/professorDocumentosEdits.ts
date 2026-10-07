@@ -54,7 +54,7 @@ function replacePptxText(xml: string, edit: Extract<DocumentEdit, { type: 'repla
   const match = xml.match(objectRegex);
   if (!match) throw new Error(`Objeto ${edit.targetId} não encontrado no ${edit.unit}.`);
   const fragment = match[0];
-  const runRegex = /<a:t([^>]*)>([\\s\\S]*?)<\\/a:t>/gi;
+  const runRegex = /<a:t([^>]*)>([\s\S]*?)<\/a:t>/gi;
   let found = false;
   const replaced = fragment.replace(runRegex, (full, attrs, value) => {
     const decoded = value
@@ -86,15 +86,15 @@ const transitionXml = (edit: Extract<DocumentEdit, { type: 'set_transition' }>) 
 };
 
 function applyTransition(xml: string, edit: Extract<DocumentEdit, { type: 'set_transition' }>) {
-  const without = xml.replace(/<p:transition(?: [^>]*)?>[\\s\\S]*?<\\/p:transition>/i, '');
+  const without = xml.replace(/<p:transition(?: [^>]*)?>[\s\S]*?<\/p:transition>/i, '');
   const transition = transitionXml(edit);
   if (without.includes('<p:timing')) return without.replace(/<p:timing/, `${transition}<p:timing`);
-  if (without.includes('</p:clrMapOvr>')) return without.replace(/<\\/p:clrMapOvr>/i, `</p:clrMapOvr>${transition}`);
-  return without.replace(/<\\/p:cSld>/i, `</p:cSld>${transition}`);
+  if (without.includes('</p:clrMapOvr>')) return without.replace(/<\/p:clrMapOvr>/i, `</p:clrMapOvr>${transition}`);
+  return without.replace(/<\/p:cSld>/i, `</p:cSld>${transition}`);
 }
 
 function maxTimingId(xml: string) {
-  const ids = [...xml.matchAll(/<p:cTn[^>]*\bid="(\\d+)"/gi)].map(m => Number(m[1]));
+  const ids = [...xml.matchAll(/<p:cTn[^>]*\bid="(\d+)"/gi)].map(m => Number(m[1]));
   return Math.max(1, ...ids);
 }
 
@@ -115,7 +115,7 @@ function animationXml(edit: Extract<DocumentEdit, { type: 'add_animation' }>, id
 function ensureTiming(xml: string) {
   if (/<p:timing[ >]/i.test(xml)) return xml;
   const timing = '<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst/></p:cTn></p:par></p:tnLst></p:timing>';
-  if (/<p:clrMapOvr[ >]/i.test(xml)) return xml.replace(/<\\/p:clrMapOvr>/i, `</p:clrMapOvr>${timing}`);
+  if (/<p:clrMapOvr[ >]/i.test(xml)) return xml.replace(/<\/p:clrMapOvr>/i, `</p:clrMapOvr>${timing}`);
   return xml.replace(/<\\/p:sld>/i, `${timing}</p:sld>`);
 }
 
@@ -123,8 +123,8 @@ function addAnimation(xml: string, edit: Extract<DocumentEdit, { type: 'add_anim
   const result = ensureTiming(xml);
   const nextId = maxTimingId(result) + 1;
   const node = animationXml(edit, nextId);
-  if (/<p:childTnLst[ >][\\s\\S]*?<\\/p:childTnLst>/i.test(result)) {
-    return result.replace(/<p:childTnLst( [^>]*)?>([\\s\\S]*?)<\\/p:childTnLst>/i, (full, attrs, body) =>
+  if (/<p:childTnLst[ >][\s\S]*?<\/p:childTnLst>/i.test(result)) {
+    return result.replace(/<p:childTnLst( [^>]*)?>([\s\S]*?)<\/p:childTnLst>/i, (full, attrs, body) =>
       `<p:childTnLst${attrs || ''}>${body}${node}</p:childTnLst>`,
     );
   }
@@ -133,7 +133,7 @@ function addAnimation(xml: string, edit: Extract<DocumentEdit, { type: 'add_anim
   );
 }
 function removeAnimations(xml: string, edit: Extract<DocumentEdit, { type: 'remove_animations' }>) {
-  const timingMatch = xml.match(/<p:timing[ >][\\s\\S]*?<\\/p:timing>/i);
+  const timingMatch = xml.match(/<p:timing[ >][\s\S]*?<\/p:timing>/i);
   if (!timingMatch) return xml;
   let timing = timingMatch[0];
   if (edit.targetId) {
@@ -162,10 +162,10 @@ export async function applyDocumentEdits(
         throw new Error(`A alteração "${edit.type}" não é compatível com Word nesta versão.`);
       }
       const paragraphNumber = Number(edit.targetId.replace('paragraph-', ''));
-      const paragraphs = [...xml.matchAll(/<w:p(?: [^>]*)?>[\\s\\S]*?<\\/w:p>/gi)];
+      const paragraphs = [...xml.matchAll(/<w:p(?: [^>]*)?>[\s\S]*?<\/w:p>/gi)];
       const paragraph = paragraphs[paragraphNumber - 1]?.[0];
       if (!paragraph) throw new Error(`Parágrafo ${paragraphNumber} não encontrado.`);
-      const runRegex = /<w:t([^>]*)>([\\s\\S]*?)<\\/w:t>/gi;
+      const runRegex = /<w:t([^>]*)>([\s\S]*?)<\/w:t>/gi;
       let found = false;
       const replaced = paragraph.replace(runRegex, (full, attrs, value) => {
         const decoded = value.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
