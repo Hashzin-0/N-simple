@@ -24,6 +24,7 @@ import {
   MessagesSquare,
   Library,
   Languages,
+  Tractor,
 } from 'lucide-react';
 
 export interface SectionConfig {
@@ -84,6 +85,14 @@ export const SECTIONS_BY_TAB: Record<TabId, SectionConfig[]> = {
     { id: 'redacao_estrutura', label: 'Estrutura', shortLabel: 'Estrutura', icon: Layers, color: '#5A5A40', colorDark: '#9CB386' },
     { id: 'redacao_resultado', label: 'Resultado', shortLabel: 'Resultado', icon: FileText, color: '#2E6F40', colorDark: '#86efac' },
   ],
+  tratorista: [
+    { id: 'tratorista_inicio', label: 'Curso', shortLabel: 'Curso', icon: Tractor, color: '#55764F', colorDark: '#A9C49D' },
+    { id: 'tratorista_curso', label: 'Trilha de formação', shortLabel: 'Formação', icon: BookOpen, color: '#5A5A40', colorDark: '#9CB386' },
+    { id: 'tratorista_calculadora', label: 'Calculadora de tração', shortLabel: 'Calculadora', icon: Calculator, color: '#2E6F40', colorDark: '#86efac' },
+    { id: 'tratorista_tabelas', label: 'Marchas e gráficos', shortLabel: 'Marchas', icon: Scale, color: '#D4A373', colorDark: '#D4A373' },
+    { id: 'tratorista_manutencao', label: 'Segurança', shortLabel: 'Segurança', icon: AlertTriangle, color: '#C19262', colorDark: '#D4A373' },
+    { id: 'tratorista_fontes', label: 'Fontes técnicas', shortLabel: 'Fontes', icon: BookOpen, color: '#5A5A40', colorDark: '#9CB386' },
+  ],
   tutor: [
     { id: 'tutor_tema', label: 'Sessão', shortLabel: 'Sessão', icon: GraduationCap, color: '#2E6F40', colorDark: '#86efac' },
     { id: 'tutor_session', label: 'Progresso', shortLabel: 'Progresso', icon: Trophy, color: '#5A5A40', colorDark: '#9CB386' },
@@ -124,6 +133,7 @@ const TAB_LABELS_PT: Record<TabId, string> = {
   libras: 'Libras no Agro',
   redacao: 'Pesquisador de Redação',
   tutor: 'Tutor Inteligente',
+  tratorista: 'Mecanização Agrícola',
 };
 
 const norm = (s: string) =>
