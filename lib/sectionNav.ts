@@ -25,7 +25,6 @@ import {
   Library,
   Languages,
   Tractor,
-  FileText,
 } from 'lucide-react';
 
 export interface SectionConfig {
