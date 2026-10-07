@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenAI, createPartFromUri, createUserContent } from '@google/genai';
+import { GoogleGenAI, createUserContent } from '@google/genai';
 import { inspectOfficeDocument, type DocumentStructure } from '@/lib/professorDocumentos';
 
 export const runtime = 'nodejs';
@@ -49,60 +49,12 @@ function jsonFromModel(text: string) {
   return null;
 }
 
-async function waitForFile(ai: GoogleGenAI, name: string) {
-  let file = await ai.files.get({ name });
-  for (let i = 0; i < 30 && file.state === 'PROCESSING'; i++) {
-    await new Promise(r => setTimeout(r, 2000));
-    file = await ai.files.get({ name });
-  }
-  if (file.state === 'FAILED') throw new Error('O Gemini não conseguiu processar o arquivo.');
-  return file;
-}
-
-function structurePrompt(s: DocumentStructure) {
-  return `MAPA ESTRUTURAL EXTRAÍDO LOCALMENTE:
-Tipo: ${s.kind}
-Título detectado: ${s.title}
-Unidades: ${s.slides || s.paragraphs}
-Tabelas: ${s.tables}
-Imagens incorporadas: ${s.images.length}
-Animações detectadas: ${s.animations}
-Transições detectadas: ${s.transitions}
-Notas detectadas: ${s.notes}
-
-TEXTO ESTRUTURAL:
-${s.rawText}
-
-Analise o arquivo completo e devolva JSON com:
-{
-  "documentType": "word" | "powerpoint",
-  "title": string,
-  "executiveSummary": string,
-  "purpose": string,
-  "audience": string,
-  "strengths": string[],
-  "priorityIssues": [{"severity":"alta"|"media"|"baixa","unit":string,"issue":string,"why":string,"recommendation":string}],
-  "contentMap": [{"unit":string,"mainIdea":string,"role":"contexto"|"problema"|"metodo"|"evidencia"|"analise"|"conclusao"|"referencia"|"outro"}],
-  "visualDiagnosis": [{"unit":string,"status":"forte"|"adequar"|"critico","reason":string}],
-  "questionsToStart": string[],
-  "suggestedActions": string[],
-  "confidence": number
-}
-`;
-}
-
 async function analyzeNewFile(ai: GoogleGenAI, file: File) {
   const buffer = Buffer.from(await file.arrayBuffer());
   if (buffer.byteLength > 20 * 1024 * 1024) throw new Error('Por segurança, o Professor aceita arquivos de até 20 MB por análise.');
   if (!/\.(docx|pptx)$/i.test(file.name)) throw new Error('Envie um arquivo .docx ou .pptx.');
 
   const inspected = await inspectOfficeDocument(buffer, file.name);
-  const uploaded = await ai.files.upload({
-    file: new Blob([buffer], { type: file.type || 'application/octet-stream' }),
-    config: { mimeType: file.type || 'application/octet-stream', displayName: file.name },
-  });
-  if (!uploaded.name) throw new Error('Falha ao registrar o arquivo no Gemini.');
-  const processed = await waitForFile(ai, uploaded.name);
 
   const visualParts = inspected.assets
     .filter(a => a.base64 && a.mimeType.startsWith('image/'))
@@ -112,7 +64,6 @@ async function analyzeNewFile(ai: GoogleGenAI, file: File) {
   const response = await ai.models.generateContent({
     model: MODEL,
     contents: createUserContent([
-      createPartFromUri(processed.uri!, processed.mimeType || file.type),
       { text: structurePrompt(inspected.structure) },
       ...visualParts,
     ]),
@@ -124,38 +75,40 @@ async function analyzeNewFile(ai: GoogleGenAI, file: File) {
 
   const analysis = jsonFromModel(response.text || '');
   if (!analysis) throw new Error('O Professor concluiu a leitura, mas a resposta estruturada não pôde ser interpretada.');
+
   return {
     fileName: file.name,
     mimeType: file.type,
-    geminiFileUri: processed.uri,
-    geminiFileMimeType: processed.mimeType || file.type,
+    documentContext: inspected.structure.rawText,
     structure: inspected.structure,
     analysis,
   };
 }
 
 async function answerQuestion(ai: GoogleGenAI, body: any) {
-  if (!body?.question || !body?.geminiFileUri || !body?.geminiFileMimeType) {
-    throw new Error('Sessão de documento incompleta.');
+  if (!body?.question || !body?.documentContext || !body?.analysis) {
+    throw new Error('Sessão de documento incompleta. Reenvie o arquivo para continuar.');
   }
-  const context = JSON.stringify(body.analysis || {});
+
+  const context = JSON.stringify(body.analysis);
   const prompt = `DOCUMENTO JÁ COMPREENDIDO.
-Contexto estruturado do diagnóstico:
+Diagnóstico estruturado:
 ${context}
+
+CONTEXTO TEXTUAL EXTRAÍDO DO DOCUMENTO:
+${String(body.documentContext)}
 
 Pergunta do usuário:
 ${String(body.question)}
 
-Responda como professor/orientador acadêmico. Primeiro dê uma resposta objetiva. Depois, quando útil, organize em "Por quê", "Como fazer no arquivo" e "Exemplo". Se recomendar uma imagem, especifique assunto, composição, finalidade, fonte recomendada e crédito. Se recomendar uma animação, indique objeto, ordem, gatilho e duração aproximada, evitando efeitos decorativos. Se corrigir conteúdo, mostre "antes → depois" e explique a justificativa. Não invente informações ausentes.`;
+Responda como professor/orientador acadêmico. Primeiro dê uma resposta objetiva. Depois, quando útil, organize em "Por quê", "Como fazer no arquivo" e "Exemplo". Se recomendar uma imagem, especifique assunto, composição, finalidade, fonte recomendada e crédito. Se recomendar uma animação, indique objeto, ordem, gatilho e duração aproximada, evitando efeitos decorativos. Se corrigir conteúdo, mostre "antes → depois" e explique a justificativa. Não invente informações ausentes do documento.`;
 
   const response = await ai.models.generateContent({
     model: MODEL,
-    contents: createUserContent([
-      createPartFromUri(body.geminiFileUri, body.geminiFileMimeType),
-      prompt,
-    ]),
+    contents: createUserContent([prompt]),
     config: { systemInstruction: SYSTEM_PROMPT },
   });
+
   return { answer: response.text || 'Não consegui produzir uma resposta para essa pergunta.' };
 }
 
