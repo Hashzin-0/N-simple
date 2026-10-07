@@ -2,9 +2,9 @@
 
 import React, { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { useTheme } from './ThemeProvider';
-import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap, Tractor } from 'lucide-react';
+import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap, Tractor, FileText } from 'lucide-react';
 
-export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista';
+export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista' | 'professor';
 
 interface GooeyTabPanelProps {
   activeTab: TabId;
@@ -18,6 +18,7 @@ interface GooeyTabPanelProps {
   redacaoContent?: React.ReactNode;
   tutorContent?: React.ReactNode;
   tratoristaContent?: React.ReactNode;
+  professorContent?: React.ReactNode;
 }
 
 interface TabItem {
@@ -92,6 +93,13 @@ export const ALL_TABS: TabItem[] = [
     icon: Tractor,
     badge: 'Curso & Tração',
   },
+  {
+    id: 'professor',
+    label: 'Professor de Documentos',
+    shortLabel: 'Professor',
+    icon: FileText,
+    badge: 'Word & PowerPoint',
+  },
 ];
 
 const TAB_INDEX: Record<TabId, number> = {
@@ -104,9 +112,10 @@ const TAB_INDEX: Record<TabId, number> = {
   redacao: 6,
   tutor: 7,
   tratorista: 8,
+  professor: 9,
 };
 
-const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista'];
+const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista', 'professor'];
 
 export default function GooeyTabPanel({
   activeTab,
@@ -120,6 +129,7 @@ export default function GooeyTabPanel({
   redacaoContent,
   tutorContent,
   tratoristaContent,
+  professorContent,
 }: GooeyTabPanelProps) {
   const { isDark } = useTheme();
   const rawId = useId();
@@ -267,6 +277,8 @@ export default function GooeyTabPanel({
         return tutorContent || null;
       case 'tratorista':
         return tratoristaContent || null;
+      case 'professor':
+        return professorContent || null;
       default:
         return nitrogenContent;
     }

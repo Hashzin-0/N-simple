@@ -93,6 +93,11 @@ export const SECTIONS_BY_TAB: Record<TabId, SectionConfig[]> = {
     { id: 'tratorista_manutencao', label: 'Segurança', shortLabel: 'Segurança', icon: AlertTriangle, color: '#C19262', colorDark: '#D4A373' },
     { id: 'tratorista_fontes', label: 'Fontes técnicas', shortLabel: 'Fontes', icon: BookOpen, color: '#5A5A40', colorDark: '#9CB386' },
   ],
+  professor: [
+    { id: 'professor_documentos_inicio', label: 'Visão geral', shortLabel: 'Visão geral', icon: FileText, color: '#2E6F40', colorDark: '#86efac' },
+    { id: 'professor_documentos_diagnostico', label: 'Diagnóstico', shortLabel: 'Diagnóstico', icon: ScanSearch, color: '#5A5A40', colorDark: '#9CB386' },
+    { id: 'professor_documentos_conversa', label: 'Conversa', shortLabel: 'Conversa', icon: MessagesSquare, color: '#D4A373', colorDark: '#D4A373' },
+  ],
   tutor: [
     { id: 'tutor_tema', label: 'Sessão', shortLabel: 'Sessão', icon: GraduationCap, color: '#2E6F40', colorDark: '#86efac' },
     { id: 'tutor_session', label: 'Progresso', shortLabel: 'Progresso', icon: Trophy, color: '#5A5A40', colorDark: '#9CB386' },
@@ -134,6 +139,7 @@ const TAB_LABELS_PT: Record<TabId, string> = {
   redacao: 'Pesquisador de Redação',
   tutor: 'Tutor Inteligente',
   tratorista: 'Mecanização Agrícola',
+  professor: 'Professor de Documentos',
 };
 
 const norm = (s: string) =>

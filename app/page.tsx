@@ -87,6 +87,7 @@ const LibrasNoAgro = dynamic(() => import('@/components/LibrasNoAgro'), { ssr: f
 const TutorInteligente = dynamic(() => import('@/components/TutorInteligente'), { ssr: false });
 const PesquisadorRedacao = dynamic(() => import('@/components/PesquisadorRedacao'), { ssr: false });
 const AccessibilityPanel = dynamic(() => import('@/components/AccessibilityPanel'), { ssr: false });
+const ProfessorDocumentosDynamic = dynamic(() => import('@/components/ProfessorDocumentos'), { ssr: false });
 import VLibrasWidget from '@/components/LibrasWidget';
 
 const PRESETS: Preset[] = [
@@ -923,6 +924,17 @@ export default function Home() {
     [],
   );
 
+  const professorContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <ProfessorDocumentosDynamic />
+        </ScrollStack>
+      </div>
+    ),
+    [],
+  );
+
   const tutorContent = useMemo(
     () => (
       <div className="w-full">
@@ -1737,6 +1749,7 @@ export default function Home() {
           redacaoContent={redacaoContent}
           tutorContent={tutorContent}
           tratoristaContent={tratoristaContent}
+          professorContent={professorContent}
         />
 
         {/* GEMINI LIVE VOICE ASSISTANT HUD WITH 3D ORB */}
