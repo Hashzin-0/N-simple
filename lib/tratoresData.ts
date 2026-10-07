@@ -27,20 +27,4 @@ export const TRACTORS: TractorSpec[] = [
     notes:'A ficha oficial informa transmissão 16x4 e oito velocidades de trabalho entre 4 e 12 km/h. Os valores individuais são uma representação operacional do diagrama.'
   }
 ];
-export const COURSE_MODULES = [
-  {id:'m1',title:'Fundamentos e responsabilidade do operador',hours:2,source:'SENAR-PR + NR-31',lessons:['Função do operador e planejamento da jornada','Responsabilidades trabalhista, civil, penal e ambiental','Leitura do manual do fabricante','Identificação do trator, implemento e riscos antes da partida']},
-  {id:'m2',title:'Segurança, EPI/EPC e operação',hours:4,source:'SENAR-PR + NR-31.12',lessons:['Inspeção antes do trabalho','Deslocamento, manobras, reboque e obstáculos','Engate e desengate seguro','Parada, abastecimento, manutenção e emergência','Primeiros socorros e sinalização']},
-  {id:'m3',title:'Comandos, transmissão e TDP',hours:4,source:'SENAR-PR',lessons:['Painel, pedais, aceleradores e freios','Tração dianteira auxiliar e bloqueio do diferencial','Caixa de câmbio, grupos, reversor e tipos de transmissão','TDP/TDF 540, 540E e 1000 rpm','Relação entre rotação, torque e velocidade']},
-  {id:'m4',title:'Preparação do trator para o trabalho',hours:4,source:'SENAR-PR',lessons:['Pneus, nomenclatura e pressão','Bitola e alinhamento','Índice de avanço da TDA','Patinagem e métodos de medição','Lastreamento e distribuição de peso']},
-  {id:'m5',title:'Implementos e dimensionamento',hours:4,source:'SENAR-PR',lessons:['Barra de tração e engate de três pontos','Tipos e finalidades de implementos','Compatibilidade implemento × potência','Regulagem de profundidade e hidráulico','Força de tração e resistência ao rolamento']},
-  {id:'m6',title:'Marcha, rotação e velocidade de trabalho',hours:4,source:'SENAR-PR + literatura técnica',lessons:['Como ler tabelas de escalonamento','Velocidade teórica × velocidade real','Seleção de marcha conforme carga e condição','Relação entre força, velocidade e potência','Efeito de inclinação, solo, pneus e carga']},
-  {id:'m7',title:'Manutenção preventiva',hours:4,source:'SENAR Play',lessons:['Motor diesel e sistemas periféricos','Transmissão, direção, lubrificação e arrefecimento','Rodados, freios, hidráulico, elétrico e TDP','Checklist diário e intervalos de 10, 50, 250 e 500 horas']},
-  {id:'m8',title:'Eficiência, tração e decisão operacional',hours:4,source:'SENAR-PR + Embrapa',lessons:['Diagnóstico de patinagem','Ajuste de lastro e pressão dos pneus','Força de tração disponível e requerida','Consumo, capacidade operacional e qualidade','Validação no manual e no campo']}
-];
-export const OPERATION_SPEEDS: Record<string,{label:string;min:number;max:number}> = {
-  transporte:{label:'Transporte',min:12,max:25},preparo:{label:'Preparo do solo',min:5,max:8},
-  plantio:{label:'Plantio/semeadura',min:4,max:7},cultivo:{label:'Cultivo entre linhas',min:4,max:7},
-  pulverizacao:{label:'Pulverização',min:5,max:12},distribuicao:{label:'Distribuição',min:5,max:10},
-  personalizada:{label:'Velocidade definida pelo operador',min:0.5,max:30}
-};
 export function getTractor(id:string){return TRACTORS.find(t=>t.id===id) ?? TRACTORS[0];}
