@@ -40,7 +40,7 @@ const starterPrompts = [
 
 export default function ProfessorDocumentos() {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<Session | null>(null);\n  const [sourceFile, setSourceFile] = useState<File | null>(null);\n  const [pendingEdits, setPendingEdits] = useState<Edit[]>([]);\n  const [manualChanges, setManualChanges] = useState<string[]>([]);
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<Array<{role:'user'|'assistant';text:string}>>([]);
   const [loading, setLoading] = useState(false);
@@ -84,6 +84,42 @@ export default function ProfessorDocumentos() {
     } catch (e) {
       setPhase('error');
       setError(e instanceof Error ? e.message : 'Falha ao analisar o documento.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function applyPendingEdits() {
+    if (!sourceFile || !pendingEdits.length || loading) return;
+    setLoading(true);
+    setPhase('asking');
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append('action', 'apply-edits');
+      form.append('file', sourceFile, sourceFile.name);
+      form.append('edits', JSON.stringify(pendingEdits));
+      const res = await fetch('/api/professor-documentos', { method: 'POST', body: form });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Não foi possível aplicar as alterações.');
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename="([^"]+)"/i);
+      const fileName = match?.[1] || `Professor-${sourceFile.name}`;
+      const updatedFile = new File([blob], fileName, { type: blob.type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+      setPendingEdits([]);
+      await upload(updatedFile);
+    } catch (e) {
+      setPhase('error');
+      setError(e instanceof Error ? e.message : 'Falha ao aplicar as alterações.');
     } finally {
       setLoading(false);
     }
@@ -212,6 +248,44 @@ export default function ProfessorDocumentos() {
               </div>
             </div>
           </section>
+
+          {(pendingEdits.length > 0 || manualChanges.length > 0) && (
+            <section className="rounded-2xl border border-[#DDD9CE] dark:border-[#343D30] bg-white dark:bg-[#1C201A] p-5 space-y-4">
+              {pendingEdits.length > 0 && (
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-bold">Alterações aplicáveis ao arquivo original</h3>
+                      <p className="text-xs mt-1 text-[#77786C] dark:text-[#A7AF9E]">
+                        O PDF foi usado para análise visual; estas alterações serão gravadas diretamente no DOCX/PPTX.
+                      </p>
+                    </div>
+                    <button onClick={applyPendingEdits} disabled={loading} className="rounded-xl bg-[#2E6F40] px-4 py-3 text-sm font-bold text-white disabled:opacity-40">
+                      Aplicar e atualizar arquivo
+                    </button>
+                  </div>
+                  <div className="mt-3 grid sm:grid-cols-2 gap-2">
+                    {pendingEdits.map((edit, i) => (
+                      <div key={i} className="rounded-xl bg-[#F7F5EE] dark:bg-[#222820] p-3 text-xs leading-5">
+                        <b>{edit.type}</b>
+                        {edit.slide ? ` · Slide ${edit.slide}` : ''}
+                        {edit.targetId ? ` · objeto ${edit.targetId}` : ''}
+                        {edit.newText ? ` · “${edit.newText}”` : ''}
+                        {edit.transition ? ` · ${edit.transition}` : ''}
+                        {edit.effect ? ` · ${edit.effect}` : ''}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {manualChanges.length > 0 && (
+                <div className="rounded-xl border border-[#E6D8C9] bg-[#FFF8F0] dark:bg-[#2A231B] p-4">
+                  <h4 className="font-bold text-sm">Alterações que exigem edição manual</h4>
+                  <ul className="mt-2 list-disc pl-5 text-xs leading-5 space-y-1">{manualChanges.slice(0,8).map((x,i)=><li key={i}>{x}</li>)}</ul>
+                </div>
+              )}
+            </section>
+          )}
 
           <section id="professor_documentos_conversa" className="scroll-mt-24 rounded-2xl border border-[#DDD9CE] dark:border-[#343D30] bg-white dark:bg-[#1C201A] overflow-hidden">
             <div className="p-5 border-b border-[#E8E4D9] dark:border-[#30382D]">
