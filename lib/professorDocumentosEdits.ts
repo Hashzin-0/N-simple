@@ -116,7 +116,7 @@ function ensureTiming(xml: string) {
   if (/<p:timing[ >]/i.test(xml)) return xml;
   const timing = '<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst/></p:cTn></p:par></p:tnLst></p:timing>';
   if (/<p:clrMapOvr[ >]/i.test(xml)) return xml.replace(/<\/p:clrMapOvr>/i, `</p:clrMapOvr>${timing}`);
-  return xml.replace(/<\\/p:sld>/i, `${timing}</p:sld>`);
+  return xml.replace(/<\/p:sld>/i, `${timing}</p:sld>`);
 }
 
 function addAnimation(xml: string, edit: Extract<DocumentEdit, { type: 'add_animation' }>) {
