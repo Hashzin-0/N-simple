@@ -54,7 +54,6 @@ import type { LibrasVoiceSearchReport, LibrasCoachReport } from '@/lib/libras-ty
 import type { LibrasLiveBridgeContext } from '@/hooks/useLibrasLiveAgent';
 import type { Frase } from '@/lib/analiseMorfologica/types';
 import MecanizacaoTratores from '@/components/MecanizacaoTratores';
-import ProfessorDocumentos from '@/components/ProfessorDocumentos';
 import { smoothScrollToSection, waitForElement } from '@/lib/pageAutomator';
 
 /** Âncoras das sessões de Libras (ids no DOM de LibrasNoAgro). */
