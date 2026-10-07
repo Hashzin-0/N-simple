@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { writeFile } from 'node:fs/promises';
 import {
   GoogleGenAI,
   createPartFromUri,
@@ -111,8 +112,10 @@ async function convertOfficeToPdf(file: File) {
 }
 
 async function uploadPdfToGemini(ai: GoogleGenAI, pdf: Buffer, fileName: string) {
+  const tempPath = `/tmp/professor-documentos-${Date.now()}-${fileName.replace(/[^a-zA-Z0-9._-]/g, '_')}.pdf`;
+  await writeFile(tempPath, pdf);
   const file = await ai.files.upload({
-    file: new Blob([pdf], { type: 'application/pdf' }),
+    file: tempPath,
     config: { displayName: `${fileName.replace(/\.[^.]+$/, '')}.pdf`, mimeType: 'application/pdf' },
   });
 
