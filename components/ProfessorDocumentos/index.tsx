@@ -19,6 +19,8 @@ type Analysis = {
   confidence: number;
 };
 
+type Edit = { type: string; [key: string]: any };
+
 type Session = {
   fileName: string;
   structure: {
@@ -27,6 +29,10 @@ type Session = {
   };
   analysis: Analysis;
   documentContext: string;
+  pdfFileUri: string;
+  pdfFileMimeType: string;
+  suggestedEdits?: Edit[];
+  manualChanges?: string[];
 };
 
 const starterPrompts = [
@@ -71,6 +77,9 @@ export default function ProfessorDocumentos() {
     setError(null);
     setMessages([]);
     setSession(null);
+    setPendingEdits([]);
+    setManualChanges([]);
+    setSourceFile(file);
     setLoading(true);
     setPhase('uploading');
     try {
@@ -83,6 +92,8 @@ export default function ProfessorDocumentos() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Não foi possível analisar o arquivo.');
       setSession(data);
+      setPendingEdits(Array.isArray(data.suggestedEdits) ? data.suggestedEdits : []);
+      setManualChanges(Array.isArray(data.manualChanges) ? data.manualChanges : []);
       setPhase('ready');
     } catch (e) {
       setPhase('error');
@@ -143,10 +154,15 @@ export default function ProfessorDocumentos() {
           question: value,
           analysis: session.analysis,
           documentContext: session.documentContext,
+          structure: session.structure,
+          pdfFileUri: session.pdfFileUri,
+          pdfFileMimeType: session.pdfFileMimeType,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'O Professor não conseguiu responder.');
+      if (Array.isArray(data.edits) && data.edits.length) setPendingEdits(data.edits);
+      if (Array.isArray(data.manualChanges)) setManualChanges(data.manualChanges);
       setMessages(prev => [...prev, { role: 'assistant', text: data.answer }]);
       setPhase('ready');
     } catch (e) {
