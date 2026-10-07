@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, ChevronUp, ClipboardCheck, Gauge, Info, Tractor, Wrench, Zap } from 'lucide-react';
 import { getTractor, TRACTORS, type TractorSpec } from '@/lib/tratoresData';
 import { COURSE_MODULES as DETAILED_MODULES, COURSE_TOTAL_HOURS } from '@/lib/tratoristaCurso';
+import { TRACTOR_SYMBOLS } from '@/lib/tratoristaSimbolos';
 
 const clamp=(n:number,min:number,max:number)=>Math.min(max,Math.max(min,n));
 const fmt=(n:number,d=1)=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:d}).format(Number.isFinite(n)?n:0);
@@ -52,7 +53,7 @@ export default function MecanizacaoTratores(){
   const [completed,setCompleted]=useState<string[]>([]);
   const [openModule,setOpenModule]=useState('m1');
   const [activityDone,setActivityDone]=useState<Record<string,string[]>>({});
-  const [answers,setAnswers]=useState<Record<string,number>>({});
+  const [answers,setAnswers]=useState<Record<string,number|string|number[]>>({});
   const [checkedAnswers,setCheckedAnswers]=useState<Record<string,boolean>>({});
 
   const tractor=getTractor(tractorId);
@@ -85,7 +86,7 @@ export default function MecanizacaoTratores(){
 
     <section id="tratorista_curso" className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h3 className="text-xl font-bold text-[#30382E] dark:text-[#EEF1E9]">Aulas, atividades e avaliações</h3><p className="text-xs text-[#778074] dark:text-[#AAB2A5]">Cada módulo reúne teoria, pontos-chave, atividade, prática supervisionada e verificação de aprendizagem.</p></div>
+        <div><h3 className="text-xl font-bold text-[#30382E] dark:text-[#EEF1E9]">Aulas, atividades e avaliações</h3><p className="text-xs text-[#778074] dark:text-[#AAB2A5]">Cada módulo reúne teoria, pontos-chave, atividades teóricas e diferentes formatos de verificação de aprendizagem.</p></div>
         <button type="button" onClick={resetCourse} className="text-[11px] font-semibold text-[#55764F] dark:text-[#A9C49D]">Reiniciar progresso</button>
       </div>
       <div className="rounded-2xl border border-[#E1E0D7] dark:border-[#353C30] bg-white dark:bg-[#1C201A] p-4">
@@ -93,7 +94,7 @@ export default function MecanizacaoTratores(){
       </div>
       <div className="space-y-3">
         {DETAILED_MODULES.map((m,i)=>{
-          const isOpen=openModule===m.id, doneActivities=activityDone[m.id]??[], q=m.assessment[0], selected=answers[m.id], checked=checkedAnswers[m.id], correct=selected===q.answer;
+          const isOpen=openModule===m.id, doneActivities=activityDone[m.id]??[];
           return <article key={m.id} className={'rounded-2xl border overflow-hidden '+(completed.includes(m.id)?'border-[#5A7D54]/40 bg-[#F3F7EF] dark:bg-[#263024]':'border-[#E1E0D7] dark:border-[#353C30] bg-white dark:bg-[#1C201A]')}>
             <div className="p-4 sm:p-5 flex gap-3">
               <button type="button" onClick={()=>toggle(m.id)} aria-label={completed.includes(m.id)?'Marcar módulo como pendente':'Marcar módulo como concluído'} className="shrink-0 mt-0.5">{completed.includes(m.id)?<CheckCircle2 className="size-5 text-[#4E794A]"/>:<div className="size-5 rounded-full border-2 border-[#AEB5A8]"/>}</button>
@@ -108,9 +109,51 @@ export default function MecanizacaoTratores(){
                 <section className="rounded-2xl border border-[#E2E1D8] dark:border-[#353C30] p-4"><div className="flex items-center gap-2"><BookOpen className="size-4 text-[#5A7D54]"/><h5 className="font-bold text-sm">Aula teórica</h5></div><div className="mt-3 space-y-3 text-xs leading-6 text-[#5E665B] dark:text-[#B6BDB2]">{m.theory.map(x=><p key={x}>{x}</p>)}</div></section>
                 <section className="rounded-2xl border border-[#E2E1D8] dark:border-[#353C30] p-4"><h5 className="font-bold text-sm">Pontos que você precisa dominar</h5><ul className="mt-3 space-y-2 text-xs leading-5 text-[#5E665B] dark:text-[#B6BDB2]">{m.keyPoints.map(x=><li key={x}>• {x}</li>)}</ul></section>
               </div>
-              <section className="rounded-2xl border border-[#D9E2D3] dark:border-[#394934] bg-[#F7F9F4] dark:bg-[#20281D] p-4"><div className="flex items-center gap-2"><ClipboardCheck className="size-4 text-[#5A7D54]"/><h5 className="font-bold text-sm">Atividades de aprendizagem</h5></div><div className="mt-3 space-y-2">{m.activities.map((x,ai)=>{const done=doneActivities.includes(String(ai));return <button type="button" key={x} onClick={()=>toggleActivity(m.id,ai)} className="w-full flex gap-3 items-start text-left rounded-xl border border-[#DDE3D8] dark:border-[#354132] p-3">{done?<CheckCircle2 className="size-4 mt-0.5 shrink-0 text-[#4E794A]"/>:<div className="size-4 mt-0.5 shrink-0 rounded-full border-2 border-[#AAB5A4]"/>}<span className="text-xs leading-5 text-[#596256] dark:text-[#B9C1B4]">{x}</span></button>})}</div></section>
-              <section className="rounded-2xl border border-[#E2E1D8] dark:border-[#353C30] p-4"><div className="text-[10px] uppercase tracking-wider font-bold text-[#7A8177]">Prática supervisionada</div><p className="mt-2 text-xs leading-5 text-[#596256] dark:text-[#B9C1B4]">{m.practicalTask}</p><div className="mt-3 flex gap-2 text-[10px] leading-4 text-[#777F74]"><AlertTriangle className="size-3.5 shrink-0 mt-0.5 text-[#B47732]"/>A prática deve ocorrer com máquina compatível, em local controlado e sob supervisão adequada.</div></section>
-              <section className="rounded-2xl border border-[#E2E1D8] dark:border-[#353C30] p-4"><div className="text-[10px] uppercase tracking-wider font-bold text-[#7A8177]">Verificação de aprendizagem</div><p className="mt-2 text-sm font-semibold">{q.question}</p><div className="mt-3 grid sm:grid-cols-2 gap-2">{q.options.map((x,oi)=>{const sel=selected===oi, right=checked&&oi===q.answer, wrong=checked&&sel&&!correct;return <button type="button" key={x} onClick={()=>{setAnswers(c=>({...c,[m.id]:oi}));setCheckedAnswers(c=>({...c,[m.id]:false}));}} className={'text-left rounded-xl border p-3 text-xs '+(right?'border-[#5A7D54] bg-[#EDF5E9]':wrong?'border-red-400/60 bg-red-50 dark:bg-red-950/20':sel?'border-[#7A936B] bg-[#F4F7F0] dark:bg-[#273022]':'border-[#E0DFD6] dark:border-[#353C30]')}>{x}</button>})}</div><div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" disabled={selected===undefined} onClick={()=>setCheckedAnswers(c=>({...c,[m.id]:true}))} className="rounded-xl bg-[#4E794A] px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Corrigir resposta</button>{checked&&<span className={'text-xs font-semibold '+(correct?'text-[#4E794A]':'text-[#B47732]')}>{correct?'Correto.':'Revise o conceito.'} {q.explanation}</span>}</div></section>
+              {m.id==='m2'&&<section className="rounded-2xl border border-[#D5E0CF] dark:border-[#3B4937] bg-[#F8FAF5] dark:bg-[#20271D] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><Info className="size-4 text-[#5A7D54]"/><h5 className="font-bold text-sm">Catálogo de símbolos reais</h5></div><p className="mt-1 text-xs leading-5 text-[#657063] dark:text-[#B6BDB2]">Os desenhos abaixo são referências ISO 7000 em SVG, não ícones redesenhados pelo N-simple. A função do comando no trator específico deve ser confirmada no manual.</p></div><a href="https://www.iso.org/standard/60092.html" target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-[#4E794A]">ISO 3767-2 ↗</a></div>
+                <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {TRACTOR_SYMBOLS.map(s=><article key={s.id} className="rounded-xl border border-[#DDE4D8] dark:border-[#364132] bg-white dark:bg-[#1B2119] p-3">
+                    <div className="h-24 rounded-lg bg-[#F3F5F0] dark:bg-[#252C23] flex items-center justify-center"><img src={s.imageUrl} alt={s.title+' — '+s.iso} className="h-20 w-20 object-contain" loading="lazy"/></div>
+                    <div className="mt-3 text-xs font-bold text-[#30382E] dark:text-[#EEF1E9]">{s.title}</div>
+                    <div className="mt-1 text-[10px] font-bold text-[#5A7D54]">{s.iso}</div>
+                    <p className="mt-1 text-[10px] leading-4 text-[#687064] dark:text-[#B6BDB2]">{s.meaning}</p>
+                    <p className="mt-2 text-[10px] leading-4 text-[#778074] dark:text-[#AAB2A5]">{s.application}</p>
+                    <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[9px] font-semibold text-[#4E794A]">{s.sourceLabel} ↗</a>
+                  </article>)}
+                </div>
+              </section>}
+              <section className="rounded-2xl border border-[#D9E2D3] dark:border-[#394934] bg-[#F7F9F4] dark:bg-[#20281D] p-4"><div className="flex items-center gap-2"><ClipboardCheck className="size-4 text-[#5A7D54]"/><h5 className="font-bold text-sm">Atividades teóricas</h5></div><div className="mt-3 space-y-2">{m.activities.map((x,ai)=>{const done=doneActivities.includes(String(ai));return <button type="button" key={x} onClick={()=>toggleActivity(m.id,ai)} className="w-full flex gap-3 items-start text-left rounded-xl border border-[#DDE3D8] dark:border-[#354132] p-3">{done?<CheckCircle2 className="size-4 mt-0.5 shrink-0 text-[#4E794A]"/>:<div className="size-4 mt-0.5 shrink-0 rounded-full border-2 border-[#AAB5A4]"/>}<span className="text-xs leading-5 text-[#596256] dark:text-[#B9C1B4]">{x}</span></button>})}</div></section>
+              <section className="rounded-2xl border border-[#E2E1D8] dark:border-[#353C30] p-4">
+                <div className="flex items-center justify-between gap-2"><div><div className="text-[10px] uppercase tracking-wider font-bold text-[#7A8177]">Verificação de aprendizagem</div><p className="mt-1 text-[11px] text-[#7A8177]">{m.assessment.length} questões • múltipla escolha, V/F, discursiva e relação de colunas</p></div><span className="text-[10px] rounded-full bg-[#EEF2EA] dark:bg-[#30382C] px-2 py-1">Teórica</span></div>
+                <div className="mt-4 space-y-4">
+                  {m.assessment.map((q,qi)=>{
+                    const key=m.id+'-'+qi, value=answers[key], checked=checkedAnswers[key]??false;
+                    if(q.type==='multiple'||q.type==='trueFalse'){
+                      const selected=typeof value==='number'?value:undefined, correct=selected===q.answer;
+                      return <div key={key} className="rounded-xl border border-[#E5E4DB] dark:border-[#353C30] p-4">
+                        <div className="flex gap-2"><span className="text-[10px] font-bold text-[#5A7D54]">Q{qi+1}</span><p className="text-sm font-semibold">{q.question}</p></div>
+                        <div className="mt-3 grid sm:grid-cols-2 gap-2">{q.options.map((x,oi)=>{const sel=selected===oi,right=checked&&oi===q.answer,wrong=checked&&sel&&!correct;return <button type="button" key={x} onClick={()=>{setAnswers(c=>({...c,[key]:oi}));setCheckedAnswers(c=>({...c,[key]:false}));}} className={'text-left rounded-xl border p-3 text-xs '+(right?'border-[#5A7D54] bg-[#EDF5E9]':wrong?'border-red-400/60 bg-red-50 dark:bg-red-950/20':sel?'border-[#7A936B] bg-[#F4F7F0] dark:bg-[#273022]':'border-[#E0DFD6] dark:border-[#353C30]')}>{x}</button>})}</div>
+                        <div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" disabled={selected===undefined} onClick={()=>setCheckedAnswers(c=>({...c,[key]:true}))} className="rounded-xl bg-[#4E794A] px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Corrigir</button>{checked&&<span className={'text-xs font-semibold '+(correct?'text-[#4E794A]':'text-[#B47732]')}>{correct?'Correto.':'Revise.'} {q.explanation}</span>}</div>
+                      </div>;
+                    }
+                    if(q.type==='discursive'){
+                      const textValue=typeof value==='string'?value:'';
+                      return <div key={key} className="rounded-xl border border-[#E5E4DB] dark:border-[#353C30] p-4">
+                        <div className="flex gap-2"><span className="text-[10px] font-bold text-[#5A7D54]">Q{qi+1}</span><p className="text-sm font-semibold">{q.question}</p></div>
+                        <textarea value={textValue} onChange={e=>{setAnswers(c=>({...c,[key]:e.target.value}));setCheckedAnswers(c=>({...c,[key]:false}));}} placeholder="Escreva sua resposta com suas próprias palavras..." className="mt-3 min-h-28 w-full rounded-xl border border-[#DADDD5] dark:border-[#3A4235] bg-[#FAFAF7] dark:bg-[#20251D] p-3 text-xs leading-5"/>
+                        <div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={!textValue.trim()} onClick={()=>setCheckedAnswers(c=>({...c,[key]:true}))} className="rounded-xl bg-[#4E794A] px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Ver critérios e resposta-modelo</button>{checked&&<div className="w-full rounded-xl bg-[#F4F7F0] dark:bg-[#263024] p-3 text-xs leading-5"><b>Critérios:</b> {q.evaluationCriteria.join(' • ')}<br/><b>Resposta-modelo:</b> {q.modelAnswer}</div>}</div>
+                      </div>;
+                    }
+                    const mapping=Array.isArray(value)?value:[]; const complete=mapping.length===q.left.length&&mapping.every(x=>typeof x==='number'&&x>=0);
+                    const correct=complete&&q.answer.every((x,i)=>mapping[i]===x);
+                    return <div key={key} className="rounded-xl border border-[#E5E4DB] dark:border-[#353C30] p-4">
+                      <div className="flex gap-2"><span className="text-[10px] font-bold text-[#5A7D54]">Q{qi+1}</span><p className="text-sm font-semibold">{q.question}</p></div>
+                      <div className="mt-3 space-y-2">{q.left.map((left,li)=><div key={left} className="grid sm:grid-cols-[1fr_1fr] gap-2 items-center"><span className="rounded-lg bg-[#F5F6F1] dark:bg-[#252C23] p-2 text-xs">{left}</span><select value={typeof mapping[li]==='number'?mapping[li]:''} onChange={e=>{const next=[...mapping];next[li]=Number(e.target.value);setAnswers(c=>({...c,[key]:next}));setCheckedAnswers(c=>({...c,[key]:false}));}} className="rounded-lg border border-[#DADDD5] dark:border-[#3A4235] bg-white dark:bg-[#20251D] p-2 text-xs"><option value="">Selecione</option>{q.right.map((right,ri)=><option key={right} value={ri}>{right}</option>)}</select></div>)}</div>
+                      <div className="mt-3 flex flex-wrap items-center gap-3"><button type="button" disabled={!complete} onClick={()=>setCheckedAnswers(c=>({...c,[key]:true}))} className="rounded-xl bg-[#4E794A] px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Corrigir relação</button>{checked&&<span className={'text-xs font-semibold '+(correct?'text-[#4E794A]':'text-[#B47732]')}>{correct?'Todas as relações estão corretas.':'Há relações incorretas. '} {q.explanation}</span>}</div>
+                    </div>;
+                  })}
+                </div>
+              </section>
             </div>}
           </article>;
         })}
