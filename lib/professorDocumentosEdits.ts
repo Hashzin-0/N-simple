@@ -105,9 +105,11 @@ function animationXml(edit: Extract<DocumentEdit, { type: 'add_animation' }>, id
   const nodeType = trigger === 'withPrevious' ? 'withEffect' : trigger === 'afterPrevious' ? 'afterEffect' : 'clickEffect';
   const stCond = trigger === 'click'
     ? '<p:stCondLst><p:cond delay="indefinite" evt="onBegin"/></p:stCondLst>'
-    : '';
+    : delay > 0
+      ? `<p:stCondLst><p:cond delay="${delay}"/></p:stCondLst>`
+      : '';
   const filter = edit.effect === 'blinds' ? 'blinds(horizontal)' : edit.effect === 'box' ? 'box(in)' : edit.effect === 'fly' ? 'fly(in)' : 'fade';
-  return `<p:par><p:cTn id="${id}" dur="${dur + delay}" nodeType="${nodeType}" restart="whenNotActive">${stCond}<p:childTnLst><p:animEffect transition="in" filter="${filter}"><p:cBhvr><p:cTn id="${id + 1}" dur="${dur}" stCondLst="${delay}"/><p:tgtEl><p:spTgt spid="${esc(edit.targetId)}"/></p:tgtEl></p:cBhvr></p:animEffect></p:childTnLst></p:cTn></p:par>`;
+  return `<p:par><p:cTn id="${id}" dur="${dur + delay}" nodeType="${nodeType}" restart="whenNotActive">${stCond}<p:childTnLst><p:animEffect transition="in" filter="${filter}"><p:cBhvr><p:cTn id="${id + 1}" dur="${dur}" /><p:tgtEl><p:spTgt spid="${esc(edit.targetId)}"/></p:tgtEl></p:cBhvr></p:animEffect></p:childTnLst></p:cTn></p:par>`;
 }
 
 function ensureTiming(xml: string) {
