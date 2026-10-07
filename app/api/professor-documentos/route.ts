@@ -259,7 +259,9 @@ async function applyEdits(req: NextRequest) {
 
   const kind = file.name.toLowerCase().endsWith('.pptx') ? 'pptx' : 'docx';
   const result = await applyDocumentEdits(Buffer.from(await file.arrayBuffer()), kind, edits);
-  return new NextResponse(result.buffer, {
+  const outputBuffer = new ArrayBuffer(result.buffer.byteLength);
+  new Uint8Array(outputBuffer).set(result.buffer);
+  return new NextResponse(outputBuffer, {
     status: 200,
     headers: {
       'Content-Type': kind === 'pptx'
