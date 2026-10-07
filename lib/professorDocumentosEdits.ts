@@ -112,21 +112,24 @@ function animationXml(edit: Extract<DocumentEdit, { type: 'add_animation' }>, id
 
 function ensureTiming(xml: string) {
   if (/<p:timing[ >]/i.test(xml)) return xml;
-  const timing = '<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"/></p:par></p:tnLst></p:timing>';
+  const timing = '<p:timing><p:tnLst><p:par><p:cTn id="1" dur="indefinite" restart="never" nodeType="tmRoot"><p:childTnLst/></p:cTn></p:par></p:tnLst></p:timing>';
   if (/<p:clrMapOvr[ >]/i.test(xml)) return xml.replace(/<\\/p:clrMapOvr>/i, `</p:clrMapOvr>${timing}`);
   return xml.replace(/<\\/p:sld>/i, `${timing}</p:sld>`);
 }
 
 function addAnimation(xml: string, edit: Extract<DocumentEdit, { type: 'add_animation' }>) {
-  let result = ensureTiming(xml);
+  const result = ensureTiming(xml);
   const nextId = maxTimingId(result) + 1;
   const node = animationXml(edit, nextId);
-  if (/<p:tnLst[ >][\\s\\S]*?<\\/p:tnLst>/i.test(result)) {
-    return result.replace(/<p:tnLst([\\s\\S]*?)<\\/p:tnLst>/i, (full) => full.replace(/<\\/p:tnLst>/i, `${node}</p:tnLst>`));
+  if (/<p:childTnLst[ >][\\s\\S]*?<\\/p:childTnLst>/i.test(result)) {
+    return result.replace(/<p:childTnLst( [^>]*)?>([\\s\\S]*?)<\\/p:childTnLst>/i, (full, attrs, body) =>
+      `<p:childTnLst${attrs || ''}>${body}${node}</p:childTnLst>`,
+    );
   }
-  return result;
+  return result.replace(/<p:cTn([^>]*)\/>/i, (full, attrs) =>
+    `<p:cTn${attrs}><p:childTnLst>${node}</p:childTnLst></p:cTn>`,
+  );
 }
-
 function removeAnimations(xml: string, edit: Extract<DocumentEdit, { type: 'remove_animations' }>) {
   const timingMatch = xml.match(/<p:timing[ >][\\s\\S]*?<\\/p:timing>/i);
   if (!timingMatch) return xml;
