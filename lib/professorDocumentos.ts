@@ -36,12 +36,12 @@ const mimeFor = (path: string) => {
 
 const xmlText = (xml: string) =>
   xml
-    .replace(/<a:t[^>]*>([\\s\\S]*?)<\\/a:t>/gi, '$1')
-    .replace(/<w:t[^>]*>([\\s\\S]*?)<\\/w:t>/gi, '$1')
+    .replace(/<a:t[^>]*>([\s\S]*?)<\/a:t>/gi, '$1')
+    .replace(/<w:t[^>]*>([\s\S]*?)<\/w:t>/gi, '$1')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/\\s+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 
 const uniqueNonEmpty = (items: string[]) => [...new Set(items.map(s => s.trim()).filter(Boolean))];
@@ -69,9 +69,9 @@ async function parseDocx(zip: JSZip): Promise<{ structure: DocumentStructure; as
   const headers = Object.entries(zip.files).filter(([p, f]) => !f.dir && /^word\\/header\\d+\\.xml$/.test(p));
   const footers = Object.entries(zip.files).filter(([p, f]) => !f.dir && /^word\\/footer\\d+\\.xml$/.test(p));
 
-  const bodyParagraphs = [...documentXml.matchAll(/<w:p(?: [^>]*)?>([\\s\\S]*?)<\\/w:p>/gi)]
+  const bodyParagraphs = [...documentXml.matchAll(/<w:p(?: [^>]*)?>([\s\S]*?)<\\/w:p>/gi)]
     .map(m => xmlText(m[1]));
-  const headingValues = [...documentXml.matchAll(/<w:p(?: [^>]*)?>([\\s\\S]*?)<\\/w:p>/gi)]
+  const headingValues = [...documentXml.matchAll(/<w:p(?: [^>]*)?>([\s\S]*?)<\\/w:p>/gi)]
     .map(m => {
       const body = m[1];
       return /w:val="Heading [1-6]"/i.test(body) ? xmlText(body) : '';
@@ -113,7 +113,7 @@ async function parseDocx(zip: JSZip): Promise<{ structure: DocumentStructure; as
 
 async function parsePptx(zip: JSZip): Promise<{ structure: DocumentStructure; assets: ExtractedAsset[] }> {
   const slideEntries = Object.entries(zip.files)
-    .filter(([p, f]) => !f.dir && /^ppt\\/slides\\slide\\d+\\.xml$/.test(p))
+    .filter(([p, f]) => !f.dir && /^ppt\\/slides\slide\\d+\\.xml$/.test(p))
     .sort((a, b) => {
       const na = Number(a[0].match(/slide(\\d+)\\.xml$/)?.[1] || 0);
       const nb = Number(b[0].match(/slide(\\d+)\\.xml$/)?.[1] || 0);
@@ -130,7 +130,7 @@ async function parsePptx(zip: JSZip): Promise<{ structure: DocumentStructure; as
     const xml = await file.async('text');
     const text = xmlText(xml);
     if (text) textByUnit.push({ unit: `Slide ${i + 1}`, text });
-    const titleMatch = xml.match(/<p:sp[^>]*>[\\s\\S]*?<p:nvPr>\\s*<p:ph[^>]*type="title"[^>]*>[\\s\\S]*?<\\/p:nvPr>[\\s\\S]*?<\\/p:sp>/i);
+    const titleMatch = xml.match(/<p:sp[^>]*>[\s\S]*?<p:nvPr>\s*<p:ph[^>]*type="title"[^>]*>[\s\S]*?<\\/p:nvPr>[\s\S]*?<\\/p:sp>/i);
     if (titleMatch) {
       const title = xmlText(titleMatch[0]);
       if (title) headings.push(title);
