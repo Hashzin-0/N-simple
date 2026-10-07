@@ -144,6 +144,7 @@ export default function MecanizacaoTratores(){
                         <div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={!textValue.trim()} onClick={()=>setCheckedAnswers(c=>({...c,[key]:true}))} className="rounded-xl bg-[#4E794A] px-3 py-2 text-xs font-bold text-white disabled:opacity-40">Ver critérios e resposta-modelo</button>{checked&&<div className="w-full rounded-xl bg-[#F4F7F0] dark:bg-[#263024] p-3 text-xs leading-5"><b>Critérios:</b> {q.evaluationCriteria.join(' • ')}<br/><b>Resposta-modelo:</b> {q.modelAnswer}</div>}</div>
                       </div>;
                     }
+                    if(q.type!=='matching') return null;
                     const mapping=Array.isArray(value)?value:[]; const complete=mapping.length===q.left.length&&mapping.every(x=>typeof x==='number'&&x>=0);
                     const correct=complete&&q.answer.every((x,i)=>mapping[i]===x);
                     return <div key={key} className="rounded-xl border border-[#E5E4DB] dark:border-[#353C30] p-4">
