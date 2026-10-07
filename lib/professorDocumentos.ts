@@ -66,8 +66,8 @@ async function readAssets(zip: JSZip, includeBytes: boolean): Promise<ExtractedA
 
 async function parseDocx(zip: JSZip): Promise<{ structure: DocumentStructure; assets: ExtractedAsset[] }> {
   const documentXml = zip.file('word/document.xml') ? await zip.file('word/document.xml')!.async('text') : '';
-  const headers = Object.entries(zip.files).filter(([p, f]) => !f.dir && /^word\/header\\d+\\.xml$/.test(p));
-  const footers = Object.entries(zip.files).filter(([p, f]) => !f.dir && /^word\/footer\\d+\\.xml$/.test(p));
+  const headers = Object.entries(zip.files).filter(([p, f]) => !f.dir && /^word\/header\d+\.xml$/.test(p));
+  const footers = Object.entries(zip.files).filter(([p, f]) => !f.dir && /^word\/footer\d+\.xml$/.test(p));
 
   const bodyParagraphs = [...documentXml.matchAll(/<w:p(?: [^>]*)?>([\s\S]*?)<\/w:p>/gi)]
     .map(m => xmlText(m[1]));
@@ -90,7 +90,7 @@ async function parseDocx(zip: JSZip): Promise<{ structure: DocumentStructure; as
   const visualAssets = assets.filter(a => a.base64 && a.size <= 4_000_000).slice(0, 30);
 
   const title = uniqueNonEmpty(headingValues)[0] || bodyParagraphs.find(Boolean) || 'Documento Word';
-  const rawText = textByUnit.map(x => `[${x.unit}] ${x.text}`).join('\\n');
+  const rawText = textByUnit.map(x => `[${x.unit}] ${x.text}`).join('\n');
 
   return {
     structure: {
@@ -113,9 +113,9 @@ async function parseDocx(zip: JSZip): Promise<{ structure: DocumentStructure; as
 
 async function parsePptx(zip: JSZip): Promise<{ structure: DocumentStructure; assets: ExtractedAsset[] }> {
   const slideEntries = Object.entries(zip.files)
-    .filter(([p, f]) => !f.dir && /^ppt\/slides\slide\\d+\\.xml$/.test(p))
+    .filter(([p, f]) => !f.dir && /^ppt\/slides\/slide\d+\.xml$/.test(p))
     .sort((a, b) => {
-      const na = Number(a[0].match(/slide(\\d+)\\.xml$/)?.[1] || 0);
+      const na = Number(a[0].match(/slide(\d+)\.xml$/)?.[1] || 0);
       const nb = Number(b[0].match(/slide(\\d+)\\.xml$/)?.[1] || 0);
       return na - nb;
     });
@@ -147,7 +147,7 @@ async function parsePptx(zip: JSZip): Promise<{ structure: DocumentStructure; as
 
   const assets = await readAssets(zip, true);
   const title = headings[0] || textByUnit[0]?.text || 'Apresentação PowerPoint';
-  const rawText = textByUnit.map(x => `[${x.unit}] ${x.text}`).join('\\n');
+  const rawText = textByUnit.map(x => `[${x.unit}] ${x.text}`).join('\n');
 
   return {
     structure: {
