@@ -9,7 +9,7 @@ export type TractorSymbol = {
   sourceLabel: string;
 };
 
-const commons = (ref: string) => `https://commons.wikimedia.org/wiki/Special:FilePath/ISO_7000_-_Ref-No_${ref}.svg`;
+const commons = (ref: string) => `https://commons.wikimedia.org/wiki/Special:Redirect/file/ISO_7000_-_Ref-No_${ref}.svg`;
 const commonsPage = (ref: string) => `https://commons.wikimedia.org/wiki/File:ISO_7000_-_Ref-No_${ref}.svg`;
 
 export const TRACTOR_SYMBOLS: TractorSymbol[] = [
@@ -26,8 +26,6 @@ export const TRACTOR_SYMBOLS: TractorSymbol[] = [
   {id:'remote-extend',title:'Cilindro remoto — estender',iso:'ISO 7000-1570',meaning:'Indica a extensão do cilindro hidráulico remoto.',application:'Identifica a direção de acionamento correspondente à extensão.',imageUrl:commons('1570'),sourceUrl:commonsPage('1570'),sourceLabel:'ISO 3767-2 / ISO 7000'},
   {id:'remote-retract',title:'Cilindro remoto — retrair',iso:'ISO 7000-1571',meaning:'Indica a retração do cilindro hidráulico remoto.',application:'Identifica a direção de acionamento correspondente à retração.',imageUrl:commons('1571'),sourceUrl:commonsPage('1571'),sourceLabel:'ISO 3767-2 / ISO 7000'},
   {id:'diff-lock',title:'Bloqueio do diferencial',iso:'ISO 7000-1662',meaning:'Identifica o comando/estado do bloqueio do diferencial.',application:'Indica a função que força as rodas de um eixo a girarem em conjunto, conforme o sistema.',imageUrl:commons('1662'),sourceUrl:commonsPage('1662'),sourceLabel:'ISO 3767-2 / ISO 7000'},
-  {id:'front-drive',title:'Tração dianteira auxiliar',iso:'ISO 7000-1663',meaning:'Identifica o acionamento da tração dianteira auxiliar.',application:'Usado para o comando/estado do sistema de tração dianteira do trator.',imageUrl:commons('1663'),sourceUrl:commonsPage('1663'),sourceLabel:'ISO 3767-2 / ISO 7000'},
-  {id:'pto',title:'Tomada de potência (TDP/PTO)',iso:'ISO 7000-1572',meaning:'Identifica o sistema de tomada de potência.',application:'Usado para o comando e indicação de estado da TDP/PTO.',imageUrl:commons('1572'),sourceUrl:commonsPage('1572'),sourceLabel:'ISO 3767-2 / ISO 7000'},
   {id:'pto-cw',title:'TDP — sentido horário',iso:'ISO 7000-1664',meaning:'Indica rotação horária da tomada de potência, observada da frente da extremidade do eixo.',application:'Usado para identificar o sentido de rotação indicado para a TDP.',imageUrl:commons('1664'),sourceUrl:commonsPage('1664'),sourceLabel:'ISO 3767-2 / ISO 7000'},
   {id:'wheel-slip',title:'Patinagem das rodas',iso:'ISO 7000-1665',meaning:'Indica o grau de patinagem das rodas.',application:'Relaciona a diferença entre velocidade real de avanço e velocidade implícita pela rotação das rodas motrizes.',imageUrl:commons('1665'),sourceUrl:commonsPage('1665'),sourceLabel:'ISO 3767-2 / ISO 7000 — SVG CC0'},
   {id:'position-lights',title:'Luzes de posição',iso:'ISO 7000-0456',meaning:'Identifica as luzes de posição/laterais.',application:'Usado para comando ou indicação das luzes de baixa intensidade de posição.',imageUrl:commons('0456'),sourceUrl:commonsPage('0456'),sourceLabel:'ISO 7000 / Wikimedia Commons — SVG CC0'},
