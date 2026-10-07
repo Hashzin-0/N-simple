@@ -40,7 +40,10 @@ const starterPrompts = [
 
 export default function ProfessorDocumentos() {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [session, setSession] = useState<Session | null>(null);\n  const [sourceFile, setSourceFile] = useState<File | null>(null);\n  const [pendingEdits, setPendingEdits] = useState<Edit[]>([]);\n  const [manualChanges, setManualChanges] = useState<string[]>([]);
+  const [session, setSession] = useState<Session | null>(null);
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [pendingEdits, setPendingEdits] = useState<Edit[]>([]);
+  const [manualChanges, setManualChanges] = useState<string[]>([]);
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<Array<{role:'user'|'assistant';text:string}>>([]);
   const [loading, setLoading] = useState(false);
