@@ -2,9 +2,9 @@
 
 import React, { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { useTheme } from './ThemeProvider';
-import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap } from 'lucide-react';
+import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap, Tractor } from 'lucide-react';
 
-export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor';
+export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista';
 
 interface GooeyTabPanelProps {
   activeTab: TabId;
@@ -17,6 +17,7 @@ interface GooeyTabPanelProps {
   librasContent?: React.ReactNode;
   redacaoContent?: React.ReactNode;
   tutorContent?: React.ReactNode;
+  tratoristaContent?: React.ReactNode;
 }
 
 interface TabItem {
@@ -84,6 +85,13 @@ export const ALL_TABS: TabItem[] = [
     icon: GraduationCap,
     badge: 'Revisão Oral',
   },
+  {
+    id: 'tratorista',
+    label: 'Mecanização Agrícola',
+    shortLabel: 'Tratores',
+    icon: Tractor,
+    badge: 'Curso & Tração',
+  },
 ];
 
 const TAB_INDEX: Record<TabId, number> = {
@@ -95,9 +103,10 @@ const TAB_INDEX: Record<TabId, number> = {
   libras: 5,
   redacao: 6,
   tutor: 7,
+  tratorista: 8,
 };
 
-const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor'];
+const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista'];
 
 export default function GooeyTabPanel({
   activeTab,
@@ -110,6 +119,7 @@ export default function GooeyTabPanel({
   librasContent,
   redacaoContent,
   tutorContent,
+  tratoristaContent,
 }: GooeyTabPanelProps) {
   const { isDark } = useTheme();
   const rawId = useId();
@@ -255,6 +265,8 @@ export default function GooeyTabPanel({
         return redacaoContent || null;
       case 'tutor':
         return tutorContent || null;
+      case 'tratorista':
+        return tratoristaContent || null;
       default:
         return nitrogenContent;
     }
