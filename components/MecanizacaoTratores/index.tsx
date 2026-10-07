@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, ChevronUp, ClipboardCheck, Gauge, Info, Tractor, Wrench, Zap } from 'lucide-react';
-import { getTractor, OPERATION_SPEEDS, TRACTORS, type TractorSpec } from '@/lib/tratoresData';
+import { getTractor, TRACTORS, type TractorSpec } from '@/lib/tratoresData';
 import { COURSE_MODULES as DETAILED_MODULES, COURSE_TOTAL_HOURS } from '@/lib/tratoristaCurso';
 
 const clamp=(n:number,min:number,max:number)=>Math.min(max,Math.max(min,n));
-const fmt=(n:number,d=1)=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:d}).format(Number.isFinite(n)?n:0);
+const fmt=(n:number,d=1)=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:d}).format(Number.isFinite(n)?n:0);\nconst OPERATION_TYPES=[{id:'transporte',label:'Transporte'},{id:'preparo',label:'Preparo do solo'},{id:'plantio',label:'Plantio/semeadura'},{id:'cultivo',label:'Cultivo entre linhas'},{id:'pulverizacao',label:'Pulverização'},{id:'distribuicao',label:'Distribuição'},{id:'personalizada',label:'Outra operação'}];
 
 function calculate(p:{tractor:TractorSpec;load:number;slope:number;rolling:number;mu:number;driveFraction:number;eff:number;target:number}){
   const g=9.80665, mass=p.tractor.massKg+Math.max(0,p.load), weight=mass*g;
@@ -126,8 +126,8 @@ export default function MecanizacaoTratores(){
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="text-xs font-semibold">Carga rebocada / implemento (kg)<input type="number" min="0" placeholder="Informe a carga" value={load??''} onChange={e=>setLoad(e.target.value===''?null:Math.max(0,Number(e.target.value)))} className="mt-1 w-full rounded-xl border border-[#D9D9CF] dark:border-[#3A4235] bg-[#FAFAF7] dark:bg-[#20251D] px-3 py-2.5 text-sm"/></label>
             <label className="text-xs font-semibold">Inclinação do terreno (%)<input type="number" placeholder="Informe a inclinação" value={slope??''} onChange={e=>setSlope(e.target.value===''?null:Number(e.target.value))} className="mt-1 w-full rounded-xl border border-[#D9D9CF] dark:border-[#3A4235] bg-[#FAFAF7] dark:bg-[#20251D] px-3 py-2.5 text-sm"/></label>
-            <label className="text-xs font-semibold">Operação<select value={operation} onChange={e=>{setOperation(e.target.value);setTarget(null)}} className="mt-1 w-full rounded-xl border border-[#D9D9CF] dark:border-[#3A4235] bg-[#FAFAF7] dark:bg-[#20251D] px-3 py-2.5 text-sm"><option value="">Selecione a operação</option>{Object.entries(OPERATION_SPEEDS).map(([id,o])=><option key={id} value={id}>{o.label}</option>)}</select></label>
-            <label className="text-xs font-semibold">Velocidade-alvo (km/h)<input type="number" min="0.5" max="30" step="0.1" placeholder={preset?'Informe entre '+preset.min+' e '+preset.max:'Informe a velocidade'} value={target??''} onChange={e=>setTarget(e.target.value===''?null:clamp(Number(e.target.value),0.5,30))} className="mt-1 w-full rounded-xl border border-[#D9D9CF] dark:border-[#3A4235] bg-[#FAFAF7] dark:bg-[#20251D] px-3 py-2.5 text-sm"/>{preset&&<span className="block mt-1 text-[10px] font-normal text-[#858C81]">Faixa de referência: {preset.min}–{preset.max} km/h.</span>}</label>
+            <label className="text-xs font-semibold">Operação<select value={operation} onChange={e=>{setOperation(e.target.value);setTarget(null)}} className="mt-1 w-full rounded-xl border border-[#D9D9CF] dark:border-[#3A4235] bg-[#FAFAF7] dark:bg-[#20251D] px-3 py-2.5 text-sm"><option value="">Selecione a operação</option>{OPERATION_TYPES.map(o=><option key={o.id} value={o.id}>{o.label}</option>)}</select></label>
+            <label className="text-xs font-semibold">Velocidade-alvo (km/h)<input type="number" min="0.5" max="30" step="0.1" placeholder="Informe a velocidade definida para a operação" value={target??''} onChange={e=>setTarget(e.target.value===''?null:clamp(Number(e.target.value),0.5,30))} className="mt-1 w-full rounded-xl border border-[#D9D9CF] dark:border-[#3A4235] bg-[#FAFAF7] dark:bg-[#20251D] px-3 py-2.5 text-sm"/></label>
           </div>
           <details className="rounded-xl border border-[#E3E2D9] dark:border-[#343B30] p-3"><summary className="cursor-pointer text-xs font-semibold">Parâmetros avançados — informe os dados reais</summary><div className="mt-3 space-y-3"><p className="text-[10px] leading-4 text-[#7A8177]">Nenhum destes campos possui valor inicial. Use medição, configuração real ou referência técnica adequada; não use números arbitrários apenas para obter uma marcha.</p><div className="grid sm:grid-cols-2 gap-3">
             <label className="text-xs">Resistência ao rolamento<input type="number" min="0" max="0.3" step="0.01" placeholder="Informe o valor" value={rolling??''} onChange={e=>setRolling(e.target.value===''?null:clamp(Number(e.target.value),0,0.3))} className="mt-1 w-full rounded-lg border bg-transparent px-2 py-2"/></label>
