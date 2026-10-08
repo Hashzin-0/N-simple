@@ -1,0 +1,112 @@
+/* N-simple — restrained agritech design system.
+   Editorial sections for reading; bounded surfaces for tools, results and decisions. */
+:root {
+  color-scheme: light;
+  --ns-bg: #f6f8f4;
+  --ns-surface: #ffffff;
+  --ns-surface-muted: #eef3ec;
+  --ns-ink: #202920;
+  --ns-muted: #5f6b60;
+  --ns-line: #dce5da;
+  --ns-accent: #286b45;
+  --ns-accent-hover: #205638;
+  --ns-accent-soft: #e3efe4;
+  --ns-focus: #347d50;
+  --ns-radius-control: 9px;
+  --ns-radius-surface: 14px;
+  --ns-shadow-surface: 0 1px 2px rgb(24 43 28 / 5%), 0 8px 24px rgb(24 43 28 / 3%);
+}
+.dark {
+  color-scheme: dark;
+  --ns-bg: #151a16;
+  --ns-surface: #1c231d;
+  --ns-surface-muted: #242f25;
+  --ns-ink: #edf3ec;
+  --ns-muted: #aab7aa;
+  --ns-line: #344236;
+  --ns-accent: #9bcaa4;
+  --ns-accent-hover: #b3d9ba;
+  --ns-accent-soft: #283b2d;
+  --ns-focus: #a8d8b1;
+  --ns-shadow-surface: 0 1px 2px rgb(0 0 0 / 12%), 0 8px 24px rgb(0 0 0 / 8%);
+}
+html { background: var(--ns-bg); scroll-behavior: smooth; }
+body {
+  color: var(--ns-ink);
+  background: var(--ns-bg);
+  transition: background-color .18s ease, color .18s ease;
+}
+::selection { background: var(--ns-accent-soft); color: var(--ns-ink); }
+:where(button, input, textarea, select) { font: inherit; }
+:where(button, [role="button"], a, input, textarea, select):focus-visible {
+  outline: 2px solid var(--ns-focus);
+  outline-offset: 3px;
+}
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select) {
+  border-color: var(--ns-line);
+  border-radius: var(--ns-radius-control);
+  background-color: var(--ns-surface);
+  color: var(--ns-ink);
+  box-shadow: none;
+}
+:where(input, textarea, select)::placeholder { color: var(--ns-muted); opacity: .9; }
+:where(input, textarea, select):focus {
+  border-color: var(--ns-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ns-focus) 16%, transparent);
+}
+:where(main) { color: var(--ns-ink); }
+:where(main) a { text-underline-offset: 3px; }
+:where(main) button {
+  transition: background-color .16s ease, color .16s ease, border-color .16s ease, transform .16s ease;
+}
+:where(main) button:active:not(:disabled) { transform: translateY(1px); }
+
+/* Optional semantic surfaces: apply only to discrete information or interactive tools. */
+.ns-surface {
+  background: var(--ns-surface);
+  border: 1px solid var(--ns-line);
+  border-radius: var(--ns-radius-surface);
+  box-shadow: var(--ns-shadow-surface);
+}
+.ns-surface-muted {
+  background: var(--ns-surface-muted);
+  border: 1px solid var(--ns-line);
+  border-radius: var(--ns-radius-surface);
+}
+.ns-section-divider { border-color: var(--ns-line); }
+.ns-eyebrow { color: var(--ns-accent); }
+.ns-primary-action {
+  color: #fff;
+  background: var(--ns-accent);
+  border: 1px solid transparent;
+  border-radius: var(--ns-radius-control);
+  font-weight: 650;
+}
+.dark .ns-primary-action { color: #152016; }
+.ns-primary-action:hover:not(:disabled) { background: var(--ns-accent-hover); }
+
+/* Existing utility-class cards keep their intent; nested cards are not globally erased. */
+:where(main) :is(.shadow, .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl) {
+  --tw-shadow-color: color-mix(in srgb, var(--ns-ink) 8%, transparent);
+}
+:where(main) :is(.border, .border-t, .border-b, .border-l, .border-r) {
+  border-color: var(--ns-line);
+}
+:where(main) :is(.text-gray-500, .text-gray-600, .text-stone-500, .text-\[\#8C897E\]) {
+  color: var(--ns-muted);
+}
+@media (hover: hover) and (pointer: fine) {
+  :where(main) button[class*="border"]:not(:disabled):hover { border-color: color-mix(in srgb, var(--ns-accent) 38%, var(--ns-line)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  :where(main) * { box-shadow: none !important; backdrop-filter: none !important; }
+}
