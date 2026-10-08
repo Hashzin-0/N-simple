@@ -790,7 +790,7 @@ export default function Home() {
     () => (
       <div className="w-full" id="itr_section">
         <ScrollStack peek={12} blur pinTop="4vh">
-          <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328]">
+          <div className="bg-white dark:bg-[#1C201A] p-5 sm:p-6 rounded-2xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328]">
             <ITRCalculator
               isConnected
               values={{
@@ -826,7 +826,7 @@ export default function Home() {
     () => (
       <div className="w-full">
         <ScrollStack peek={12} blur pinTop="4vh">
-          <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6">
+          <div className="bg-white dark:bg-[#1C201A] p-5 sm:p-6 rounded-2xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6">
             <div id="abnt_section" className="scroll-mt-24">
               <AbntReferenceFormatter
                 isConnected
@@ -1088,11 +1088,11 @@ export default function Home() {
 
       <main
         id="main_container"
-        className="min-h-screen bg-[#FDFBF7] dark:bg-[#121511] text-[#3D3D3D] dark:text-[#E8E6DF] antialiased pb-8 font-sans transition-colors duration-300 overflow-x-clip"
+        className="min-h-screen bg-[var(--ns-bg)] dark:bg-[#151A16] text-[var(--ns-ink)] dark:text-[#E8E6DF] antialiased pb-8 font-sans transition-colors duration-300 overflow-x-clip"
         style={{ opacity: isLoading ? 0 : 1, transition: 'opacity 0.5s ease-in-out' }}
       >
       {/* HERO SECTION - rolls with page */}
-      <section className="bg-[#5A5A40] dark:bg-[#1E241B] text-white px-4 sm:px-6 lg:px-8 pt-6 pb-4 shadow-lg">
+      <section className="bg-[#203B2A] dark:bg-[#1E2B20] text-white px-4 sm:px-6 lg:px-8 pt-6 pb-5 shadow-none border-b border-white/10">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
@@ -1101,11 +1101,11 @@ export default function Home() {
                   <Sprout id="brand_icon" className="h-6 w-6 text-white" />
                 </div>
                 <div>
-                  <h1 id="app_title" className="text-2xl sm:text-3xl font-serif italic font-bold tracking-tight text-white">
-                    Agronômica N-Pro
+                  <h1 id="app_title" className="text-2xl sm:text-3xl font-sans font-bold tracking-tight text-white">
+                    N-simple
                   </h1>
                   <p id="app_subtitle" className="text-xs sm:text-sm text-white/90 dark:text-white/80 mt-1 font-medium">
-                    Calculadora de Adubação: Milho (Sucessão Soja) & Estimativa de Produtividade
+                    Ferramentas agronômicas, pesquisa científica e aprendizagem para o agro
                   </p>
                 </div>
               </div>
@@ -1180,7 +1180,7 @@ export default function Home() {
       {/* STICKY SECTION NAV - sticks to top when scrolling */}
       <header
         id="app_header"
-        className="sticky top-0 z-50 bg-[#5A5A40] dark:bg-[#1E241B] shadow-lg border-b border-[#4A4A30] dark:border-[#2D3528] transition-all"
+        className="sticky top-0 z-50 bg-[#203B2A] dark:bg-[#1E2B20] shadow-none border-b border-white/10 transition-colors"
       >
         {/* Mobile: horizontal nav inside sticky header */}
         <div className="lg:hidden px-4 sm:px-6 py-2">
@@ -1189,7 +1189,7 @@ export default function Home() {
       </header>
 
       {/* Desktop: fixed sidebar nav */}
-      <aside className="hidden lg:block fixed top-0 left-0 h-screen w-[180px] bg-[#5A5A40] dark:bg-[#1E241B] shadow-lg border-r border-[#4A4A30] dark:border-[#2D3528] p-2 z-[60]">
+      <aside className="hidden lg:block fixed top-0 left-0 h-screen w-[180px] bg-[#203B2A] dark:bg-[#1E2B20] shadow-none border-r border-white/10 p-2 z-[60]">
         <SectionNavGooey activeTab={activeTab} />
       </aside>
 
@@ -1221,7 +1221,7 @@ export default function Home() {
             <div className="w-full">
               <ScrollStack peek={12} blur pinTop="4vh">
         {/* INPUT SECTION — scenarios + inputs in one card */}
-            <div id="form_section" className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-5 transition-colors">
+            <div id="form_section" className="bg-white dark:bg-[#1C201A] p-5 sm:p-6 rounded-2xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-5 transition-colors">
 
               {/* HEADER */}
               <div className="flex items-center gap-3 border-b pb-4 border-[#F0EDE5] dark:border-[#2C3328]">
@@ -1439,7 +1439,7 @@ export default function Home() {
             </div>
 
         {/* PARCELAMENTO CONFIGURATION — standalone ScrollStack card */}
-            <div id="parcelamento_config" className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6 transition-colors">
+            <div id="parcelamento_config" className="bg-white dark:bg-[#1C201A] p-5 sm:p-6 rounded-2xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6 transition-colors">
               <div className="border-b border-[#F0EDE5] dark:border-[#2C3328] pb-4">
                 <h3 className="text-sm font-bold text-[#5A5A40] dark:text-[#E8E6DF] uppercase tracking-wider flex items-center gap-2">
                   <Percent className="h-5 w-5 text-[#5A5A40] dark:text-[#9CB386]" /> Configuração do Parcelamento
