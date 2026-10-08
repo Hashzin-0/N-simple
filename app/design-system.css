@@ -96,7 +96,7 @@ body {
   color: var(--ns-muted);
 }
 @media (hover: hover) and (pointer: fine) {
-  :where(main) button:not(:disabled):hover { border-color: color-mix(in srgb, var(--ns-accent) 38%, var(--ns-line)); }
+  :where(main) button[class*="border"]:not(:disabled):hover { border-color: color-mix(in srgb, var(--ns-accent) 38%, var(--ns-line)); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
