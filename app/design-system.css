@@ -1,0 +1,104 @@
+/* N-simple design system — cleymorphism + restrained neumorphism.
+   Cleymorphism: layered translucent surfaces, crisp edges and depth cues.
+   Neumorphism is reserved for low-risk surfaces; controls keep visible contrast. */
+:root {
+  color-scheme: light;
+  --ns-bg: #edf2ec;
+  --ns-surface: rgba(250, 252, 248, .88);
+  --ns-surface-solid: #f7faf5;
+  --ns-ink: #18261d;
+  --ns-muted: #647468;
+  --ns-line: rgba(50, 79, 56, .13);
+  --ns-accent: #286b45;
+  --ns-accent-strong: #1c5435;
+  --ns-accent-soft: #dcecdf;
+  --ns-shadow-raised: 8px 8px 20px rgba(45, 67, 48, .10), -7px -7px 18px rgba(255, 255, 255, .82);
+  --ns-shadow-inset: inset 3px 3px 7px rgba(48, 67, 49, .10), inset -3px -3px 7px rgba(255, 255, 255, .85);
+  --ns-shadow-float: 0 16px 44px rgba(33, 55, 39, .12);
+  --ns-radius: 20px;
+}
+.dark {
+  color-scheme: dark;
+  --ns-bg: #111913;
+  --ns-surface: rgba(27, 39, 30, .88);
+  --ns-surface-solid: #1b271e;
+  --ns-ink: #eef5ed;
+  --ns-muted: #a7b7a7;
+  --ns-line: rgba(204, 231, 203, .12);
+  --ns-accent: #9bc9a3;
+  --ns-accent-strong: #c0e4c4;
+  --ns-accent-soft: #263e2b;
+  --ns-shadow-raised: 8px 8px 20px rgba(0, 0, 0, .24), -6px -6px 18px rgba(63, 83, 65, .10);
+  --ns-shadow-inset: inset 3px 3px 7px rgba(0, 0, 0, .25), inset -3px -3px 7px rgba(75, 96, 77, .10);
+  --ns-shadow-float: 0 18px 48px rgba(0, 0, 0, .24);
+}
+html { background: var(--ns-bg); scroll-behavior: smooth; }
+body {
+  color: var(--ns-ink);
+  background:
+    radial-gradient(ellipse at 6% 0%, rgba(151, 190, 151, .14), transparent 34rem),
+    radial-gradient(ellipse at 100% 20%, rgba(185, 211, 183, .12), transparent 32rem),
+    var(--ns-bg);
+  transition: background-color .25s ease, color .25s ease;
+}
+::selection { background: var(--ns-accent-soft); color: var(--ns-ink); }
+:where(button, input, textarea, select) { font: inherit; }
+:where(button, [role="button"], a, input, textarea, select):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ns-accent) 72%, transparent);
+  outline-offset: 3px;
+}
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select) {
+  border-color: var(--ns-line);
+  border-radius: 13px;
+  background: var(--ns-surface-solid);
+  color: var(--ns-ink);
+  box-shadow: var(--ns-shadow-inset);
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+:where(input, textarea, select)::placeholder { color: var(--ns-muted); opacity: .8; }
+:where(input, textarea, select):focus {
+  border-color: var(--ns-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ns-accent) 15%, transparent);
+}
+/* Existing app cards inherit a coherent surface without changing component logic. */
+:where(main) { color: var(--ns-ink); }
+:where(main) :is(.rounded-2xl, .rounded-3xl, .rounded-xl) {
+  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+}
+:where(main) :is(.bg-white, .dark\:bg-\[\#1C201A\], .dark\:bg-\[\#1c201a\]) {
+  background-color: var(--ns-surface) !important;
+  border-color: var(--ns-line) !important;
+  box-shadow: var(--ns-shadow-raised);
+  backdrop-filter: blur(14px) saturate(1.08);
+  -webkit-backdrop-filter: blur(14px) saturate(1.08);
+}
+:where(main) :is(.border, .border-t, .border-b) { border-color: var(--ns-line); }
+:where(main) :is(button, [role="button"]) {
+  transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease, border-color .16s ease;
+}
+:where(main) button:active, :where(main) [role="button"]:active {
+  transform: translateY(1px) scale(.99);
+}
+:where(main) :is(button, a).bg-green-700,
+:where(main) button[class*="bg-[#2E6F40]"],
+:where(main) button[class*="bg-[#286b45]"] {
+  background: var(--ns-accent) !important;
+  color: #fff !important;
+}
+:where(main) :is(.text-gray-500, .text-gray-600, .text-stone-500, .text-\[\#8C897E\]) { color: var(--ns-muted); }
+:where(main) :is(.rounded-2xl, .rounded-3xl) { border-radius: var(--ns-radius); }
+:where(main) a { text-underline-offset: 3px; }
+@media (hover: hover) and (pointer: fine) {
+  :where(main) :is(button, [role="button"]):not(:disabled):hover { transform: translateY(-1px); }
+  :where(main) :is(.rounded-2xl, .rounded-3xl):hover { border-color: color-mix(in srgb, var(--ns-accent) 25%, var(--ns-line)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :where(main) :is(.bg-white, .dark\:bg-\[\#1C201A\], .dark\:bg-\[\#1c201a\]) { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--ns-surface-solid) !important; }
+}
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  :where(main) :is(.rounded-2xl, .rounded-3xl) { box-shadow: none !important; backdrop-filter: none !important; }
+}
