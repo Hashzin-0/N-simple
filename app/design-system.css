@@ -92,7 +92,7 @@ body {
 :where(main) :is(.border, .border-t, .border-b, .border-l, .border-r) {
   border-color: var(--ns-line);
 }
-:where(main) :is(.text-gray-500, .text-gray-600, .text-stone-500, .text-\\[\\#8C897E\\]) {
+:where(main) :is(.text-gray-500, .text-gray-600, .text-stone-500, .text-\[\#8C897E\]) {
   color: var(--ns-muted);
 }
 @media (hover: hover) and (pointer: fine) {
