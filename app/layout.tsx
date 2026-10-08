@@ -1,6 +1,7 @@
 import type {Metadata, Viewport} from 'next';
 import { Inter } from 'next/font/google';
-import './globals.css'; // Global styles
+import './globals.css';
+import './design-system.css';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { AuthProvider } from '@/components/auth/AuthProvider';
 import { getPublicAuthConfig } from '@/lib/authConfig';
@@ -14,27 +15,27 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#2E6F40',
+  themeColor: '#286b45',
 };
 
 export const metadata: Metadata = {
-  title: 'Calculadora de Nitrogênio para Milho',
-  description: 'Calculadora agronômica de adubação nitrogenada e estimativa de produtividade de milho por estande, grãos, PMG e quebra com tema escuro e visualizador.',
+  title: 'N-simple — Ferramentas para o Agro',
+  description: 'Ferramentas agronômicas, pesquisa científica, tutor inteligente e recursos de aprendizagem para o agronegócio.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'N-Pro',
+    title: 'N-simple',
   },
   openGraph: {
-    title: 'Calculadora de Nitrogênio para Milho',
-    description: 'Calculadora agronômica de adubação nitrogenada e estimativa de produtividade de milho por estande, grãos, PMG e quebra com tema escuro e visualizador.',
+    title: 'N-simple — Ferramentas para o Agro',
+    description: 'Ferramentas agronômicas, pesquisa científica, tutor inteligente e recursos de aprendizagem para o agronegócio.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Calculadora de Nitrogênio para Milho',
-    description: 'Calculadora agronômica de adubação nitrogenada e estimativa de produtividade de milho por estande, grãos, PMG e quebra com tema escuro e visualizador.',
+    title: 'N-simple — Ferramentas para o Agro',
+    description: 'Ferramentas agronômicas, pesquisa científica, tutor inteligente e recursos de aprendizagem para o agronegócio.',
   },
 };
 
