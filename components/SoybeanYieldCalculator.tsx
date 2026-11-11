@@ -145,7 +145,7 @@ export default function SoybeanYieldCalculator() {
               label="PMG"
               unit="g/1.000 grãos"
               value={thousandGrainWeight}
-              onChange={(value) => setThousandGrainWeight(Math.max(0, value))}
+              onChange={(value) => setThousandGrainWeight(Math.min(1000, Math.max(0, value)))}
               step={1}
               min={1}
               max={1000}
@@ -272,7 +272,7 @@ export default function SoybeanYieldCalculator() {
               label="Área considerada"
               unit="hectares (ha)"
               value={areaHa}
-              onChange={(value) => setAreaHa(Math.max(0, value))}
+              onChange={(value) => setAreaHa(Math.min(1000000, Math.max(0, value)))}
               step={0.5}
               min={0}
               max={1000000}
