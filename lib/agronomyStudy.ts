@@ -253,6 +253,14 @@ function getConceptStudyExercises(): StudyExercise[] {
       ['Sim. Corrige a acidez, eleva o pH e pode fornecer cálcio e magnésio.', 'Não. Sua função é somente fornecer enxofre.', 'Não. É aplicada exclusivamente para aumentar a matéria orgânica.'],
     ),
     conceptExercise(
+      'conceito-calagem-aberta-01', 'calagem', 1,
+      'Como a calagem corrige a acidez?',
+      'Uma análise de solo indica acidez elevada e necessidade de aplicação de calcário.',
+      'Explique, com suas palavras, como a calagem melhora as condições químicas de um solo ácido.',
+      [['neutraliza acidez', 'neutraliza a acidez', 'corrige a acidez', 'corrige acidez', 'eleva ph', 'eleva o ph', 'aumenta ph', 'aumenta o ph'], ['fornece calcio', 'fornece calcio e magnesio', 'calcio e magnesio', 'magnesio'], ['reduz aluminio', 'reduz o aluminio', 'diminui o aluminio', 'aluminio toxico', 'toxicidade do aluminio']],
+      'A calagem neutraliza parte da acidez, eleva o pH, fornece cálcio e magnésio e reduz a atividade tóxica do alumínio. A dose deve ser calculada com base na análise do solo e nas características do corretivo.',
+    ),
+    conceptExercise(
       'conceito-calagem-aberta-02', 'calagem', 2,
       'Por que o PRNT altera a dose?',
       'Dois calcários podem apresentar PRNT diferentes, mesmo quando a necessidade de calagem calculada é a mesma.',
@@ -331,7 +339,10 @@ export function createRandomStudyPlan(random: () => number = Math.random): Study
       }
     }
   }
-  const concepts = getConceptStudyExercises().filter((exercise) => exercise.answers[0].type === 'text');
+  const availableConcepts = getConceptStudyExercises().filter((exercise) => exercise.answers[0].type === 'text');
+  const concepts = (['soja', 'calagem', 'gessagem'] as StudyTopic[]).map((topic) =>
+    choose(availableConcepts.filter((exercise) => exercise.topic === topic), random),
+  );
   plan.push(...concepts);
 
   const ordered = plan.sort((a, b) => a.difficulty - b.difficulty);
