@@ -152,7 +152,7 @@ export default function SoybeanStudySection() {
           >
             <div className="mb-2 flex items-center justify-between">
               <Sprout className={'h-5 w-5 ' + color} />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C897E] dark:text-[#A6A395]">5 atividades</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C897E] dark:text-[#A6A395]">{topic === 'calagem' ? '6 atividades' : '5 atividades'}</span>
             </div>
             <h3 className="font-bold text-[#454638] dark:text-[#E8E7DF]">{title}</h3>
             <p className={'mt-1 text-xs leading-relaxed ' + mutedClass}>{description}</p>
