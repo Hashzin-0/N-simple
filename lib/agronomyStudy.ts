@@ -333,5 +333,17 @@ export function createRandomStudyPlan(random: () => number = Math.random): Study
   }
   const concepts = getConceptStudyExercises().filter((exercise) => exercise.answers[0].type === 'text');
   plan.push(...concepts);
-  return plan.sort((a, b) => a.difficulty - b.difficulty);
+
+  const ordered = plan.sort((a, b) => a.difficulty - b.difficulty);
+  let start = 0;
+  while (start < ordered.length) {
+    let end = start + 1;
+    while (end < ordered.length && ordered[end].difficulty === ordered[start].difficulty) end += 1;
+    for (let index = end - 1; index > start; index -= 1) {
+      const swapIndex = start + Math.floor(random() * (index - start + 1));
+      [ordered[index], ordered[swapIndex]] = [ordered[swapIndex], ordered[index]];
+    }
+    start = end;
+  }
+  return ordered;
 }
