@@ -86,8 +86,10 @@ function soybeanExercise(
       { label: 'Plantas avaliadas', value: values.plants, unit: 'plantas' },
       { label: 'Legumes contados', value: values.pods, unit: 'legumes' },
       { label: 'Grãos contados', value: values.grains, unit: 'grãos' },
-      { label: 'PMG', value: values.pmg, unit: 'g/1.000 grãos' },
-      { label: 'Quebra estimada', value: values.loss, unit: '%' },
+      ...(difficulty >= 2 ? [
+        { label: 'PMG', value: values.pmg, unit: 'g/1.000 grãos' },
+        { label: 'Quebra estimada', value: values.loss, unit: '%' },
+      ] : []),
     ],
     prompt: difficulty === 1
       ? 'Calcule as médias de legumes por planta e grãos por legume.'
@@ -122,9 +124,11 @@ function limingExercise(
     data: [
       { label: 'Soma de bases (SB)', value: values.sb, unit: 'cmolc/dm³' },
       { label: 'CTC a pH 7 (T)', value: values.ctc, unit: 'cmolc/dm³' },
-      { label: 'V₂ desejado', value: values.v2, unit: '%' },
-      { label: 'PRNT do calcário', value: values.prnt, unit: '%' },
-      { label: 'Área', value: values.area, unit: 'ha' },
+      ...(difficulty >= 2 ? [
+        { label: 'V₂ desejado', value: values.v2, unit: '%' },
+        { label: 'PRNT do calcário', value: values.prnt, unit: '%' },
+      ] : []),
+      ...(difficulty >= 3 ? [{ label: 'Área', value: values.area, unit: 'ha' }] : []),
     ],
     prompt: difficulty === 1
       ? 'Determine a saturação por bases atual (V₁).'
@@ -134,8 +138,8 @@ function limingExercise(
     answers,
     solution: [
       'V₁ = (SB ÷ CTC) × 100 = (' + values.sb + ' ÷ ' + values.ctc + ') × 100 = ' + round(v1) + '%.',
-      'NC = CTC × (V₂ − V₁) ÷ 100 × (100 ÷ PRNT) = ' + round(nc) + ' t/ha.',
-      'Quantidade total = ' + round(nc) + ' × ' + values.area + ' ha = ' + round(total) + ' t.',
+      ...(difficulty >= 2 ? ['NC = CTC × (V₂ − V₁) ÷ 100 × (100 ÷ PRNT) = ' + round(nc) + ' t/ha.'] : []),
+      ...(difficulty >= 3 ? ['Quantidade total = ' + round(nc) + ' × ' + values.area + ' ha = ' + round(total) + ' t.'] : []),
       'Se V₁ já for igual ou superior a V₂, este exercício considera NC igual a zero; a recomendação real deve seguir o sistema de cultivo e a interpretação técnica da análise.',
     ],
     source: [SOIL_SOURCE, 'https://www.iac.sp.gov.br/publicacoes/boletim100.php'],
@@ -167,7 +171,7 @@ function gypsumExercise(
       { label: 'Argila', value: values.clay, unit: '%' },
       { label: 'Saturação por Al (m)', value: values.aluminum, unit: '%' },
       { label: 'Cálcio trocável (Ca²⁺)', value: values.calcium, unit: 'cmolc/dm³' },
-      { label: 'Área', value: values.area, unit: 'ha' },
+      ...(difficulty >= 3 ? [{ label: 'Área', value: values.area, unit: 'ha' }] : []),
     ],
     prompt: difficulty === 1
       ? 'Com base nos dois indicadores de subsuperfície, informe se há indicação de gessagem.'
@@ -178,9 +182,9 @@ function gypsumExercise(
     solution: [
       'Critério de indicação: saturação por Al > 20% OU Ca²⁺ < 0,5 cmolc/dm³ na camada de 20–40 cm.',
       'Resultado: ' + (needed ? 'há indicação pelos critérios didáticos adotados.' : 'não há indicação pelos critérios didáticos adotados.'),
-      'Dose = argila (%) × 50 = ' + values.clay + ' × 50 = ' + round(dose) + ' kg/ha.',
-      'Quantidade total = ' + round(dose) + ' kg/ha × ' + values.area + ' ha ÷ 1.000 = ' + round(total) + ' t.',
-      'O gesso não substitui o calcário: atua como condicionador da subsuperfície e deve ser recomendado após diagnóstico adequado.',
+      ...(difficulty >= 2 ? ['Dose = argila (%) × 50 = ' + values.clay + ' × 50 = ' + round(dose) + ' kg/ha.'] : []),
+      ...(difficulty >= 3 ? ['Quantidade total = ' + round(dose) + ' kg/ha × ' + values.area + ' ha ÷ 1.000 = ' + round(total) + ' t.'] : []),
+      'Na referência consultada para soja, o gesso é aplicado na superfície após a calagem, sem incorporação. Ele não substitui o calcário.',
     ],
     source: [SOIL_SOURCE, 'https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1123928/1/SP-17-2020-online-1.pdf'],
   };
