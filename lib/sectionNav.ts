@@ -58,7 +58,7 @@ export const SECTIONS_BY_TAB: Record<TabId, SectionConfig[]> = {
     { id: 'corn_yield_results', label: 'Resultados', shortLabel: 'Resultados', icon: Trophy, color: '#2E6F40', colorDark: '#86efac' },
   ],
   soja: [
-    { id: 'soybean_yield_header', label: 'Visão Geral', shortLabel: 'Visão', icon: Sprout, color: '#2E6F40', colorDark: '#9CB386' },
+    { id: 'soybean_yield_header', label: 'Visão Geral', shortLabel: 'Visão', icon: Wheat, color: '#2E6F40', colorDark: '#9CB386' },
     { id: 'soybean_yield_params', label: 'Amostragem', shortLabel: 'Amostragem', icon: Sliders, color: '#5A5A40', colorDark: '#9CB386' },
     { id: 'soybean_yield_results', label: 'Resultados', shortLabel: 'Resultados', icon: Trophy, color: '#2E6F40', colorDark: '#86efac' },
     { id: 'soybean_yield_area', label: 'Produção por área', shortLabel: 'Área', icon: Calculator, color: '#D4A373', colorDark: '#D4A373' },
