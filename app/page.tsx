@@ -79,6 +79,7 @@ const VoiceAssistantHUD = dynamic(() => import('@/components/VoiceAssistantHUD')
 const DarkMode3DToggle = dynamic(() => import('@/components/DarkMode3DToggle'), { ssr: false });
 const SectionNavGooey = dynamic(() => import('@/components/SectionNavGooey'), { ssr: false });
 const CornYieldCalculator = dynamic(() => import('@/components/CornYieldCalculator'), { ssr: false });
+const SoybeanYieldCalculator = dynamic(() => import('@/components/SoybeanYieldCalculator'), { ssr: false });
 const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr: false });
 const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
 const AnaliseMorfologica = dynamic(() => import('@/components/AnaliseMorfologica'), { ssr: false });
@@ -784,6 +785,11 @@ export default function Home() {
       </div>
     ),
     [handleApplyYieldGoal, cornYieldFill],
+  );
+
+  const soybeanContent = useMemo(
+    () => <SoybeanYieldCalculator />,
+    [],
   );
 
   const itrContent = useMemo(
@@ -1742,6 +1748,7 @@ export default function Home() {
             </div>
           }
           productivityContent={productivityContent}
+          soybeanContent={soybeanContent}
           itrContent={itrContent}
           abntContent={abntContent}
           pesquisadorContent={pesquisadorContent}
