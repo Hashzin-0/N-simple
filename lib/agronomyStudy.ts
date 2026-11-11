@@ -208,11 +208,13 @@ export function createRandomStudyPlan(random: () => number = Math.random): Study
     for (const topic of order) {
       const suffix = 'plano-' + difficulty + '-' + topic + '-' + Math.floor(random() * 1_000_000);
       if (topic === 'soja') {
+        const pods = choose([480, 540, 600, 670, 720, 780, 840, 900], random);
+        const grainsPerPod = choose([1.8, 1.9, 2, 2.1, 2.2, 2.3, 2.4], random);
         plan.push(soybeanExercise(suffix, difficulty, {
           population: choose([180000, 200000, 220000, 230000, 250000, 280000, 300000, 320000, 340000], random),
           plants: choose([20, 24, 25, 30], random),
-          pods: choose([480, 540, 600, 670, 720, 780, 840, 900], random),
-          grains: choose([1050, 1180, 1230, 1350, 1480, 1620, 1750, 1900, 2100], random),
+          pods,
+          grains: Math.round(pods * grainsPerPod),
           pmg: choose([160, 165, 170, 175, 180, 185, 190], random),
           loss: choose([5, 7, 8, 10, 12, 15], random),
         }));
