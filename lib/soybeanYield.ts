@@ -42,10 +42,12 @@ export function calculateSoybeanYield(inputs: SoybeanYieldInputs): SoybeanYieldR
   const grainsPerPod = totalGrains / totalPods;
   const grossKgPerHa = (populationPerHa * podsPerPlant * grainsPerPod * thousandGrainWeight) / 1_000_000;
   const grossBagsPerHa = grossKgPerHa / 60;
-  const lossKgPerHa = grossKgPerHa * (lossPercent / 100);
-  const lossBagsPerHa = lossKgPerHa / 60;
-  const finalKgPerHa = grossKgPerHa - lossKgPerHa;
-  const finalBagsPerHa = finalKgPerHa / 60;
+  // A quebra e a produtividade final são calculadas em sacas de 60 kg/ha.
+  const lossBagsPerHa = grossBagsPerHa * (lossPercent / 100);
+  const finalBagsPerHa = grossBagsPerHa - lossBagsPerHa;
+  // Conversões para kg/ha são derivadas das sacas, não usadas como base do desconto.
+  const lossKgPerHa = lossBagsPerHa * 60;
+  const finalKgPerHa = finalBagsPerHa * 60;
 
   return {
     podsPerPlant,
