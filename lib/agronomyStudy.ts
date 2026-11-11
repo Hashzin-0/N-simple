@@ -17,6 +17,7 @@ export interface StudyAnswer {
   choices?: string[];
   acceptedConcepts?: string[][];
   explanation?: string;
+  minimumConcepts?: number;
 }
 
 export interface StudyExercise {
@@ -215,6 +216,7 @@ function conceptExercise(
       type: choices ? 'choice' : 'text',
       choices,
       acceptedConcepts,
+      minimumConcepts: topic === 'gessagem' ? acceptedConcepts.length : Math.max(1, acceptedConcepts.length - 1),
       explanation,
     }],
     solution: [explanation],
@@ -231,7 +233,7 @@ function getConceptStudyExercises(): StudyExercise[] {
       'O que significa PMG na avaliação da produtividade da soja?',
       [['massa de mil graos', 'peso de mil graos', 'massa de 1000 graos']],
       'PMG é a massa (ou peso) de mil grãos, normalmente expressa em gramas. Esse parâmetro representa o tamanho/massa média dos grãos e participa da estimativa de produtividade.',
-      ['População de plantas por metro', 'Massa ou peso de mil grãos', 'Número de legumes por planta'],
+      ['Massa ou peso de mil grãos', 'População de plantas por metro', 'Número de legumes por planta'],
     ),
     conceptExercise(
       'conceito-soja-aberta-01', 'soja', 2,
@@ -265,7 +267,7 @@ function getConceptStudyExercises(): StudyExercise[] {
       'O gesso agrícola substitui o calcário na correção da acidez da camada superficial?',
       [['nao']],
       'Não. O gesso não substitui o calcário e não tem a mesma função de elevar o pH da camada superficial. É utilizado como condicionador, especialmente para melhorar o ambiente químico em subsuperfície, fornecendo cálcio e enxofre e reduzindo limitações associadas ao alumínio.',
-      ['Sim, porque eleva o pH da mesma forma que o calcário.', 'Não. São insumos com funções diferentes; o gesso pode melhorar a subsuperfície.', 'Sim, desde que aplicado em dose dobrada.'],
+      ['Não. São insumos com funções diferentes; o gesso pode melhorar a subsuperfície.', 'Sim, porque eleva o pH da mesma forma que o calcário.', 'Sim, desde que aplicado em dose dobrada.'],
     ),
     conceptExercise(
       'conceito-gessagem-aberta-03', 'gessagem', 3,
@@ -331,5 +333,5 @@ export function createRandomStudyPlan(random: () => number = Math.random): Study
   }
   const concepts = getConceptStudyExercises().filter((exercise) => exercise.answers[0].type === 'text');
   plan.push(...concepts);
-  return plan;
+  return plan.sort((a, b) => a.difficulty - b.difficulty);
 }
