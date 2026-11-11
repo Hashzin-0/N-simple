@@ -27,7 +27,7 @@ const formatValue = (value: string | number) =>
     : value;
 
 function normalizeAnswer(value: string): string {
-  return value.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9,./% ]/g, ' ').replace(/\\s+/g, ' ').trim();
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9,./% ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function isAnswerCorrect(answer: StudyAnswer, raw: string): boolean {
@@ -123,7 +123,7 @@ export default function SoybeanStudySection() {
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#8C897E] dark:text-[#A6A395]">Depois da calculadora</p>
             <h2 className="text-xl font-bold text-[#5A5A40] dark:text-[#E8E7DF] sm:text-2xl">Estudos e atividades práticas</h2>
-            <p className={'mt-1 text-xs sm:text-sm ' + mutedClass}>Treine cálculos de produtividade, calagem e gessagem com dados de campo.</p>
+            <p className={'mt-1 text-xs sm:text-sm ' + mutedClass}>Treine cálculos e conceitos de produtividade, calagem e gessagem com dados de campo.</p>
           </div>
         </div>
         <button
@@ -135,6 +135,8 @@ export default function SoybeanStudySection() {
           Sortear plano de estudos
         </button>
       </div>
+
+      <p className={'-mt-3 text-xs leading-relaxed ' + mutedClass}>Nas respostas abertas, a correção considera grupos de conceitos essenciais e aceita diferentes formulações. A resolução explica os pontos esperados.</p>
 
       <div className="grid gap-3 md:grid-cols-3">
         {([
@@ -150,7 +152,7 @@ export default function SoybeanStudySection() {
           >
             <div className="mb-2 flex items-center justify-between">
               <Sprout className={'h-5 w-5 ' + color} />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C897E] dark:text-[#A6A395]">3 atividades</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C897E] dark:text-[#A6A395]">5 atividades</span>
             </div>
             <h3 className="font-bold text-[#454638] dark:text-[#E8E7DF]">{title}</h3>
             <p className={'mt-1 text-xs leading-relaxed ' + mutedClass}>{description}</p>
@@ -271,7 +273,7 @@ export default function SoybeanStudySection() {
           <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-[#CFCABB] p-4 dark:border-[#454D3F] sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="font-bold text-[#5A5A40] dark:text-[#E8E7DF]">Plano progressivo aleatório</h3>
-              <p className={'mt-1 text-xs ' + mutedClass}>9 questões sorteadas: três básicas, três intermediárias e três avançadas, alternando os assuntos.</p>
+              <p className={'mt-1 text-xs ' + mutedClass}>12 questões sorteadas: nove exercícios de cálculo e três questões conceituais, em ordem progressiva de dificuldade.</p>
             </div>
             <button type="button" onClick={startPlan} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#2E6F40] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#245B34] dark:bg-[#55764F]">
               <Shuffle className="h-4 w-4" /> Iniciar plano
