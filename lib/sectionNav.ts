@@ -25,6 +25,7 @@ import {
   Library,
   Languages,
   Tractor,
+  Wheat,
 } from 'lucide-react';
 
 export interface SectionConfig {
@@ -55,6 +56,12 @@ export const SECTIONS_BY_TAB: Record<TabId, SectionConfig[]> = {
     { id: 'corn_yield_params', label: 'Parâmetros', shortLabel: 'Parâmetros', icon: Sliders, color: '#5A5A40', colorDark: '#9CB386' },
     { id: 'corn_yield_visual', label: 'Visual 3D', shortLabel: 'Visual', icon: Eye, color: '#C19262', colorDark: '#D4A373' },
     { id: 'corn_yield_results', label: 'Resultados', shortLabel: 'Resultados', icon: Trophy, color: '#2E6F40', colorDark: '#86efac' },
+  ],
+  soja: [
+    { id: 'soybean_yield_header', label: 'Visão Geral', shortLabel: 'Visão', icon: Wheat, color: '#2E6F40', colorDark: '#9CB386' },
+    { id: 'soybean_yield_params', label: 'Amostragem', shortLabel: 'Amostragem', icon: Sliders, color: '#5A5A40', colorDark: '#9CB386' },
+    { id: 'soybean_yield_results', label: 'Resultados', shortLabel: 'Resultados', icon: Trophy, color: '#2E6F40', colorDark: '#86efac' },
+    { id: 'soybean_yield_area', label: 'Produção por área', shortLabel: 'Área', icon: Calculator, color: '#D4A373', colorDark: '#D4A373' },
   ],
   itr: [
     { id: 'itr_section', label: 'Cálculo ITR', shortLabel: 'ITR', icon: Landmark, color: '#5A5A40', colorDark: '#9CB386' },
@@ -119,6 +126,7 @@ export const NAV_SECTION_TAB: Record<string, TabId> = Object.fromEntries(
 export const LEGACY_SECTION_TAB: Record<string, TabId | null> = {
   topo: null,
   estimativa_milho: 'productivity',
+  estimativa_soja: 'soja',
   itr: 'itr',
   abnt: 'abnt',
 };
@@ -132,6 +140,7 @@ export function tabForSection(section: string): TabId | null {
 const TAB_LABELS_PT: Record<TabId, string> = {
   nitrogen: 'Adubação Nitrogenada',
   productivity: 'Produtividade de Milho',
+  soja: 'Produtividade de Soja',
   itr: 'Calculadora ITR',
   abnt: 'Referências ABNT',
   pesquisador: 'Pesquisador Agro',
