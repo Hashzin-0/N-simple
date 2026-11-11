@@ -115,13 +115,13 @@ const TAB_INDEX: Record<TabId, number> = {
   productivity: 1,
   soja: 2,
   itr: 3,
-  abnt: 3,
-  pesquisador: 4,
-  libras: 5,
-  redacao: 6,
-  tutor: 7,
-  tratorista: 8,
-  professor: 9,
+  abnt: 4,
+  pesquisador: 5,
+  libras: 6,
+  redacao: 7,
+  tutor: 8,
+  tratorista: 9,
+  professor: 10,
 };
 
 const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'soja', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista', 'professor'];
