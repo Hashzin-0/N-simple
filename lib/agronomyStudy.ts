@@ -257,7 +257,7 @@ function getConceptStudyExercises(): StudyExercise[] {
       'Como a calagem corrige a acidez?',
       'Uma análise de solo indica acidez elevada e necessidade de aplicação de calcário.',
       'Explique, com suas palavras, como a calagem melhora as condições químicas de um solo ácido.',
-      [['neutraliza acidez', 'neutraliza a acidez', 'corrige a acidez', 'corrige acidez', 'eleva ph', 'eleva o ph', 'aumenta ph', 'aumenta o ph'], ['fornece calcio', 'fornece calcio e magnesio', 'calcio e magnesio', 'magnesio'], ['reduz aluminio', 'reduz o aluminio', 'diminui o aluminio', 'aluminio toxico', 'toxicidade do aluminio']],
+      [['neutraliza acidez', 'neutraliza a acidez', 'corrige a acidez', 'corrige acidez', 'eleva ph', 'eleva o ph', 'aumenta ph', 'aumenta o ph'], ['fornece calcio', 'fornece calcio e magnesio', 'calcio e magnesio', 'calcio', 'magnesio'], ['reduz aluminio', 'reduz o aluminio', 'diminui o aluminio', 'aluminio toxico', 'toxicidade do aluminio']],
       'A calagem neutraliza parte da acidez, eleva o pH, fornece cálcio e magnésio e reduz a atividade tóxica do alumínio. A dose deve ser calculada com base na análise do solo e nas características do corretivo.',
     ),
     conceptExercise(
