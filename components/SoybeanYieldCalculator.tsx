@@ -251,7 +251,8 @@ export default function SoybeanYieldCalculator() {
                   <div className="font-bold text-xs text-[#5A5A40] dark:text-[#A3B18A]">Memória de cálculo — soja</div>
                   <div>Legumes/planta = {formatNumber(totalPods)} ÷ {formatNumber(evaluatedPlants)} = {formatNumber(results.podsPerPlant)}</div>
                   <div>Grãos/legume = {formatNumber(totalGrains)} ÷ {formatNumber(totalPods)} = {formatNumber(results.grainsPerPod)}</div>
-                  <div>Produtividade bruta = ({formatNumber(populationPerHa)} × {formatNumber(results.podsPerPlant)} × {formatNumber(results.grainsPerPod)} × {formatNumber(thousandGrainWeight)}) ÷ 1.000.000 = {formatNumber(results.grossKgPerHa, 1)} kg/ha</div>
+                  <div>Conversão do PMG = {formatNumber(thousandGrainWeight)} g/1.000 grãos = {formatNumber(thousandGrainWeight / 1000, 3)} kg/1.000 grãos</div>
+                  <div>Produtividade bruta = ({formatNumber(populationPerHa)} × {formatNumber(results.podsPerPlant)} × {formatNumber(results.grainsPerPod)} × {formatNumber(thousandGrainWeight / 1000, 3)}) ÷ 1.000 = {formatNumber(results.grossKgPerHa, 1)} kg/ha</div>
                   <div>Sacas/ha = {formatNumber(results.grossKgPerHa, 1)} ÷ 60 = {formatNumber(results.grossBagsPerHa)} sc/ha</div>
                   <div>Quebra = {formatNumber(results.grossKgPerHa, 1)} × {formatNumber(lossPercent)}% = {formatNumber(results.lossKgPerHa, 1)} kg/ha</div>
                   <div>Produtividade final = {formatNumber(results.grossKgPerHa, 1)} − {formatNumber(results.lossKgPerHa, 1)} = {formatNumber(results.finalKgPerHa, 1)} kg/ha ({formatNumber(results.finalBagsPerHa)} sc/ha)</div>
