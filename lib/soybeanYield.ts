@@ -18,11 +18,6 @@ export interface SoybeanYieldResults {
   finalBagsPerHa: number;
 }
 
-const round = (value: number, decimals = 2): number => {
-  const factor = 10 ** decimals;
-  return Math.round((value + Number.EPSILON) * factor) / factor;
-};
-
 /**
  * Estima a produtividade de soja a partir da população final e da amostragem.
  * PMG deve estar em gramas por 1.000 grãos; a quebra deve estar em percentual.
@@ -53,13 +48,13 @@ export function calculateSoybeanYield(inputs: SoybeanYieldInputs): SoybeanYieldR
   const finalBagsPerHa = finalKgPerHa / 60;
 
   return {
-    podsPerPlant: round(podsPerPlant, 2),
-    grainsPerPod: round(grainsPerPod, 2),
-    grossKgPerHa: round(grossKgPerHa, 1),
-    grossBagsPerHa: round(grossBagsPerHa, 2),
-    lossKgPerHa: round(lossKgPerHa, 1),
-    lossBagsPerHa: round(lossBagsPerHa, 2),
-    finalKgPerHa: round(finalKgPerHa, 1),
-    finalBagsPerHa: round(finalBagsPerHa, 2),
+    podsPerPlant,
+    grainsPerPod,
+    grossKgPerHa,
+    grossBagsPerHa,
+    lossKgPerHa,
+    lossBagsPerHa,
+    finalKgPerHa,
+    finalBagsPerHa,
   };
 }
