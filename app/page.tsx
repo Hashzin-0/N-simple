@@ -80,6 +80,7 @@ const DarkMode3DToggle = dynamic(() => import('@/components/DarkMode3DToggle'), 
 const SectionNavGooey = dynamic(() => import('@/components/SectionNavGooey'), { ssr: false });
 const CornYieldCalculator = dynamic(() => import('@/components/CornYieldCalculator'), { ssr: false });
 const SoybeanYieldCalculator = dynamic(() => import('@/components/SoybeanYieldCalculator'), { ssr: false });
+const SoybeanStudySection = dynamic(() => import('@/components/SoybeanStudySection'), { ssr: false });
 const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr: false });
 const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
 const AnaliseMorfologica = dynamic(() => import('@/components/AnaliseMorfologica'), { ssr: false });
@@ -788,7 +789,12 @@ export default function Home() {
   );
 
   const soybeanContent = useMemo(
-    () => <SoybeanYieldCalculator />,
+    () => (
+      <div className="w-full">
+        <SoybeanYieldCalculator />
+        <SoybeanStudySection />
+      </div>
+    ),
     [],
   );
 
