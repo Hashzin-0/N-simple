@@ -178,6 +178,7 @@ export default function SoybeanStudySection() {
                 {answer.type === 'choice' ? (
                   <select
                     value={values[answer.key] ?? ''}
+                    disabled={feedback?.correct ?? false}
                     onChange={(event) => { setValues((previous) => ({ ...previous, [answer.key]: event.target.value })); setFeedback(null); }}
                     className="w-full rounded-xl border border-[#DCD8CC] bg-[#FAF9F5] px-3 py-3 text-sm text-[#454638] outline-none focus:border-[#2E6F40] dark:border-[#454D3F] dark:bg-[#272C24] dark:text-[#E8E7DF]"
                   >
@@ -190,6 +191,7 @@ export default function SoybeanStudySection() {
                     inputMode="decimal"
                     autoComplete="off"
                     value={values[answer.key] ?? ''}
+                    disabled={feedback?.correct ?? false}
                     onChange={(event) => { setValues((previous) => ({ ...previous, [answer.key]: event.target.value })); setFeedback(null); }}
                     placeholder="Digite o resultado"
                     className="w-full rounded-xl border border-[#DCD8CC] bg-[#FAF9F5] px-3 py-3 font-mono text-sm text-[#454638] outline-none transition focus:border-[#2E6F40] focus:ring-2 focus:ring-[#2E6F40]/10 dark:border-[#454D3F] dark:bg-[#272C24] dark:text-[#E8E7DF]"
