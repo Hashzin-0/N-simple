@@ -216,7 +216,7 @@ function conceptExercise(
       type: choices ? 'choice' : 'text',
       choices,
       acceptedConcepts,
-      minimumConcepts: topic === 'gessagem' ? acceptedConcepts.length : Math.max(1, acceptedConcepts.length - 1),
+      minimumConcepts: Math.max(1, acceptedConcepts.length - 1),
       explanation,
     }],
     solution: [explanation],
