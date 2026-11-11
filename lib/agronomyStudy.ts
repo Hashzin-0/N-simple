@@ -13,7 +13,7 @@ export interface StudyAnswer {
   unit: string;
   value: string | number;
   tolerance?: number;
-  type?: 'number' | 'choice';
+  type?: 'number' | 'choice' | 'text';
   choices?: string[];
   acceptedConcepts?: string[][];
   explanation?: string;
