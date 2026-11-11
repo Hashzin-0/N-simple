@@ -89,7 +89,7 @@ export default function SoybeanYieldCalculator() {
               label="População final"
               unit="plantas/ha"
               value={populationPerHa}
-              onChange={(value) => setPopulationPerHa(Math.max(0, value))}
+              onChange={(value) => setPopulationPerHa(Math.min(500000, Math.max(0, Math.round(value))))}
               step={1000}
               min={1}
               max={500000}
@@ -103,7 +103,7 @@ export default function SoybeanYieldCalculator() {
               label="Plantas avaliadas"
               unit="plantas"
               value={evaluatedPlants}
-              onChange={(value) => setEvaluatedPlants(Math.max(0, value))}
+              onChange={(value) => setEvaluatedPlants(Math.min(1000, Math.max(0, Math.round(value))))}
               step={1}
               min={1}
               max={1000}
@@ -117,7 +117,7 @@ export default function SoybeanYieldCalculator() {
               label="Legumes"
               unit="legumes"
               value={totalPods}
-              onChange={(value) => setTotalPods(Math.max(0, value))}
+              onChange={(value) => setTotalPods(Math.min(100000, Math.max(0, Math.round(value))))}
               step={1}
               min={1}
               max={100000}
@@ -131,7 +131,7 @@ export default function SoybeanYieldCalculator() {
               label="Grãos"
               unit="grãos"
               value={totalGrains}
-              onChange={(value) => setTotalGrains(Math.max(0, value))}
+              onChange={(value) => setTotalGrains(Math.min(1000000, Math.max(0, Math.round(value))))}
               step={1}
               min={1}
               max={1000000}
