@@ -62,6 +62,7 @@ export const SECTIONS_BY_TAB: Record<TabId, SectionConfig[]> = {
     { id: 'soybean_yield_params', label: 'Amostragem', shortLabel: 'Amostragem', icon: Sliders, color: '#5A5A40', colorDark: '#9CB386' },
     { id: 'soybean_yield_results', label: 'Resultados', shortLabel: 'Resultados', icon: Trophy, color: '#2E6F40', colorDark: '#86efac' },
     { id: 'soybean_yield_area', label: 'Produção por área', shortLabel: 'Área', icon: Calculator, color: '#D4A373', colorDark: '#D4A373' },
+    { id: 'soybean_studies', label: 'Estudos e atividades', shortLabel: 'Estudos', icon: BookOpen, color: '#55764F', colorDark: '#A8C69A' },
   ],
   itr: [
     { id: 'itr_section', label: 'Cálculo ITR', shortLabel: 'ITR', icon: Landmark, color: '#5A5A40', colorDark: '#9CB386' },
