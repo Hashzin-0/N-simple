@@ -15,6 +15,8 @@ export interface StudyAnswer {
   tolerance?: number;
   type?: 'number' | 'choice';
   choices?: string[];
+  acceptedConcepts?: string[][];
+  explanation?: string;
 }
 
 export interface StudyExercise {
@@ -190,6 +192,92 @@ function gypsumExercise(
   };
 }
 
+function conceptExercise(
+  id: string,
+  topic: StudyTopic,
+  difficulty: StudyDifficulty,
+  title: string,
+  context: string,
+  prompt: string,
+  acceptedConcepts: string[][],
+  explanation: string,
+  choices?: string[],
+): StudyExercise {
+  return {
+    id, topic, difficulty, title, context,
+    data: [],
+    prompt,
+    answers: [{
+      key: 'concept',
+      label: choices ? 'Selecione a alternativa' : 'Explique com suas palavras',
+      unit: '',
+      value: choices?.[0] ?? 'Resposta conceitual',
+      type: choices ? 'choice' : 'text',
+      choices,
+      acceptedConcepts,
+      explanation,
+    }],
+    solution: [explanation],
+    source: topic === 'soja' ? [SOY_SOURCE] : [SOIL_SOURCE, 'https://www.iac.sp.gov.br/publicacoes/boletim100.php'],
+  };
+}
+
+function getConceptStudyExercises(): StudyExercise[] {
+  return [
+    conceptExercise(
+      'conceito-soja-multipla-01', 'soja', 1,
+      'O que representa o PMG?',
+      'Na estimativa da produtividade, além da população e dos componentes de rendimento, é necessário considerar a massa dos grãos.',
+      'O que significa PMG na avaliação da produtividade da soja?',
+      [['massa de mil graos', 'peso de mil graos', 'massa de 1000 graos']],
+      'PMG é a massa (ou peso) de mil grãos, normalmente expressa em gramas. Esse parâmetro representa o tamanho/massa média dos grãos e participa da estimativa de produtividade.',
+      ['População de plantas por metro', 'Massa ou peso de mil grãos', 'Número de legumes por planta'],
+    ),
+    conceptExercise(
+      'conceito-soja-aberta-01', 'soja', 2,
+      'Por que contar os componentes de rendimento?',
+      'Uma amostragem de campo registra população final, legumes por planta, grãos por legume e PMG.',
+      'Explique como esses componentes ajudam a estimar a produtividade da lavoura.',
+      [['populacao de plantas', 'plantas por hectare', 'estande'], ['legumes por planta', 'vagens por planta'], ['graos por legume', 'graos por vagem'], ['massa de mil graos', 'peso de mil graos', 'pmg']],
+      'A produtividade estimada relaciona a população de plantas por área, a quantidade de legumes por planta, os grãos por legume e a massa de mil grãos. A amostragem permite estimar o rendimento antes da colheita.',
+    ),
+    conceptExercise(
+      'conceito-calagem-multipla-01', 'calagem', 1,
+      'Função principal da calagem',
+      'Considere uma área com solo ácido e análise química indicando necessidade de correção.',
+      'A calagem é utilizada principalmente para corrigir a acidez do solo e elevar o pH?',
+      [['sim']],
+      'Sim. A calagem neutraliza parte da acidez, eleva o pH conforme a dose e o poder de neutralização do corretivo, fornece cálcio e magnésio e reduz a atividade tóxica do alumínio.',
+      ['Sim. Corrige a acidez, eleva o pH e pode fornecer cálcio e magnésio.', 'Não. Sua função é somente fornecer enxofre.', 'Não. É aplicada exclusivamente para aumentar a matéria orgânica.'],
+    ),
+    conceptExercise(
+      'conceito-calagem-aberta-02', 'calagem', 2,
+      'Por que o PRNT altera a dose?',
+      'Dois calcários podem apresentar PRNT diferentes, mesmo quando a necessidade de calagem calculada é a mesma.',
+      'Explique por que o PRNT precisa ser considerado no cálculo da quantidade de calcário.',
+      [['poder relativo de neutralizacao', 'prnt'], ['eficiencia', 'reatividade', 'neutralizacao'], ['dose', 'quantidade', 'corrigir']],
+      'O PRNT expressa o poder relativo de neutralização total do corretivo. Quanto menor o PRNT, menor a eficiência relativa considerada no cálculo e maior tende a ser a quantidade necessária para fornecer o mesmo efeito corretivo.',
+    ),
+    conceptExercise(
+      'conceito-gessagem-multipla-01', 'gessagem', 1,
+      'Gesso substitui o calcário?',
+      'O gesso agrícola e o calcário possuem composição e funções agronômicas diferentes.',
+      'O gesso agrícola substitui o calcário na correção da acidez da camada superficial?',
+      [['nao']],
+      'Não. O gesso não substitui o calcário e não tem a mesma função de elevar o pH da camada superficial. É utilizado como condicionador, especialmente para melhorar o ambiente químico em subsuperfície, fornecendo cálcio e enxofre e reduzindo limitações associadas ao alumínio.',
+      ['Sim, porque eleva o pH da mesma forma que o calcário.', 'Não. São insumos com funções diferentes; o gesso pode melhorar a subsuperfície.', 'Sim, desde que aplicado em dose dobrada.'],
+    ),
+    conceptExercise(
+      'conceito-gessagem-aberta-03', 'gessagem', 3,
+      'Quando avaliar a necessidade de gessagem?',
+      'A decisão deve considerar a análise química de subsuperfície, e não apenas a análise superficial.',
+      'Explique quais indicadores da camada de 20–40 cm podem sinalizar a necessidade de gessagem para soja.',
+      [['20 40 cm', '20-40 cm', 'subsuperficie', 'camada de 20'], ['aluminio', 'saturacao por aluminio', 'm > 20', 'acima de 20'], ['calcio', 'ca < 0,5', 'abaixo de 0,5']],
+      'Na referência técnica consultada para soja, avalia-se a camada de 20–40 cm. Saturação por alumínio acima de 20% e/ou cálcio trocável abaixo de 0,5 cmolc/dm³ são critérios que podem indicar a necessidade de gessagem, conforme a recomendação regional.',
+    ),
+  ];
+}
+
 export function getIndividualStudyExercises(): StudyExercise[] {
   return [
     soybeanExercise('soja-basico-01', 1, { population: 230000, plants: 24, pods: 670, grains: 1230, pmg: 175, loss: 15 }),
@@ -201,6 +289,7 @@ export function getIndividualStudyExercises(): StudyExercise[] {
     gypsumExercise('gesso-basico-01', 1, { clay: 24, aluminum: 24, calcium: 0.7, area: 1 }),
     gypsumExercise('gesso-intermediario-01', 2, { clay: 38, aluminum: 14, calcium: 0.42, area: 1 }),
     gypsumExercise('gesso-avancado-01', 3, { clay: 52, aluminum: 18, calcium: 0.72, area: 35 }),
+    ...getConceptStudyExercises(),
   ];
 }
 
@@ -240,5 +329,7 @@ export function createRandomStudyPlan(random: () => number = Math.random): Study
       }
     }
   }
+  const concepts = getConceptStudyExercises().filter((exercise) => exercise.answers[0].type === 'text');
+  plan.push(...concepts);
   return plan;
 }
