@@ -26,8 +26,19 @@ const formatValue = (value: string | number) =>
     ? value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
     : value;
 
+function normalizeAnswer(value: string): string {
+  return value.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[^a-z0-9,./% ]/g, ' ').replace(/\\s+/g, ' ').trim();
+}
+
 function isAnswerCorrect(answer: StudyAnswer, raw: string): boolean {
-  if (answer.type === 'choice') return raw.trim().toLowerCase() === String(answer.value).toLowerCase();
+  if (answer.type === 'choice') return normalizeAnswer(raw) === normalizeAnswer(String(answer.value));
+  if (answer.type === 'text') {
+    const normalized = normalizeAnswer(raw);
+    if (normalized.length < 18 || !answer.acceptedConcepts?.length) return false;
+    const matched = answer.acceptedConcepts.filter((group) => group.some((term) => normalized.includes(normalizeAnswer(term)))).length;
+    const minimum = answer.minimumConcepts ?? answer.acceptedConcepts.length;
+    return matched >= minimum;
+  }
   if (!raw.trim()) return false;
   const parsed = Number(raw.replace(',', '.'));
   if (!Number.isFinite(parsed)) return false;
@@ -185,6 +196,15 @@ export default function SoybeanStudySection() {
                     <option value="">Selecione uma resposta</option>
                     {(answer.choices ?? []).map((choice) => <option key={choice} value={choice}>{choice}</option>)}
                   </select>
+                ) : answer.type === 'text' ? (
+                  <textarea
+                    rows={4}
+                    value={values[answer.key] ?? ''}
+                    disabled={feedback?.correct ?? false}
+                    onChange={(event) => { setValues((previous) => ({ ...previous, [answer.key]: event.target.value })); setFeedback(null); }}
+                    placeholder="Escreva sua explicação com suas palavras..."
+                    className="w-full resize-y rounded-xl border border-[#DCD8CC] bg-[#FAF9F5] px-3 py-3 text-sm text-[#454638] outline-none transition focus:border-[#2E6F40] focus:ring-2 focus:ring-[#2E6F40]/10 dark:border-[#454D3F] dark:bg-[#272C24] dark:text-[#E8E7DF]"
+                  />
                 ) : (
                   <input
                     type="text"
@@ -217,6 +237,7 @@ export default function SoybeanStudySection() {
             <div className={'rounded-xl border p-3 text-sm ' + (feedback.correct ? 'border-[#2E6F40]/30 bg-[#2E6F40]/10 text-[#2E6F40] dark:text-[#B7D2AA]' : 'border-[#D4A373]/40 bg-[#D4A373]/10 text-[#8D5B2E] dark:text-[#E7B986]')}>
               <p className="font-semibold">{feedback.correct ? 'Respostas corretas.' : 'Ainda há respostas para corrigir.'}</p>
               <p className="mt-1 text-xs">{feedback.correctCount} de {feedback.total} campos corretos.</p>
+              {feedback.correct && current.answers.some((answer) => answer.explanation) && <p className="mt-2 text-xs leading-relaxed">{current.answers.find((answer) => answer.explanation)?.explanation}</p>}
               {feedback.correct && isPlan && (
                 <button type="button" onClick={nextPlanQuestion} className="mt-3 rounded-lg bg-[#2E6F40] px-3 py-2 text-xs font-semibold text-white dark:bg-[#55764F]">
                   {planIndex === plan.length - 1 ? 'Concluir plano' : 'Próxima questão'}
