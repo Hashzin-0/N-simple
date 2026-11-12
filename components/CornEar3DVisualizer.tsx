@@ -13,6 +13,105 @@ interface CornEar3DVisualizerProps {
   isAlarmActive?: boolean;
 }
 
+const COB_LENGTH = 3.8;
+const COB_RADIUS = 0.39;
+
+function createKernelGeometry() {
+  // Rounded, slightly tapered maize kernel with a soft crown and a narrow attachment base.
+  const profile = [
+    new THREE.Vector2(0.008, -0.012),
+    new THREE.Vector2(0.043, -0.004),
+    new THREE.Vector2(0.066, 0.025),
+    new THREE.Vector2(0.073, 0.065),
+    new THREE.Vector2(0.064, 0.105),
+    new THREE.Vector2(0.044, 0.137),
+    new THREE.Vector2(0.019, 0.154),
+    new THREE.Vector2(0.002, 0.157),
+  ];
+  const geometry = new THREE.LatheGeometry(profile, 12);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function createHuskLeaf(angle: number, length: number, width: number, color: number) {
+  const geometry = new THREE.BufferGeometry();
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  const segments = 28;
+  const across = 8;
+
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const y = -COB_LENGTH * 0.5 - 0.02 + t * length;
+    const taper = Math.pow(Math.sin(Math.PI * (0.12 + t * 0.82)), 0.72);
+    const leafWidth = width * taper;
+    const radial = COB_RADIUS + 0.035 + Math.sin(t * Math.PI) * 0.10;
+    const centerX = Math.cos(angle) * radial;
+    const centerZ = Math.sin(angle) * radial;
+
+    for (let j = 0; j <= across; j++) {
+      const u = (j / across) * 2 - 1;
+      const arch = (1 - u * u) * 0.035;
+      const side = u * leafWidth;
+      const x = centerX + Math.cos(angle) * arch - Math.sin(angle) * side;
+      const z = centerZ + Math.sin(angle) * arch + Math.cos(angle) * side;
+      positions.push(x, y + Math.sin(t * Math.PI) * 0.12 * Math.abs(u), z);
+      uvs.push(j / across, t);
+    }
+  }
+
+  for (let i = 0; i < segments; i++) {
+    for (let j = 0; j < across; j++) {
+      const a = i * (across + 1) + j;
+      const b = a + across + 1;
+      indices.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.88,
+    side: THREE.DoubleSide,
+  });
+  const leaf = new THREE.Mesh(geometry, material);
+  leaf.castShadow = true;
+  leaf.receiveShadow = true;
+
+  const veinPoints: THREE.Vector3[] = [];
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12;
+    const y = -COB_LENGTH * 0.5 - 0.01 + t * length;
+    const radial = COB_RADIUS + 0.035 + Math.sin(t * Math.PI) * 0.10 + 0.038;
+    veinPoints.push(new THREE.Vector3(Math.cos(angle) * radial, y + Math.sin(t * Math.PI) * 0.12, Math.sin(angle) * radial));
+  }
+  const veinCurve = new THREE.CatmullRomCurve3(veinPoints);
+  const veinGeometry = new THREE.TubeGeometry(veinCurve, 24, 0.009, 5, false);
+  const veinMaterial = new THREE.MeshStandardMaterial({ color: 0x9aa45b, roughness: 0.9 });
+  const vein = new THREE.Mesh(veinGeometry, veinMaterial);
+
+  return { leaf, vein, geometry, material, veinGeometry, veinMaterial };
+}
+
+function disposeScene(scene: THREE.Scene) {
+  scene.traverse((object) => {
+    if (!(object instanceof THREE.Mesh || object instanceof THREE.LineSegments)) return;
+    object.geometry.dispose();
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    materials.forEach((material) => {
+      Object.values(material).forEach((value) => {
+        if (value instanceof THREE.Texture) value.dispose();
+      });
+      material.dispose();
+    });
+  });
+}
+
 export default function CornEar3DVisualizer({
   rows,
   kernelsPerRow,
@@ -28,7 +127,6 @@ export default function CornEar3DVisualizer({
   const isAlarmRef = useRef(isAlarmActive);
   const [contextLost, setContextLost] = useState(false);
   const [rendererFailed, setRendererFailed] = useState(false);
-
   const { webglSupported, acquire, release } = useWebGLManager();
 
   useEffect(() => {
@@ -39,32 +137,31 @@ export default function CornEar3DVisualizer({
     const canvas = canvasRef.current;
     if (!canvas || contextLost || !webglSupported || rendererFailed) return;
 
-    const width = canvas.parentElement?.clientWidth || 320;
-    const height = 240;
-
     let renderer: THREE.WebGLRenderer | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let scene: THREE.Scene | null = null;
 
-    const onContextLost = (e: Event) => {
-      e.preventDefault();
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
       setContextLost(true);
-      if (animFrameId.current) cancelAnimationFrame(animFrameId.current);
+      if (animFrameId.current !== null) cancelAnimationFrame(animFrameId.current);
     };
-
     const onContextRestored = () => {
       setContextLost(false);
       setRendererFailed(false);
     };
-
     canvas.addEventListener('webglcontextlost', onContextLost);
     canvas.addEventListener('webglcontextrestored', onContextRestored);
 
     try {
-      const scene = new THREE.Scene();
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(isDark ? 0x181a15 : 0xfaf8f3);
 
-      const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
-      camera.position.set(0, 0, 8.5);
+      const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
+      camera.position.set(5.3, 2.0, 6.5);
+      camera.lookAt(0, 0, 0);
 
-      renderer = acquire(canvas, { powerPreference: 'high-performance' });
+      renderer = acquire(canvas, { powerPreference: 'high-performance', antialias: true });
       if (!renderer) {
         setTimeout(() => setRendererFailed(true), 0);
         return () => {
@@ -72,149 +169,202 @@ export default function CornEar3DVisualizer({
           canvas.removeEventListener('webglcontextrestored', onContextRestored);
         };
       }
-      renderer.setSize(width, height);
+      renderer.setClearColor(scene.background, 1);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-
-      const ambientLight = new THREE.AmbientLight(0xffffff, isDark ? 0.9 : 1.1);
-      scene.add(ambientLight);
-
-      const dirLight1 = new THREE.DirectionalLight(0xfff3c4, 2.2);
-      dirLight1.position.set(5, 8, 6);
-      scene.add(dirLight1);
-
-      const dirLight2 = new THREE.DirectionalLight(0x86efac, 0.8);
-      dirLight2.position.set(-5, -4, -4);
-      scene.add(dirLight2);
+      const ambient = new THREE.HemisphereLight(0xfff8df, 0x59613b, 2.0);
+      scene.add(ambient);
+      const keyLight = new THREE.DirectionalLight(0xfff0c4, 3.1);
+      keyLight.position.set(4, 6, 5);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.set(1024, 1024);
+      scene.add(keyLight);
+      const fillLight = new THREE.DirectionalLight(0xc7d9a1, 1.15);
+      fillLight.position.set(-5, 1, -4);
+      scene.add(fillLight);
+      const rimLight = new THREE.DirectionalLight(0xffffff, 1.0);
+      rimLight.position.set(0, -2, 5);
+      scene.add(rimLight);
 
       const earGroup = new THREE.Group();
       earGroupRef.current = earGroup;
       scene.add(earGroup);
 
-      const cobLength = 4.8;
-      const cobRadius = 0.55;
-      const cobGeo = new THREE.CylinderGeometry(cobRadius * 0.7, cobRadius, cobLength, 24);
-      const cobMat = new THREE.MeshStandardMaterial({
-        color: isDark ? 0x991b1b : 0xdc2626,
-        roughness: 0.9,
+      // Natural, slightly irregular cob beneath the kernels.
+      const cobProfile = [
+        new THREE.Vector2(0.02, -2.02),
+        new THREE.Vector2(0.20, -1.96),
+        new THREE.Vector2(0.31, -1.78),
+        new THREE.Vector2(0.36, -1.35),
+        new THREE.Vector2(0.385, -0.65),
+        new THREE.Vector2(0.39, 0.45),
+        new THREE.Vector2(0.36, 1.25),
+        new THREE.Vector2(0.29, 1.78),
+        new THREE.Vector2(0.15, 1.96),
+        new THREE.Vector2(0.015, 2.0),
+      ];
+      const cobGeometry = new THREE.LatheGeometry(cobProfile, 48);
+      const cobMaterial = new THREE.MeshStandardMaterial({
+        color: 0xb8793c,
+        roughness: 0.96,
+        bumpScale: 0.018,
       });
-      const cobMesh = new THREE.Mesh(cobGeo, cobMat);
-      earGroup.add(cobMesh);
+      const cob = new THREE.Mesh(cobGeometry, cobMaterial);
+      cob.castShadow = true;
+      cob.receiveShadow = true;
+      earGroup.add(cob);
 
-      const clampedRows = Math.max(10, Math.min(24, rows || 16));
-      const clampedKernels = Math.max(15, Math.min(50, kernelsPerRow || 35));
-      const instanceCount = clampedRows * clampedKernels;
+      // Kernel geometry is instanced for performance, but each grain has a natural crown,
+      // tapered base, slight size variation and its own golden color.
+      const safeRows = Math.max(0, Math.floor(Number(rows) || 0));
+      const safeKernels = Math.max(0, Math.floor(Number(kernelsPerRow) || 0));
+      const instanceCount = safeRows * safeKernels;
+      if (instanceCount > 0) {
+        const kernelGeometry = createKernelGeometry();
+        const kernelMaterial = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          roughness: 0.43,
+          metalness: 0.0,
+        });
+        const kernels = new THREE.InstancedMesh(kernelGeometry, kernelMaterial, instanceCount);
+        kernels.castShadow = true;
+        kernels.receiveShadow = true;
+        const dummy = new THREE.Object3D();
+        const outward = new THREE.Vector3();
+        const baseAxis = new THREE.Vector3(0, 1, 0);
+        const color = new THREE.Color();
+        let index = 0;
 
-      const kernelGeo = new THREE.SphereGeometry(0.09, 8, 6);
-      kernelGeo.scale(1.0, 0.8, 1.4);
+        for (let row = 0; row < safeRows; row++) {
+          const rowAngle = (row / safeRows) * Math.PI * 2;
+          for (let grain = 0; grain < safeKernels; grain++) {
+            const along = safeKernels <= 1 ? 0 : grain / (safeKernels - 1);
+            const y = (along - 0.5) * COB_LENGTH * 0.91;
+            const normalizedY = y / (COB_LENGTH * 0.5);
+            const endTaper = 1 - Math.pow(Math.abs(normalizedY), 2.4) * 0.22;
+            const stagger = row % 2 === 0 ? 0 : 0.5;
+            const rowOffset = (stagger / Math.max(1, safeKernels)) * COB_LENGTH * 0.91;
+            const yStaggered = Math.max(-COB_LENGTH * 0.47, Math.min(COB_LENGTH * 0.47, y + rowOffset));
+            const radius = (COB_RADIUS + 0.018) * endTaper;
+            const angle = rowAngle + (grain % 2) * 0.012;
+            const x = Math.cos(angle) * radius;
+            const z = Math.sin(angle) * radius;
 
-      const kernelMat = new THREE.MeshStandardMaterial({
-        color: 0xf59e0b,
-        emissive: 0xd97706,
-        emissiveIntensity: 0.18,
-        roughness: 0.35,
-        metalness: 0.1,
-      });
+            dummy.position.set(x, yStaggered, z);
+            outward.set(Math.cos(angle), 0, Math.sin(angle)).normalize();
+            dummy.quaternion.setFromUnitVectors(baseAxis, outward);
+            const rowPitch = (2 * Math.PI * COB_RADIUS) / Math.max(1, safeRows);
+            const aroundScale = THREE.MathUtils.clamp(rowPitch / 0.15, 0.68, 1.22);
+            const verticalPitch = safeKernels > 1 ? (COB_LENGTH * 0.91) / (safeKernels - 1) : 0.15;
+            const lengthScale = THREE.MathUtils.clamp(verticalPitch / 0.15, 0.62, 1.12);
+            dummy.scale.set(aroundScale, lengthScale, 0.94 + ((row * 7 + grain * 3) % 5) * 0.025);
+            dummy.updateMatrix();
+            kernels.setMatrixAt(index, dummy.matrix);
 
-      const kernelInstancedMesh = new THREE.InstancedMesh(kernelGeo, kernelMat, instanceCount);
-      earGroup.add(kernelInstancedMesh);
-
-      const dummy = new THREE.Object3D();
-      let idx = 0;
-
-      for (let k = 0; k < clampedKernels; k++) {
-        const yNorm = (k / (clampedKernels - 1)) - 0.5;
-        const yPos = yNorm * (cobLength * 0.92);
-        const taper = 1.0 - Math.pow(Math.max(0, yNorm), 2) * 0.45;
-        const currentRadius = (cobRadius + 0.08) * taper;
-
-        for (let r = 0; r < clampedRows; r++) {
-          const angle = (r / clampedRows) * Math.PI * 2 + (k % 2 === 0 ? 0.03 : 0);
-          const xPos = Math.cos(angle) * currentRadius;
-          const zPos = Math.sin(angle) * currentRadius;
-
-          dummy.position.set(xPos, yPos, zPos);
-          dummy.lookAt(xPos * 2, yPos, zPos * 2);
-          dummy.updateMatrix();
-
-          kernelInstancedMesh.setMatrixAt(idx++, dummy.matrix);
+            const variation = ((row * 13 + grain * 7) % 17) / 17;
+            color.setHSL(0.105 + variation * 0.018, 0.78 - variation * 0.12, 0.47 + variation * 0.12);
+            kernels.setColorAt(index, color);
+            index++;
+          }
         }
+        kernels.instanceMatrix.needsUpdate = true;
+        if (kernels.instanceColor) kernels.instanceColor.needsUpdate = true;
+        earGroup.add(kernels);
       }
-      kernelInstancedMesh.instanceMatrix.needsUpdate = true;
 
-      const huskGeo = new THREE.ConeGeometry(0.9, 1.8, 12, 1, true);
-      const huskMat = new THREE.MeshStandardMaterial({
-        color: isDark ? 0x3f6212 : 0x65a30d,
-        roughness: 0.8,
-        side: THREE.DoubleSide,
+      // Three overlapping green husk leaves remain around the lower third of the ear.
+      const husks = [
+        createHuskLeaf(0.15, 2.0, 0.31, 0x587d2b),
+        createHuskLeaf(2.25, 1.82, 0.28, 0x6d9135),
+        createHuskLeaf(4.35, 1.72, 0.27, 0x486f2a),
+      ];
+      husks.forEach(({ leaf, vein }) => {
+        earGroup.add(leaf);
+        earGroup.add(vein);
       });
-      const huskMesh = new THREE.Mesh(huskGeo, huskMat);
-      huskMesh.position.y = -cobLength / 2 - 0.5;
-      huskMesh.rotation.x = Math.PI;
-      earGroup.add(huskMesh);
 
-      earGroup.rotation.z = 0.2;
-      earGroup.rotation.x = 0.3;
+      // Fine silk threads at the tip, a characteristic detail of a real ear.
+      const silkMaterial = new THREE.MeshStandardMaterial({ color: 0x9b7040, roughness: 1 });
+      for (let i = 0; i < 11; i++) {
+        const angle = (i / 11) * Math.PI * 2;
+        const points = [
+          new THREE.Vector3(Math.cos(angle) * 0.035, 1.88, Math.sin(angle) * 0.035),
+          new THREE.Vector3(Math.cos(angle) * 0.10, 2.04, Math.sin(angle) * 0.10),
+          new THREE.Vector3(Math.cos(angle + 0.2) * 0.18, 2.16 + (i % 3) * 0.025, Math.sin(angle + 0.2) * 0.18),
+        ];
+        const curve = new THREE.CatmullRomCurve3(points);
+        const silk = new THREE.Mesh(new THREE.TubeGeometry(curve, 10, 0.006, 4, false), silkMaterial);
+        earGroup.add(silk);
+      }
 
-      let clock = new THREE.Clock();
+      // Short stem under the husks.
+      const stemGeometry = new THREE.CylinderGeometry(0.12, 0.16, 0.42, 12);
+      const stemMaterial = new THREE.MeshStandardMaterial({ color: 0x55752b, roughness: 0.9 });
+      const stem = new THREE.Mesh(stemGeometry, stemMaterial);
+      stem.position.y = -2.05;
+      earGroup.add(stem);
+
+      earGroup.rotation.z = 0.12;
+      earGroup.rotation.x = 0.10;
+
+      const resize = () => {
+        const width = canvas.parentElement?.clientWidth ?? 320;
+        const height = canvas.clientHeight || 220;
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer?.setSize(width, height, false);
+      };
+      resize();
+      resizeObserver = new ResizeObserver(resize);
+      if (canvas.parentElement) resizeObserver.observe(canvas.parentElement);
+
+      const clock = new THREE.Clock();
       const animate = () => {
         animFrameId.current = requestAnimationFrame(animate);
         const delta = clock.getDelta();
-
-        if (!isDragging.current) {
-          earGroup.rotation.y += delta * 0.7;
-        }
-
-        renderer!.render(scene, camera);
+        if (!isDragging.current) earGroup.rotation.y += delta * (isAlarmRef.current ? 1.0 : 0.22);
+        renderer?.render(scene!, camera);
       };
       animate();
 
-      const handleResize = () => {
-        if (!canvas.parentElement) return;
-        const w = canvas.parentElement.clientWidth;
-        camera.aspect = w / height;
-        camera.updateProjectionMatrix();
-        renderer!.setSize(w, height);
-      };
-      window.addEventListener('resize', handleResize);
-
       return () => {
         canvas.removeEventListener('webglcontextlost', onContextLost);
         canvas.removeEventListener('webglcontextrestored', onContextRestored);
-        window.removeEventListener('resize', handleResize);
-        if (animFrameId.current) cancelAnimationFrame(animFrameId.current);
-        cobGeo.dispose();
-        cobMat.dispose();
-        kernelGeo.dispose();
-        kernelMat.dispose();
-        huskGeo.dispose();
-        huskMat.dispose();
+        resizeObserver?.disconnect();
+        if (animFrameId.current !== null) cancelAnimationFrame(animFrameId.current);
+        earGroupRef.current = null;
+        if (scene) disposeScene(scene);
         if (renderer) release(renderer);
       };
     } catch {
-      return () => {
-        canvas.removeEventListener('webglcontextlost', onContextLost);
-        canvas.removeEventListener('webglcontextrestored', onContextRestored);
-        if (animFrameId.current) cancelAnimationFrame(animFrameId.current);
-      };
+      canvas.removeEventListener('webglcontextlost', onContextLost);
+      canvas.removeEventListener('webglcontextrestored', onContextRestored);
+      resizeObserver?.disconnect();
+      if (animFrameId.current !== null) cancelAnimationFrame(animFrameId.current);
+      if (scene) disposeScene(scene);
+      if (renderer) release(renderer);
+      setRendererFailed(true);
+      return;
     }
   }, [rows, kernelsPerRow, isDark, contextLost, webglSupported, rendererFailed, acquire, release]);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const handlePointerDown = (event: React.PointerEvent) => {
     isDragging.current = true;
-    previousMousePos.current = { x: e.clientX, y: e.clientY };
+    previousMousePos.current = { x: event.clientX, y: event.clientY };
   };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
+  const handlePointerMove = (event: React.PointerEvent) => {
     if (!isDragging.current || !earGroupRef.current) return;
-    const deltaX = e.clientX - previousMousePos.current.x;
-    const deltaY = e.clientY - previousMousePos.current.y;
-
-    earGroupRef.current.rotation.y += deltaX * 0.015;
-    earGroupRef.current.rotation.x += deltaY * 0.015;
-
-    previousMousePos.current = { x: e.clientX, y: e.clientY };
+    const deltaX = event.clientX - previousMousePos.current.x;
+    const deltaY = event.clientY - previousMousePos.current.y;
+    earGroupRef.current.rotation.y += deltaX * 0.012;
+    earGroupRef.current.rotation.x = THREE.MathUtils.clamp(
+      earGroupRef.current.rotation.x + deltaY * 0.008,
+      -0.8,
+      0.8
+    );
+    previousMousePos.current = { x: event.clientX, y: event.clientY };
   };
-
   const handlePointerUp = () => {
     isDragging.current = false;
   };
@@ -222,38 +372,33 @@ export default function CornEar3DVisualizer({
   return (
     <div
       className={`relative w-full rounded-2xl border p-3 flex flex-col items-center justify-center select-none overflow-hidden transition-colors ${
-        isDark
-          ? 'bg-[#181A15] border-[#2E3326]'
-          : 'bg-[#FAF8F3] border-[#E5E2D9]'
+        isDark ? 'bg-[#181A15] border-[#2E3326]' : 'bg-[#FAF8F3] border-[#E5E2D9]'
       }`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
     >
-      <div className="absolute top-2.5 left-3 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#D4A373]">
-        <span className="h-2 w-2 rounded-full bg-[#D4A373] animate-ping" />
-        Visualização da Espiga
+      <div className="absolute top-2.5 left-3 z-10 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#D4A373]">
+        <span className="h-2 w-2 rounded-full bg-[#D4A373] animate-pulse" />
+        Espiga de milho 3D
       </div>
-
-      <div className="absolute top-2.5 right-3 text-[10px] font-mono text-[#8C897E] dark:text-[#9CA38C]">
+      <div className="absolute top-2.5 right-3 z-10 text-[10px] font-mono text-[#8C897E] dark:text-[#9CA38C]">
         Arraste para girar
       </div>
-
       <canvas
         ref={canvasRef}
         className={`w-full h-[220px] ${
           contextLost || !webglSupported || rendererFailed ? 'hidden' : 'cursor-grab active:cursor-grabbing'
         }`}
         style={{ touchAction: 'none' }}
+        aria-label={`Modelo 3D de espiga com ${rows} fileiras e ${kernelsPerRow} grãos por fileira`}
       />
-
       {(contextLost || !webglSupported || rendererFailed) && (
-        <WebGLFallback variant="full" color="#D4A373" label="Visualização indisponível">
+        <WebGLFallback variant="full" color="#D4A373" label="Visualização 3D indisponível">
           <span className="text-4xl" role="img" aria-label="Espiga de milho">🌽</span>
         </WebGLFallback>
       )}
-
       <div className="w-full grid grid-cols-3 gap-2 text-center text-xs mt-1 pt-2 border-t border-[#E5E2D9] dark:border-[#2F3329]">
         <div>
           <span className="block text-[10px] text-[#8C897E] dark:text-[#9CA38C] uppercase">Fileiras</span>
