@@ -6,6 +6,7 @@ import { getTractor, TRACTORS, type TractorSpec } from '@/lib/tratoresData';
 import { COURSE_MODULES as DETAILED_MODULES, COURSE_TOTAL_HOURS } from '@/lib/tratoristaCurso';
 import { TRACTOR_SYMBOLS } from '@/lib/tratoristaSimbolos';
 import { TractorSymbolImage } from './TractorSymbolImage';
+import TractorTechnicalLibrary from './TractorTechnicalLibrary';
 
 const clamp=(n:number,min:number,max:number)=>Math.min(max,Math.max(min,n));
 const fmt=(n:number,d=1)=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:d}).format(Number.isFinite(n)?n:0);
@@ -181,6 +182,8 @@ export default function MecanizacaoTratores(){
         })}
       </div>
     </section>
+
+    <TractorTechnicalLibrary />
 
     <section id="tratorista_calculadora" className="border-y border-[#D8D8CD] dark:border-[#394033] py-5">
       <div className="p-5 sm:p-6 border-b border-[#E5E2D9] dark:border-[#30372D]"><div className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-center gap-2"><Gauge className="size-5 text-[#5A7D54]"/><div><h3 className="text-xl font-bold">Calculadora de marcha, tração e velocidade</h3><p className="text-xs text-[#788074]">Sem cenários fictícios: a ferramenta só calcula depois que os parâmetros reais da operação forem informados.</p></div></div><button type="button" onClick={resetCalculator} className="text-[11px] font-semibold text-[#55764F]">Limpar parâmetros</button></div></div>
