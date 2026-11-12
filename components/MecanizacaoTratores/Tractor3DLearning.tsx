@@ -55,8 +55,8 @@ function buildCab(scene: THREE.Scene) {
   const cyl=(name:string,r:number,h:number,pos:[number,number,number],material:THREE.Material,rot:[number,number,number]=[0,0,0])=>{
     const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,18),material);m.name=name;m.position.set(...pos);m.rotation.set(...rot);m.castShadow=true;root.add(m);return m;
   };
-  const lever=(name:string,x:number,z:number,h:number,color=dark)=>{
-    const g=new THREE.Group();g.name=name;g.position.set(x,.42,z);
+  const lever=(name:string,x:number,z:number,h:number,color=dark,baseY=.98)=>{
+    const g=new THREE.Group();g.name=name;g.position.set(x,baseY,z);
     const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.022,.032,h,10),metal);shaft.position.y=h/2;g.add(shaft);
     const knob=new THREE.Mesh(new THREE.SphereGeometry(.075,16,12),color);knob.position.y=h;g.add(knob);
     const boot=new THREE.Mesh(new THREE.CylinderGeometry(.075,.09,.1,12),rubber);boot.position.y=.07;g.add(boot);root.add(g);return g;
@@ -91,15 +91,15 @@ function buildCab(scene: THREE.Scene) {
 
   // Painel dianteiro e conjunto de instrumentos.
   box('front-dashboard',[1.35,.35,.38],[0,1.34,-.92],dark,[.12,0,0]);
-  box('instrument-cluster',[.68,.29,.055],[0,1.58,-.91],panel,[.12,0,0]);
-  box('digital-display',[.29,.14,.012],[0,1.59,-.945],white);
+  box('instrument-cluster',[.68,.29,.055],[0,1.58,-.69],panel,[.12,0,0]);
+  box('digital-display',[.29,.14,.012],[0,1.59,-.65],white);
   for(const x of [-.24,.24]){
-    cyl('instrument-gauge',.085,.025,[x,1.59,-.95],white,[Math.PI/2,0,0]);
-    box('gauge-needle',[.012,.065,.012],[x,1.6,-.97],red);
+    cyl('instrument-gauge',.085,.025,[x,1.59,-.65],white,[Math.PI/2,0,0]);
+    box('gauge-needle',[.012,.065,.012],[x,1.6,-.62],red);
   }
-  sw('light-switch',-.55,1.42,-.95);sw('high-beam-switch',-.36,1.42,-.95,yellow);
-  sw('hazard-switch',.39,1.42,-.95,red);sw('wiper-switch',.57,1.42,-.95);
-  cyl('ignition-switch',.045,.09,[.68,1.32,-.92],yellow,[Math.PI/2,0,0]);
+  sw('light-switch',-.55,1.42,-.66);sw('high-beam-switch',-.36,1.42,-.66,yellow);
+  sw('hazard-switch',.39,1.42,-.66,red);sw('wiper-switch',.57,1.42,-.66);
+  cyl('ignition-switch',.045,.09,[.68,1.32,-.66],yellow,[Math.PI/2,0,0]);
 
   // Pedais dianteiros: embreagem, freios separados, acelerador e diferencial.
   const pedal=(name:string,x:number,z:number,w=.16)=>{
@@ -122,8 +122,8 @@ function buildCab(scene: THREE.Scene) {
   cyl('rockshaft-drop-speed-knob',.06,.12,[.66,1.02,.76],dark,[Math.PI/2,0,0]);
 
   // Console esquerdo: tração dianteira e acionamento da TDP.
-  box('left-console-base',[.4,.14,1.1],[-.79,.82,.12],green,[0,.06,0]);
-  box('left-console-top',[.38,.07,1.04],[-.79,.92,.12],panel,[0,.06,0]);
+  box('left-console-base',[.55,.14,1.1],[-.79,.82,.12],green,[0,.06,0]);
+  box('left-console-top',[.53,.07,1.04],[-.79,.92,.12],panel,[0,.06,0]);
   lever('front-wheel-drive',-.72,.05,.36);lever('pto-engagement',-.88,.38,.42,yellow);
   lever('pto-economy',-.68,.62,.32);
   lever('parking-brake',-.56,.42,.3,red);
@@ -131,7 +131,7 @@ function buildCab(scene: THREE.Scene) {
   // Comandos traseiros: ajuste de velocidade de descida e TDP econômica.
   box('rear-control-panel',[.72,.28,.07],[0,1.12,.99],dark);
   cyl('rear-lowering-speed-valve',.07,.1,[-.22,1.12,.94],yellow,[Math.PI/2,0,0]);
-  lever('rear-pto-economy',.24,.88,.26,yellow);
+  lever('rear-pto-economy',.24,.88,.26,yellow,1.29);
 
   // Limpador e retrovisores.
   box('wiper-arm',[.025,.5,.025],[0,1.9,-1.045],dark,[0,0,-.2]);
@@ -143,7 +143,7 @@ function buildCab(scene: THREE.Scene) {
   // A imagem é apenas o pictograma; o nome permanece reservado ao feedback do exercício.
   const symbolLoader=new THREE.TextureLoader();
   const symbolPlacements=[
-    {id:'position-lights',pos:[-.55,1.56,-.985] as [number,number,number],rot:[0,0,0] as [number,number,number]},
+    {id:'position-lights',pos:[-.55,1.56,-.62] as [number,number,number],rot:[0,0,0] as [number,number,number]},
     {id:'rockshaft',pos:[.84,.995,.34] as [number,number,number],rot:[-Math.PI/2,0,0] as [number,number,number]},
     {id:'rockshaft-up',pos:[.72,.995,.27] as [number,number,number],rot:[-Math.PI/2,0,0] as [number,number,number]},
     {id:'rockshaft-down',pos:[.92,.995,.27] as [number,number,number],rot:[-Math.PI/2,0,0] as [number,number,number]},
