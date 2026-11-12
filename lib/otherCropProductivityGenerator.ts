@@ -298,13 +298,13 @@ function makeComponentExercise(
     answers,
     solution: [
       sample.formula,
-      'Substituindo os valores, a produtividade bruta estimada é ' + displayYield(grossKg) + ' ' + yieldUnit + '.'
+      'Substituindo os valores, a produtividade bruta estimada é ' + displayYield(grossKg) + ' ' + yieldUnit + '.',
       ...(difficulty >= 2 ? [
         'Perda = ' + round(grossKg) + ' × ' + lossPercent + '% = ' + displayYield(lossKg) + ' ' + yieldUnit + '.',
         'Produtividade líquida = ' + displayYield(grossKg) + ' − ' + displayYield(lossKg) + ' = ' + displayYield(netKg) + ' ' + yieldUnit + '.',
       ] : []),
       ...(difficulty >= 3 ? [
-        'Produção total = ' + displayYield(netKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(netKg * area / 1000) + ' t.'
+        'Produção total = ' + displayYield(netKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(netKg * area / 1000) + ' t.',
       ] : []),
       'A estimativa por componentes pressupõe amostragem representativa e não substitui a aferição da produção colhida, corrigida para a umidade e padrão comercial aplicáveis.',
     ],
@@ -368,11 +368,11 @@ function makePlotSampleExercise(
       'Massa por metro quadrado = ' + sampleMassGrams + ' g ÷ ' + sampleArea + ' m² = ' + round(sampleMassGrams / sampleArea) + ' g/m².',
       'Como 1 g/m² equivale a 10 kg/ha, produtividade bruta = ' + displayYield(sampleMassGrams / sampleArea * 10) + ' ' + yieldUnit + '.',
       ...(difficulty >= 2 ? [
-        'Perda = ' + displayYield(targetKg) + ' ' + yieldUnit + ' × ' + lossPercent + '% = ' + displayYield(lossKg) + ' ' + yieldUnit + '.'
-        'Produtividade líquida = ' + displayYield(targetKg) + ' − ' + displayYield(lossKg) + ' = ' + displayYield(netKg) + ' ' + yieldUnit + '.'
+        'Perda = ' + displayYield(targetKg) + ' ' + yieldUnit + ' × ' + lossPercent + '% = ' + displayYield(lossKg) + ' ' + yieldUnit + '.',
+        'Produtividade líquida = ' + displayYield(targetKg) + ' − ' + displayYield(lossKg) + ' = ' + displayYield(netKg) + ' ' + yieldUnit + '.',
       ] : []),
       ...(difficulty >= 3 ? [
-        'Produção total = ' + displayYield(netKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(netKg * area / 1000) + ' t.'
+        'Produção total = ' + displayYield(netKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(netKg * area / 1000) + ' t.',
       ] : []),
       'A extrapolação exige parcela e pontos de amostragem representativos da variabilidade do talhão.',
     ],
@@ -434,11 +434,11 @@ function makeHarvestLossExercise(
       'Massa por metro quadrado = ' + collectedGrams + ' g ÷ ' + sampleArea + ' m² = ' + round(collectedGrams / sampleArea) + ' g/m².',
       'Perda em ' + yieldUnit + ' = ' + displayYield(collectedGrams / sampleArea * 10) + ' ' + yieldUnit + '.',
       ...(difficulty >= 2 ? [
-        'Produtividade líquida = ' + displayYield(grossKg) + ' − ' + displayYield(lossKg) + ' = ' + displayYield(netKg) + ' ' + yieldUnit + '.'
+        'Produtividade líquida = ' + displayYield(grossKg) + ' − ' + displayYield(lossKg) + ' = ' + displayYield(netKg) + ' ' + yieldUnit + '.',
       ] : []),
       ...(difficulty >= 3 ? [
-        'Perda total = ' + displayYield(lossKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(lossKg * area / 1000) + ' t.'
-        'Produção líquida = ' + displayYield(netKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(netKg * area / 1000) + ' t.'
+        'Perda total = ' + displayYield(lossKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(lossKg * area / 1000) + ' t.',
+        'Produção líquida = ' + displayYield(netKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(netKg * area / 1000) + ' t.',
       ] : []),
       'Diferencie perdas naturais, pré-colheita e perdas atribuíveis à máquina. Faça amostragens em pontos distribuídos no talhão.',
     ],
