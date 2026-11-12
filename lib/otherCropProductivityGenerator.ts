@@ -347,7 +347,11 @@ function makePlotSampleExercise(
     cropName: definition.name,
     difficulty,
     title: difficulty === 1 ? 'Extrapolação de parcela amostrada' : difficulty === 2 ? 'Amostragem com desconto de perdas' : 'Projeção da produção por área',
-    context: 'Uma parcela de ' + definition.name.toLowerCase() + ' foi colhida e pesada. Considere que a massa apresentada já está limpa e corrigida para a umidade de referência do exercício; extrapole proporcionalmente para um hectare.',
+    context: crop === 'sugarcane'
+      ? 'Uma parcela de cana-de-açúcar foi cortada e pesada. Considere a massa de colmos na umidade natural de campo e extrapole proporcionalmente para um hectare.'
+      : crop === 'peanut'
+        ? 'Uma parcela de amendoim em casca foi colhida e pesada. Considere a massa limpa de vagens corrigida para a umidade de referência do exercício.'
+        : 'Uma parcela de ' + definition.name.toLowerCase() + ' foi colhida e pesada. Considere que a massa apresentada já está limpa e corrigida para a umidade de referência do exercício; extrapole proporcionalmente para um hectare.',
     data: [
       { label: 'Área da parcela', value: sampleArea, unit: 'm²' },
       { label: 'Massa colhida', value: sampleMassGrams, unit: 'g' },
