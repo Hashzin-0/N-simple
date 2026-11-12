@@ -28,7 +28,7 @@ function createKernelGeometry() {
     new THREE.Vector2(0.019, 0.154),
     new THREE.Vector2(0.002, 0.157),
   ];
-  const geometry = new THREE.LatheGeometry(profile, 12);
+  const geometry = new THREE.LatheGeometry(profile, 16);
   geometry.computeVertexNormals();
   return geometry;
 }
@@ -239,13 +239,11 @@ export default function CornEar3DVisualizer({
         for (let row = 0; row < safeRows; row++) {
           const rowAngle = (row / safeRows) * Math.PI * 2;
           for (let grain = 0; grain < safeKernels; grain++) {
-            const along = safeKernels <= 1 ? 0 : grain / (safeKernels - 1);
-            const y = (along - 0.5) * COB_LENGTH * 0.91;
-            const normalizedY = y / (COB_LENGTH * 0.5);
-            const endTaper = 1 - Math.pow(Math.abs(normalizedY), 2.4) * 0.22;
             const stagger = row % 2 === 0 ? 0 : 0.5;
-            const rowOffset = (stagger / Math.max(1, safeKernels)) * COB_LENGTH * 0.91;
-            const yStaggered = Math.max(-COB_LENGTH * 0.47, Math.min(COB_LENGTH * 0.47, y + rowOffset));
+            const along = safeKernels <= 1 ? 0.5 : (grain + stagger) / safeKernels;
+            const yStaggered = (along - 0.5) * COB_LENGTH * 0.91;
+            const normalizedY = yStaggered / (COB_LENGTH * 0.5);
+            const endTaper = 1 - Math.pow(Math.abs(normalizedY), 2.4) * 0.22;
             const radius = (COB_RADIUS + 0.018) * endTaper;
             const angle = rowAngle + (grain % 2) * 0.012;
             const x = Math.cos(angle) * radius;
