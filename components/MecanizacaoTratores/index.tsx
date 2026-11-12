@@ -7,6 +7,7 @@ import { COURSE_MODULES as DETAILED_MODULES, COURSE_TOTAL_HOURS } from '@/lib/tr
 import { TRACTOR_SYMBOLS } from '@/lib/tratoristaSimbolos';
 import { TractorSymbolImage } from './TractorSymbolImage';
 import TractorTechnicalLibrary from './TractorTechnicalLibrary';
+import Tractor3DLearning from './Tractor3DLearning';
 
 const clamp=(n:number,min:number,max:number)=>Math.min(max,Math.max(min,n));
 const fmt=(n:number,d=1)=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:d}).format(Number.isFinite(n)?n:0);
@@ -54,6 +55,7 @@ export default function MecanizacaoTratores(){
   const [operation,setOperation]=useState(''),[target,setTarget]=useState<number | null>(null);
   const [completed,setCompleted]=useState<string[]>([]);
   const [openModule,setOpenModule]=useState('m1');
+  const [symbolMode,setSymbolMode]=useState<'2d'|'3d'>('2d');
   const [activityDone,setActivityDone]=useState<Record<string,string[]>>({});
   const [answers,setAnswers]=useState<Record<string,number|string|number[]>>({});
   const [checkedAnswers,setCheckedAnswers]=useState<Record<string,boolean>>({});
@@ -113,7 +115,11 @@ export default function MecanizacaoTratores(){
               </div>
               {m.id==='m2'&&<section className="border-t border-[#D5E0CF] dark:border-[#3B4937] py-4">
                 <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><Info className="size-4 text-[#5A7D54]"/><h5 className="font-bold text-sm">Catálogo de símbolos reais</h5></div><p className="mt-1 text-xs leading-5 text-[#657063] dark:text-[#B6BDB2]">As imagens de referência ISO 7000 são carregadas em SVG. Se a fonte externa estiver indisponível, um pictograma ilustrativo identifica visualmente a função sem se passar pelo desenho normativo. Confirme a função no manual do trator.</p></div><a href="https://www.iso.org/standard/60092.html" target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-[#4E794A]">ISO 3767-2 ↗</a></div>
-                <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={()=>setSymbolMode('2d')} aria-pressed={symbolMode==='2d'} className={'rounded-lg border px-3 py-2 text-xs font-semibold '+(symbolMode==='2d'?'border-[#78966D] bg-[#EAF1E5] text-[#405B39]':'border-[#D9DED4] text-[#687064]')}>Modo 2D — catálogo ISO</button>
+                  <button type="button" onClick={()=>setSymbolMode('3d')} aria-pressed={symbolMode==='3d'} className={'rounded-lg border px-3 py-2 text-xs font-semibold '+(symbolMode==='3d'?'border-[#78966D] bg-[#EAF1E5] text-[#405B39]':'border-[#D9DED4] text-[#687064]')}>Modo 3D — cabine interativa</button>
+                </div>
+                {symbolMode==='3d' ? <Tractor3DLearning/> : <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {TRACTOR_SYMBOLS.map(s=><article key={s.id} className="border-t border-[#DDE4D8] dark:border-[#364132] py-3">
                     <div className="h-24 bg-[#F3F5F0] dark:bg-[#252C23] flex items-center justify-center"><TractorSymbolImage symbol={s} className="h-20 w-20"/></div>
                     <div className="mt-3 text-xs font-bold text-[#30382E] dark:text-[#EEF1E9]">{s.title}</div>
@@ -122,7 +128,7 @@ export default function MecanizacaoTratores(){
                     <p className="mt-2 text-[10px] leading-4 text-[#778074] dark:text-[#AAB2A5]">{s.application}</p>
                     <a href={s.sourceUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[9px] font-semibold text-[#4E794A]">{s.sourceLabel} ↗</a>
                   </article>)}
-                </div>
+                </div>}
               </section>}
               <section className="border-t border-[#D9E2D3] dark:border-[#394934] py-4"><div className="flex items-center gap-2"><ClipboardCheck className="size-4 text-[#5A7D54]"/><h5 className="font-bold text-sm">Atividades teóricas</h5></div><div className="mt-3 space-y-2">{m.activities.map((x,ai)=>{const done=doneActivities.includes(String(ai));return <button type="button" key={x} onClick={()=>toggleActivity(m.id,ai)} className="w-full flex gap-3 items-start text-left border-b border-[#DDE3D8] dark:border-[#354132] py-3">{done?<CheckCircle2 className="size-4 mt-0.5 shrink-0 text-[#4E794A]"/>:<div className="size-4 mt-0.5 shrink-0 rounded-full border-2 border-[#AAB5A4]"/>}<span className="text-xs leading-5 text-[#596256] dark:text-[#B9C1B4]">{x}</span></button>})}</div></section>
               <section className="border-t border-[#E2E1D8] dark:border-[#353C30] py-4">
