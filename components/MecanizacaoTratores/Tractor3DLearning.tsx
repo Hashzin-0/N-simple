@@ -11,12 +11,6 @@ import { TractorSymbolImage } from './TractorSymbolImage';
 
 const EXTERIOR_MODEL = 'https://cdn.3dassets.dev/assets/16840/v1/model.glb';
 const EXTERIOR_SOURCE = 'https://3dassets.dev/assets/arable-fields-and-farm-machinery-row-crop-tractor-eefceb01';
-const ANCHOR_OVERLAY: Record<string,{left:string;top:string}> = {
-  rockshaft:{left:'39%',top:'42%'}, 'rockshaft-up':{left:'39%',top:'42%'},
-  'rockshaft-down':{left:'39%',top:'42%'}, 'remote-cylinder':{left:'57%',top:'48%'},
-  'diff-lock':{left:'58%',top:'68%'}, 'pto-cw':{left:'24%',top:'48%'},
-  'position-lights':{left:'63%',top:'32%'}, 'parking-brake':{left:'54%',top:'68%'}
-};
 
 type ViewMode = 'exterior' | 'cab';
 type QuizStep = { symbolId: string; control: string; question: string; options: string[]; anchor: string };
@@ -63,8 +57,8 @@ function buildCab(scene: THREE.Scene) {
   return root;
 }
 
-function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor }: {
-  mode:ViewMode; modelSpeed:number; onLoadState:(state:'loading'|'ready'|'error')=>void; activeAnchor:string;
+function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef }: {
+  mode:ViewMode; modelSpeed:number; onLoadState:(state:'loading'|'ready'|'error'|'unsupported')=>void; activeAnchor:string; calloutRef:{current:HTMLDivElement|null};
 }) {
   const host=useRef<HTMLDivElement>(null);
   const speedRef=useRef(modelSpeed);
@@ -82,7 +76,9 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor }: {
     scene.fog=new THREE.Fog('#e8ece4',12,30);
     const camera=new THREE.PerspectiveCamera(42,1,.1,100);
     camera.position.set(7,4.5,8);
-    const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'low-power'});
+    let renderer:THREE.WebGLRenderer;
+    try { renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'low-power'}); }
+    catch { onLoadState('unsupported'); return ()=>{disposed=true;}; }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.6));
     renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     renderer.outputColorSpace=THREE.SRGBColorSpace;
@@ -137,7 +133,19 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor }: {
       const scale=Math.max(-2.5,Math.min(2.5,speedRef.current/12));
       if(action) action.timeScale=scale;
       else wheelPivots.forEach(w=>{w.rotation.x-=scale*.025;});
-      mixer?.update(1/60); controls.update(); renderer.render(scene,camera);
+      mixer?.update(1/60); controls.update();
+      if(cabMode&&calloutRef.current){
+        const targetName=anchorRef.current==='rockshaft-up'||anchorRef.current==='rockshaft-down'?'rockshaft':anchorRef.current;
+        const target=cabRoot.getObjectByName(targetName);
+        if(target){
+          const projected=target.getWorldPosition(new THREE.Vector3()).project(camera);
+          const visible=projected.z<1&&Math.abs(projected.x)<1.2&&Math.abs(projected.y)<1.2;
+          calloutRef.current.style.display=visible?'flex':'none';
+          calloutRef.current.style.left=((projected.x*.5+.5)*element.clientWidth)+'px';
+          calloutRef.current.style.top=((-projected.y*.5+.5)*element.clientHeight)+'px';
+        }
+      } else if(calloutRef.current) calloutRef.current.style.display='none';
+      renderer.render(scene,camera);
     };
     animate();
     return ()=>{
@@ -160,7 +168,8 @@ export default function Tractor3DLearning() {
   const [answer,setAnswer]=useState<number|null>(null);
   const [submitted,setSubmitted]=useState(false);
   const [correct,setCorrect]=useState(0);
-  const [loadState,setLoadState]=useState<'loading'|'ready'|'error'>('loading');
+  const [loadState,setLoadState]=useState<'loading'|'ready'|'error'|'unsupported'>('loading');
+  const calloutRef=useRef<HTMLDivElement>(null);
   const tractor=TRACTORS.find(item=>item.id===tractorId)??TRACTORS[0];
   const gear=tractor.gears.find(item=>item.id===gearId)??tractor.gears[0];
   const baseSpeed=gear.speedKmh*rpm/tractor.nominalRpm;
@@ -170,7 +179,7 @@ export default function Tractor3DLearning() {
   const step=QUIZ[stepIndex%QUIZ.length];
   const symbol=TRACTOR_SYMBOLS.find(item=>item.id===step.symbolId);
   const choices=useMemo(()=>step.options,[step]);
-  const onLoadState=useCallback((state:'loading'|'ready'|'error')=>setLoadState(state),[]);
+  const onLoadState=useCallback((state:'loading'|'ready'|'error'|'unsupported')=>setLoadState(state),[]);
 
   const changeTractor=(id:string)=>{
     const next=TRACTORS.find(item=>item.id===id)??TRACTORS[0];
@@ -199,8 +208,8 @@ export default function Tractor3DLearning() {
     <div className="grid xl:grid-cols-[minmax(0,1.35fr)_minmax(290px,.65fr)] gap-4">
       <div className="space-y-3">
         <div className="relative h-[340px] sm:h-[480px] overflow-hidden rounded-xl border border-[#D5DCD0] bg-[#E8ECE4]">
-          <ThreeViewport mode={mode} modelSpeed={modelSpeed} onLoadState={onLoadState} activeAnchor={step.anchor}/>
-          {mode==='cab'&&symbol&&<div className="pointer-events-none absolute z-10 flex items-center gap-2 transition-all duration-300" style={ANCHOR_OVERLAY[step.anchor]??{left:"43%",top:"34%"}}>
+          <ThreeViewport mode={mode} modelSpeed={modelSpeed} onLoadState={onLoadState} activeAnchor={step.anchor} calloutRef={calloutRef}/>
+          {mode==='cab'&&symbol&&<div ref={calloutRef} className="pointer-events-none absolute z-10 flex items-center gap-2 -translate-x-1/2 -translate-y-1/2 transition-all duration-200">
             <div className="h-16 w-16 rounded-xl border-2 border-[#68895D] bg-white/95 p-2 shadow-lg"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></div>
             <svg width="100" height="60" viewBox="0 0 100 60" className="overflow-visible"><path d="M0 30 L95 30" stroke="#54784A" strokeWidth="2.5" fill="none" strokeDasharray="5 3"/><circle cx="95" cy="30" r="4" fill="#54784A"/></svg>
           </div>}
@@ -208,7 +217,7 @@ export default function Tractor3DLearning() {
             {mode==='cab'?'REPRESENTAÇÃO DIDÁTICA — NÃO É CABINE OEM':'MODELO EXTERNO GENÉRICO CC0'}
           </div>
           <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-2 text-[10px] text-[#344132]">
-            {loadState==='loading'?'Carregando modelo 3D…':loadState==='error'?'Modelo externo indisponível — visual alternativo':'Modelo 3D carregado'}
+            {loadState==='loading'?'Carregando modelo 3D…':loadState==='unsupported'?'WebGL indisponível neste dispositivo':loadState==='error'?'Modelo externo indisponível — visual alternativo':'Modelo 3D carregado'}
           </div>
           <button type="button" onClick={()=>{setMode(mode==='cab'?'exterior':'cab');}} aria-label="Alternar visualização 3D" className="absolute right-3 top-3 rounded-lg bg-white/90 p-2 text-[#344132]"><Camera className="size-4"/></button>
         </div>
