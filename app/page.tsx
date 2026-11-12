@@ -1740,7 +1740,6 @@ export default function Home() {
             </div>
           }
           productivityContent={productivityContent}
-          soybeanContent={soybeanContent}
           itrContent={itrContent}
           abntContent={abntContent}
           pesquisadorContent={pesquisadorContent}
