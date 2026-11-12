@@ -25,6 +25,18 @@ export const TRACTORS: TractorSpec[] = [
     source:'https://assets.cnhindustrial.com/nhag/lar/pt-br/Documents/B3-0108-18%20FOLHETERIA%20TRATOR_30-v2%20-%20Em%20Baixa%20%281%29.pdf',
     sourceLabel:'New Holland, Série 30 7630/8030 MAR-I + SENAR-PR Quadro 3',
     notes:'A ficha oficial informa transmissão 16x4 e oito velocidades de trabalho entre 4 e 12 km/h. Os valores individuais são uma representação operacional do diagrama.'
+  },
+  {
+    id:'massey-ferguson-275', brand:'Massey Ferguson', model:'MF 275', label:'Massey Ferguson MF 275 4×4',
+    powerCv:75, nominalRpm:2200, massKg:4050, traction:'4x4',
+    gears:[
+      gear('1ª',2.3),gear('2ª',3.4),gear('3ª',6.2),gear('4ª',7.6),
+      gear('5ª',9.2),gear('6ª',13.5),gear('7ª',24.8),gear('8ª',30.4),
+      gear('R1',3.1),gear('R2',12.6)
+    ],
+    source:'https://www.masseyferguson.com/',
+    sourceLabel:'Ficha técnica MF 275 FOPMF275 (maio/2007), fornecida como referência',
+    notes:'Tabela deslizante 8x2 a 2.200 rpm com pneu traseiro 18.4-30 R1. Massa de 4.050 kg corresponde ao peso máximo com lastro indicado para a versão 4x4; confirme a configuração real.'
   }
 ];
 export function getTractor(id:string){return TRACTORS.find(t=>t.id===id) ?? TRACTORS[0];}
