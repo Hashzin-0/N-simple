@@ -1,9 +1,6 @@
 export async function hashActivitySet<T extends { id: string }>(activities: readonly T[]): Promise<string> {
   const canonicalContent = JSON.stringify(
-    activities.map((activity) => {
-      const { id: _id, ...content } = activity;
-      return content;
-    }),
+    activities.map((activity) => ({ ...activity, id: undefined })),
   );
   const payload = new TextEncoder().encode(canonicalContent);
 
