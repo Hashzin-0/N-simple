@@ -152,7 +152,7 @@ export default function SoybeanProductivityGenerator({ onBack }: Props) {
           </div>
         </div>
         <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-xl border border-[#DCD8CC] px-3 py-2 text-sm font-semibold text-[#5A5A40] dark:border-[#454D3F] dark:text-[#C8D1BD]">
-          <ArrowLeft className="h-4 w-4" /> Voltar aos estudos
+          <ArrowLeft className="h-4 w-4" /> Voltar à calculadora
         </button>
       </div>
 

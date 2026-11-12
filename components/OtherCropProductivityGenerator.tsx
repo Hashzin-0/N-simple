@@ -42,11 +42,13 @@ const formatValue = (value: string | number) =>
   typeof value === 'number' ? value.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : value;
 
 interface Props {
-  onBack: () => void;
+  onBack?: () => void;
+  fixedCrop?: OtherCropId;
 }
 
-export default function OtherCropProductivityGenerator({ onBack }: Props) {
-  const [crop, setCrop] = useState<OtherCropId>('sorghum');
+export default function OtherCropProductivityGenerator({ onBack, fixedCrop }: Props) {
+  const [crop, setCrop] = useState<OtherCropId>(fixedCrop ?? 'sorghum');
+  React.useEffect(() => { if (fixedCrop) setCrop(fixedCrop); }, [fixedCrop]);
   const [mode, setMode] = useState<CropGenerationMode>('balanced');
   const [count, setCount] = useState('12');
   const [activities, setActivities] = useState<CropProductivityExercise[]>([]);
@@ -154,9 +156,9 @@ export default function OtherCropProductivityGenerator({ onBack }: Props) {
             <p className={'mt-1 text-xs ' + mutedClass}>Exercícios numéricos inéditos, com parâmetros e fórmulas específicos de cada cultura.</p>
           </div>
         </div>
-        <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-xl border border-[#DCD8CC] px-3 py-2 text-sm font-semibold text-[#5A5A40] dark:border-[#454D3F] dark:text-[#C8D1BD]">
-          <ArrowLeft className="h-4 w-4" /> Voltar aos estudos
-        </button>
+        {onBack && <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-xl border border-[#DCD8CC] px-3 py-2 text-sm font-semibold text-[#5A5A40] dark:border-[#454D3F] dark:text-[#C8D1BD]">
+          <ArrowLeft className="h-4 w-4" /> Voltar à calculadora
+        </button>}
       </div>
 
       {!current ? (
@@ -168,12 +170,12 @@ export default function OtherCropProductivityGenerator({ onBack }: Props) {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <label className="block">
+            {!fixedCrop && <label className="block">
               <span className="mb-1.5 block text-xs font-semibold text-[#5A5A40] dark:text-[#C8D1BD]">Cultura</span>
-              <select value={crop} onChange={(event) => setCrop(event.target.value as OtherCropId)} className="w-full rounded-xl border border-[#DCD8CC] bg-[#FAF9F5] px-3 py-3 text-sm text-[#454638] dark:border-[#454D3F] dark:bg-[#272C24] dark:text-[#E8E7DF]">
+              <select value={crop} disabled={Boolean(fixedCrop)} onChange={(event) => setCrop(event.target.value as OtherCropId)} className="w-full rounded-xl border border-[#DCD8CC] bg-[#FAF9F5] px-3 py-3 text-sm text-[#454638] dark:border-[#454D3F] dark:bg-[#272C24] dark:text-[#E8E7DF]">
                 {OTHER_CROP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
-            </label>
+            </label>}
             <label className="block">
               <span className="mb-1.5 block text-xs font-semibold text-[#5A5A40] dark:text-[#C8D1BD]">Nível de dificuldade</span>
               <select value={mode} onChange={(event) => setMode(event.target.value as CropGenerationMode)} className="w-full rounded-xl border border-[#DCD8CC] bg-[#FAF9F5] px-3 py-3 text-sm text-[#454638] dark:border-[#454D3F] dark:bg-[#272C24] dark:text-[#E8E7DF]">
