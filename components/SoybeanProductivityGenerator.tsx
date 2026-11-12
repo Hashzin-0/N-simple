@@ -7,6 +7,7 @@ import {
   type SoybeanGenerationMode,
 } from '@/lib/soybeanProductivityGenerator';
 import type { StudyAnswer, StudyExercise } from '@/lib/agronomyStudy';
+import { hashActivitySet } from '@/lib/activitySetHash';
 
 const STORAGE_KEY = 'n-simple:soybean-productivity:last-set-hash';
 const modeLabels: Record<SoybeanGenerationMode, string> = {
@@ -17,25 +18,6 @@ const modeLabels: Record<SoybeanGenerationMode, string> = {
 };
 
 const difficultyLabels = ['', 'Básica', 'Intermediária', 'Avançada'];
-
-function serializeActivities(activities: StudyExercise[]): string {
-  return JSON.stringify(activities.map((exercise) => ({ ...exercise, id: undefined })));
-}
-
-async function hashActivities(activities: StudyExercise[]): Promise<string> {
-  const payload = new TextEncoder().encode(serializeActivities(activities));
-  if (globalThis.crypto?.subtle) {
-    const digest = await globalThis.crypto.subtle.digest('SHA-256', payload);
-    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-  }
-
-  let hash = 2166136261;
-  for (const byte of payload) {
-    hash ^= byte;
-    hash = Math.imul(hash, 16777619);
-  }
-  return 'fnv1a-' + (hash >>> 0).toString(16).padStart(8, '0');
-}
 
 function parseBrazilianNumber(raw: string): number {
   const value = raw.trim().replace(/\s/g, '');
@@ -109,7 +91,7 @@ export default function SoybeanProductivityGenerator({ onBack }: Props) {
     try {
       for (let attempt = 0; attempt < 8; attempt += 1) {
         const generated = createSoybeanProductivityActivities({ mode, count: quantity });
-        const hash = await hashActivities(generated);
+        const hash = await hashActivitySet(generated);
         if (hash === previousHash) continue;
 
         lastHashRef.current = hash;
