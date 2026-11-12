@@ -227,7 +227,7 @@ function makeComponentExercise(
     cropName: definition.name,
     difficulty,
     title: difficulty === 1 ? 'Estimativa pelos componentes de rendimento' : difficulty === 2 ? 'Produtividade bruta e líquida' : 'Projeção da produção comercial do talhão',
-    context: 'A equipe avaliou uma amostra representativa de ' + definition.name.toLowerCase() + '. Os componentes informados representam a média da lavoura. A estimativa é teórica e não substitui a pesagem de parcelas nem considera, por si só, todas as perdas de campo.',
+    context: 'A equipe avaliou uma amostra representativa de ' + definition.name.toLowerCase() + '. Os componentes informados representam a média da lavoura e a massa de mil grãos/aquênios corresponde à umidade de referência adotada no exercício. A estimativa é teórica e não substitui a pesagem de parcelas nem considera, por si só, todas as perdas de campo.',
     data: [
       ...sample.data,
       ...(difficulty >= 2 ? [{ label: 'Perdas estimadas', value: lossPercent, unit: '%' }] : []),
