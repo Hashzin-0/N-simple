@@ -136,6 +136,16 @@ function shuffle<T>(items: T[], random: () => number): void {
   }
 }
 
+function balancedDifficulties(count: number, random: () => number): StudyDifficulty[] {
+  const result: StudyDifficulty[] = [];
+  while (result.length < count) {
+    const batch: StudyDifficulty[] = [1, 2, 3];
+    shuffle(batch, random);
+    result.push(...batch.slice(0, count - result.length));
+  }
+  return result;
+}
+
 interface ComponentSample {
   yieldKgPerHa: number;
   data: StudyValue[];
@@ -466,15 +476,9 @@ export function createOtherCropProductivityActivities({
     throw new RangeError('A quantidade deve ser um número inteiro entre 1 e 100.');
   }
 
-  const difficulties: StudyDifficulty[] = mode === 'basic'
-    ? Array<StudyDifficulty>(count).fill(1)
-    : mode === 'intermediate'
-      ? Array<StudyDifficulty>(count).fill(2)
-      : mode === 'advanced'
-        ? Array<StudyDifficulty>(count).fill(3)
-        : Array.from({ length: count }, (_, index) => ([1, 2, 3] as StudyDifficulty[])[index % 3]);
-
-  if (mode === 'balanced') shuffle(difficulties, random);
+  const difficulties: StudyDifficulty[] = mode === 'balanced'
+    ? balancedDifficulties(count, random)
+    : Array<StudyDifficulty>(count).fill(mode === 'basic' ? 1 : mode === 'intermediate' ? 2 : 3);
 
   const result: CropProductivityExercise[] = [];
   const seen = new Set<string>();
