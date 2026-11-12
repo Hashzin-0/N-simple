@@ -79,6 +79,8 @@ const VoiceAssistantHUD = dynamic(() => import('@/components/VoiceAssistantHUD')
 const DarkMode3DToggle = dynamic(() => import('@/components/DarkMode3DToggle'), { ssr: false });
 const SectionNavGooey = dynamic(() => import('@/components/SectionNavGooey'), { ssr: false });
 const CornYieldCalculator = dynamic(() => import('@/components/CornYieldCalculator'), { ssr: false });
+const OtherCropProductivityCalculator = dynamic(() => import('@/components/OtherCropProductivityCalculator'), { ssr: false });
+const CornProductivityGenerator = dynamic(() => import('@/components/CornProductivityGenerator'), { ssr: false });
 const SoybeanYieldCalculator = dynamic(() => import('@/components/SoybeanYieldCalculator'), { ssr: false });
 const SoybeanStudySection = dynamic(() => import('@/components/SoybeanStudySection'), { ssr: false });
 const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr: false });
@@ -783,6 +785,10 @@ export default function Home() {
             fillRequest={cornYieldFill}
           />
         </ScrollStack>
+        <div className="mt-6 space-y-6">
+          <OtherCropProductivityCalculator />
+          <CornProductivityGenerator />
+        </div>
       </div>
     ),
     [handleApplyYieldGoal, cornYieldFill],
