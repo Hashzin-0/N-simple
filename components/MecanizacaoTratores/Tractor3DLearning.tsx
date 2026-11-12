@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { AnimatePresence, motion } from 'motion/react';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ArrowLeftRight, Camera, CheckCircle2, Gauge, Info, RotateCcw, Tractor } from 'lucide-react';
@@ -209,7 +210,7 @@ export default function Tractor3DLearning() {
       <div className="space-y-3">
         <div className="relative h-[340px] sm:h-[480px] overflow-hidden rounded-xl border border-[#D5DCD0] bg-[#E8ECE4]">
           <ThreeViewport mode={mode} modelSpeed={modelSpeed} onLoadState={onLoadState} activeAnchor={step.anchor} calloutRef={calloutRef}/>
-          {mode==='cab'&&symbol&&<div ref={calloutRef} className="pointer-events-none absolute z-10 flex items-center gap-2 -translate-x-1/2 -translate-y-1/2 transition-all duration-200">
+          {mode==='cab'&&symbol&&<AnimatePresence mode="wait"><motion.div key={step.symbolId} initial={{opacity:0,x:36}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-36}} transition={{duration:.2}} ref={calloutRef} className="pointer-events-none absolute z-10 flex items-center gap-2 -translate-x-1/2 -translate-y-1/2">
             <div className="h-16 w-16 rounded-xl border-2 border-[#68895D] bg-white/95 p-2 shadow-lg"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></div>
             <svg width="100" height="60" viewBox="0 0 100 60" className="overflow-visible"><path d="M0 30 L95 30" stroke="#54784A" strokeWidth="2.5" fill="none" strokeDasharray="5 3"/><circle cx="95" cy="30" r="4" fill="#54784A"/></svg>
           </div>}
@@ -241,10 +242,14 @@ export default function Tractor3DLearning() {
       <aside className="rounded-xl border border-[#DCE3D7] dark:border-[#394334] p-4 space-y-4">
         <div className="flex items-center justify-between gap-2"><div><div className="text-[10px] font-bold uppercase tracking-wider text-[#6B8062]">Aprendizagem ISO 7000</div><h5 className="mt-1 font-bold text-sm">Identifique o comando</h5></div><span className="text-[10px] tabular-nums">{stepIndex+1}/{QUIZ.length}</span></div>
         <div className="h-1.5 rounded-full bg-[#E9EDE5] overflow-hidden"><div className="h-full bg-[#66865B] transition-all" style={{width:((stepIndex%QUIZ.length+1)/QUIZ.length*100)+'%'}}/></div>
-        {mode==='cab'&&symbol?<div className="flex items-center gap-3 rounded-lg bg-[#F2F5EF] dark:bg-[#252D22] p-3"><div className="h-16 w-16 shrink-0 rounded-lg bg-white p-2"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></div><div><b className="text-xs">{symbol.iso}</b><p className="text-[10px] text-[#788074]">{step.control}</p><p className="text-[9px] text-[#788074]">Componente didático destacado</p></div></div>:<p className="text-xs text-[#788074]">Ative a cabine didática para visualizar o símbolo conectado ao comando em 3D.</p>}
-        <p className="text-sm font-semibold leading-5">{step.question}</p>
-        <div className="space-y-2">{choices.map((option,index)=><button key={option} type="button" disabled={submitted} onClick={()=>setAnswer(index)} className={'w-full rounded-lg border p-3 text-left text-xs leading-5 transition '+(answer===index?'border-[#68895D] bg-[#EDF3E9] dark:bg-[#2A3526]':'border-[#E0E5DC] dark:border-[#394334] hover:border-[#9DAF94]')}>{option}</button>)}</div>
-        {submitted&&<div role="status" className={'rounded-lg p-3 text-xs leading-5 '+(answer===0?'bg-[#EDF5E9] text-[#426B3B]':'bg-[#FBF2E5] text-[#87602D]')}>{answer===0?'Resposta correta.':'Resposta incorreta.'} {symbol?.meaning}</div>}
+        <AnimatePresence mode="wait">
+          <motion.div key={step.symbolId} initial={{opacity:0,x:40}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-40}} transition={{duration:.2}} className="space-y-3">
+            {mode==='cab'&&symbol?<div className="flex items-center gap-3 rounded-lg bg-[#F2F5EF] dark:bg-[#252D22] p-3"><div className="h-16 w-16 shrink-0 rounded-lg bg-white p-2"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></div><div><b className="text-xs">{symbol.iso}</b><p className="text-[10px] text-[#788074]">{step.control}</p><p className="text-[9px] text-[#788074]">Componente didático destacado</p></div></div>:<p className="text-xs text-[#788074]">Ative a cabine didática para visualizar o símbolo conectado ao comando em 3D.</p>}
+            <p className="text-sm font-semibold leading-5">{step.question}</p>
+            <div className="space-y-2">{choices.map((option,index)=><button key={option} type="button" disabled={submitted} onClick={()=>setAnswer(index)} className={'w-full rounded-lg border p-3 text-left text-xs leading-5 transition '+(answer===index?'border-[#68895D] bg-[#EDF3E9] dark:bg-[#2A3526]':'border-[#E0E5DC] dark:border-[#394334] hover:border-[#9DAF94]')}>{option}</button>)}</div>
+            {submitted&&<div role="status" className={'rounded-lg p-3 text-xs leading-5 '+(answer===0?'bg-[#EDF5E9] text-[#426B3B]':'bg-[#FBF2E5] text-[#87602D]')}>{answer===0?'Resposta correta.':'Resposta incorreta.'} {symbol?.meaning}</div>}
+          </motion.div>
+        </AnimatePresence>
         <div className="flex flex-wrap gap-2">
           {!submitted?<button type="button" disabled={answer===null} onClick={submit} className="flex-1 rounded-lg bg-[#557B4C] px-3 py-2.5 text-xs font-bold text-white disabled:opacity-40">Confirmar resposta</button>:<button type="button" onClick={next} className="flex-1 rounded-lg bg-[#557B4C] px-3 py-2.5 text-xs font-bold text-white">Próximo símbolo <ArrowLeftRight className="inline size-3 ml-1"/></button>}
           <button type="button" onClick={restart} aria-label="Reiniciar questionário" className="rounded-lg border border-[#D9DED4] px-3 py-2.5"><RotateCcw className="size-4"/></button>
