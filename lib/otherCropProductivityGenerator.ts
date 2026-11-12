@@ -280,27 +280,31 @@ function makeComponentExercise(
     cropName: definition.name,
     difficulty,
     title: difficulty === 1 ? 'Estimativa pelos componentes de rendimento' : difficulty === 2 ? 'Produtividade bruta e líquida' : 'Projeção da produção comercial do talhão',
-    context: 'A equipe avaliou uma amostra representativa de ' + definition.name.toLowerCase() + '. Os componentes informados representam a média da lavoura e a massa de mil grãos/aquênios corresponde à umidade de referência adotada no exercício. A estimativa é teórica e não substitui a pesagem de parcelas nem considera, por si só, todas as perdas de campo.',
+    context: crop === 'sugarcane'
+      ? 'A equipe realizou a biometria de um canavial representativo. Considere diâmetro e altura médios dos colmos, número de colmos por metro e espaçamento entre sulcos; a estimativa é expressa em toneladas de colmos por hectare.'
+      : crop === 'peanut'
+        ? 'A equipe avaliou uma amostra representativa de amendoim. Considere a população, o número médio de vagens por planta e a massa de cem vagens na base de umidade do exercício; o resultado representa amendoim em casca.'
+        : 'A equipe avaliou uma amostra representativa de ' + definition.name.toLowerCase() + '. Os componentes informados representam a média da lavoura e a massa de mil grãos/aquênios corresponde à umidade de referência adotada no exercício. A estimativa é teórica e não substitui a pesagem de parcelas nem considera, por si só, todas as perdas de campo.',
     data: [
       ...sample.data,
       ...(difficulty >= 2 ? [{ label: 'Perdas estimadas', value: lossPercent, unit: '%' }] : []),
       ...(difficulty >= 3 ? [{ label: 'Área do talhão', value: area, unit: 'ha' }] : []),
     ],
     prompt: difficulty === 1
-      ? 'Calcule a produtividade bruta estimada em kg/ha.'
+      ? 'Calcule a produtividade bruta estimada em ' + yieldUnit + '.'
       : difficulty === 2
-        ? 'Calcule a produtividade bruta, a perda em kg/ha e a produtividade líquida em kg/ha.'
+        ? 'Calcule a produtividade bruta, a perda e a produtividade líquida em ' + yieldUnit + '.'
         : 'Calcule a produtividade bruta, desconte as perdas e estime a produção líquida total do talhão em toneladas.',
     answers,
     solution: [
       sample.formula,
-      'Substituindo os valores, a produtividade bruta estimada é ' + round(grossKg) + ' kg/ha.',
+      'Substituindo os valores, a produtividade bruta estimada é ' + displayYield(grossKg) + ' ' + yieldUnit + '.'
       ...(difficulty >= 2 ? [
         'Perda = ' + round(grossKg) + ' × ' + lossPercent + '% = ' + displayYield(lossKg) + ' ' + yieldUnit + '.',
         'Produtividade líquida = ' + displayYield(grossKg) + ' − ' + displayYield(lossKg) + ' = ' + displayYield(netKg) + ' ' + yieldUnit + '.',
       ] : []),
       ...(difficulty >= 3 ? [
-        'Produção total = ' + round(netKg) + ' kg/ha × ' + area + ' ha ÷ 1.000 = ' + round(netKg * area / 1000) + ' t.',
+        'Produção total = ' + displayYield(netKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(netKg * area / 1000) + ' t.'
       ] : []),
       'A estimativa por componentes pressupõe amostragem representativa e não substitui a aferição da produção colhida, corrigida para a umidade e padrão comercial aplicáveis.',
     ],
@@ -351,20 +355,20 @@ function makePlotSampleExercise(
       ...(difficulty >= 3 ? [{ label: 'Área do talhão', value: area, unit: 'ha' }] : []),
     ],
     prompt: difficulty === 1
-      ? 'Converta a massa colhida na parcela para produtividade em kg/ha.'
+      ? 'Converta a massa colhida na parcela para produtividade em ' + yieldUnit + '.'
       : difficulty === 2
-        ? 'Calcule a produtividade bruta, a perda e a produtividade líquida em kg/ha.'
+        ? 'Calcule a produtividade bruta, a perda e a produtividade líquida em ' + yieldUnit + '.'
         : 'Calcule a produtividade bruta, desconte as perdas e estime a produção líquida do talhão em toneladas.',
     answers,
     solution: [
       'Massa por metro quadrado = ' + sampleMassGrams + ' g ÷ ' + sampleArea + ' m² = ' + round(sampleMassGrams / sampleArea) + ' g/m².',
       'Como 1 g/m² equivale a 10 kg/ha, produtividade bruta = ' + displayYield(sampleMassGrams / sampleArea * 10) + ' ' + yieldUnit + '.',
       ...(difficulty >= 2 ? [
-        'Perda = ' + round(targetKg) + ' × ' + lossPercent + '% = ' + round(lossKg) + ' kg/ha.',
-        'Produtividade líquida = ' + round(targetKg) + ' − ' + round(lossKg) + ' = ' + round(netKg) + ' kg/ha.',
+        'Perda = ' + displayYield(targetKg) + ' ' + yieldUnit + ' × ' + lossPercent + '% = ' + displayYield(lossKg) + ' ' + yieldUnit + '.'
+        'Produtividade líquida = ' + displayYield(targetKg) + ' − ' + displayYield(lossKg) + ' = ' + displayYield(netKg) + ' ' + yieldUnit + '.'
       ] : []),
       ...(difficulty >= 3 ? [
-        'Produção total = ' + round(netKg) + ' kg/ha × ' + area + ' ha ÷ 1.000 = ' + round(netKg * area / 1000) + ' t.',
+        'Produção total = ' + displayYield(netKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(netKg * area / 1000) + ' t.'
       ] : []),
       'A extrapolação exige parcela e pontos de amostragem representativos da variabilidade do talhão.',
     ],
@@ -389,7 +393,7 @@ function makeHarvestLossExercise(
   const netKg = grossKg - lossKg;
   const area = pick([5, 8, 10, 15, 20, 25, 30, 40, 50, 75, 100], random);
   const answers: StudyAnswer[] = [
-    { key: 'lossKg', label: 'Perda estimada', unit: 'kg/ha', value: round(lossKg), tolerance: 1 },
+    { key: 'lossKg', label: 'Perda estimada', unit: yieldUnit, value: displayYield(lossKg), tolerance: yieldUnit === 't/ha' ? 0.02 : 1 },
   ];
   if (difficulty >= 2) {
     answers.push(
@@ -408,7 +412,7 @@ function makeHarvestLossExercise(
     cropName: definition.name,
     difficulty,
     title: difficulty === 1 ? 'Quantificação das perdas na colheita' : difficulty === 2 ? 'Perdas e produtividade líquida' : 'Impacto das perdas na produção total',
-    context: 'Após a colheita de ' + definition.name.toLowerCase() + ', foram recolhidos grãos ou aquênios remanescentes em uma área delimitada. Considere que a amostra representa exclusivamente perdas de colheita e que a produtividade bruta foi estimada antes desse desconto.',
+    context: 'Após a colheita de ' + definition.name.toLowerCase() + ', foi recolhida a massa remanescente em uma área delimitada. Considere que a amostra representa exclusivamente perdas operacionais e que a produtividade bruta foi estimada antes desse desconto.',
     data: [
       { label: 'Área de coleta', value: sampleArea, unit: 'm²' },
       { label: 'Massa perdida', value: collectedGrams, unit: 'g' },
@@ -417,20 +421,20 @@ function makeHarvestLossExercise(
       ...(difficulty >= 3 ? [{ label: 'Área colhida', value: area, unit: 'ha' }] : []),
     ],
     prompt: difficulty === 1
-      ? 'Estime a perda operacional em kg/ha a partir da massa recolhida.'
+      ? 'Estime a perda operacional em ' + yieldUnit + ' a partir da massa recolhida.'
       : difficulty === 2
-        ? 'Calcule a perda em kg/ha e determine a produtividade líquida em kg/ha.'
-        : 'Calcule a perda em kg/ha, a massa total perdida e a produção líquida do talhão em toneladas.',
+        ? 'Calcule a perda e determine a produtividade líquida em ' + yieldUnit + '.'
+        : 'Calcule a perda por hectare, a massa total perdida e a produção líquida do talhão em toneladas.',
     answers,
     solution: [
       'Massa por metro quadrado = ' + collectedGrams + ' g ÷ ' + sampleArea + ' m² = ' + round(collectedGrams / sampleArea) + ' g/m².',
       'Perda em ' + yieldUnit + ' = ' + displayYield(collectedGrams / sampleArea * 10) + ' ' + yieldUnit + '.',
       ...(difficulty >= 2 ? [
-        'Produtividade líquida = ' + round(grossKg) + ' − ' + round(lossKg) + ' = ' + round(netKg) + ' kg/ha.',
+        'Produtividade líquida = ' + displayYield(grossKg) + ' − ' + displayYield(lossKg) + ' = ' + displayYield(netKg) + ' ' + yieldUnit + '.'
       ] : []),
       ...(difficulty >= 3 ? [
-        'Perda total = ' + round(lossKg) + ' kg/ha × ' + area + ' ha ÷ 1.000 = ' + round(lossKg * area / 1000) + ' t.',
-        'Produção líquida = ' + round(netKg) + ' kg/ha × ' + area + ' ha ÷ 1.000 = ' + round(netKg * area / 1000) + ' t.',
+        'Perda total = ' + displayYield(lossKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(lossKg * area / 1000) + ' t.'
+        'Produção líquida = ' + displayYield(netKg) + ' ' + yieldUnit + ' × ' + area + ' ha = ' + round(netKg * area / 1000) + ' t.'
       ] : []),
       'Diferencie perdas naturais, pré-colheita e perdas atribuíveis à máquina. Faça amostragens em pontos distribuídos no talhão.',
     ],
