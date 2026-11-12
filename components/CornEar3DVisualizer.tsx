@@ -155,7 +155,8 @@ export default function CornEar3DVisualizer({
 
     try {
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(isDark ? 0x181a15 : 0xfaf8f3);
+      const sceneBackground = new THREE.Color(isDark ? 0x181a15 : 0xfaf8f3);
+      scene.background = sceneBackground;
 
       const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
       camera.position.set(5.3, 2.0, 6.5);
@@ -169,7 +170,7 @@ export default function CornEar3DVisualizer({
           canvas.removeEventListener('webglcontextrestored', onContextRestored);
         };
       }
-      renderer.setClearColor(scene.background, 1);
+      renderer.setClearColor(sceneBackground, 1);
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
