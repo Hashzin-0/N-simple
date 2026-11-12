@@ -213,6 +213,9 @@ export function createSoybeanProductivityActivities({
   count,
   random = Math.random,
 }: SoybeanGenerationOptions): StudyExercise[] {
+  if (!['basic', 'intermediate', 'advanced', 'balanced'].includes(mode)) {
+    throw new RangeError('Selecione um modo de dificuldade válido.');
+  }
   if (!Number.isInteger(count) || count < 1 || count > 100) {
     throw new RangeError('A quantidade deve ser um número inteiro entre 1 e 100.');
   }
