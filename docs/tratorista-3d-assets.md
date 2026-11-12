@@ -15,11 +15,15 @@ O ativo é um trator agrícola genérico de aproximadamente 150 hp, criado para 
 
 O projeto carrega o GLB diretamente do CDN oficial do catálogo, sem copiar o binário para o repositório. A licença CC0 e os dados técnicos acima foram conferidos na página do ativo em 11/11/2026.
 
-## Cabine didática procedural
+## Cabine didática John Deere 5078E
 
-A cabine apresentada no modo interno é geometria original construída com Three.js no componente `Tractor3DLearning.tsx`. É uma maquete de ensino, não uma digitalização nem uma reprodução de cabine comercial.
+A cabine interna é uma reconstrução procedural Three.js do posto de operação da John Deere 5078E Série 5E cabinada, implementada em `components/MecanizacaoTratores/Tractor3DLearning.tsx`. O layout foi estruturado a partir da documentação do fabricante: plataforma plana, assento e volante, painel eletrônico dianteiro, pedais, console direito com válvulas remotas e controles do levante, console esquerdo com tração dianteira e TDP, além dos comandos traseiros.
 
-Os símbolos ISO são usados como objetos pedagógicos ligados visualmente a controles genéricos (alavancas, interruptores, pedais). As posições não devem ser interpretadas como localização real de comandos em um modelo ou ano específico.
+A geometria é uma interpretação educacional aproximada, não um CAD OEM, digitalização ou promessa de equivalência milimétrica. A Série 5E pode variar por ano, número de série, transmissão (9x3 TSS ou 12x12 PowrReverser), quantidade de VCRs e opcionais. Para treinamento operacional, o manual correspondente à máquina real prevalece.
+
+A seleção do simulador foi restringida aos tratores John Deere nesta etapa. Os pictogramas ISO estudados também foram posicionados como placas nos painéis e comandos físicos correspondentes na maquete 3D; o destaque do exercício acompanha o comando selecionado. O 5078E 9x3 TSS foi cadastrado com 78 cv, 2400 rpm e velocidades publicadas para a transmissão sincronizada e pneu 16.9-30 R1; os dados não devem ser usados para a opção 12x12 ou outra configuração.
+
+No exercício ISO, o cartão pré-resposta exibe somente o pictograma e o código ISO. O componente de imagem também reduz o texto alternativo acessível ao código ISO durante o exercício, evitando revelar o nome do símbolo por leitor de tela. A descrição e a aplicação completas aparecem após a submissão. A biblioteca de estudo continua exibindo o conteúdo integral.
 
 ## Dinâmica e limites
 
@@ -31,7 +35,10 @@ Os símbolos ISO são usados como objetos pedagógicos ligados visualmente a con
 
 ## Fontes técnicas
 
-- Página do modelo e licença: https://3dassets.dev/assets/arable-fields-and-farm-machinery-row-crop-tractor-eefceb01
+- John Deere 5078E — página oficial e especificações: https://www.deere.com.br/pt/tratores/s%C3%A9rie-5e-pequenos/5078e-cabinado-70cv/
+- John Deere Brasil — manuais, guias rápidos e publicações: https://www.deere.com.br/pt/pe%C3%A7as-e-servi%C3%A7os/manuais-e-treinamento/manuais/
+- Guia de controles da Série 5E e manual de velocidades 5075E/5078E/5085E: https://www.scribd.com/document/453254778/CATALOGO-JONH-DEERE-Manual-Do-Operador-5075E-5078E-5085E-e-5090E
+- Página do modelo exterior genérico e licença: https://3dassets.dev/assets/arable-fields-and-farm-machinery-row-crop-tractor-eefceb01
 - Licença CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/
 - Three.js GLTFLoader: https://threejs.org/docs/pages/GLTFLoader.html
 - Three.js OrbitControls: https://threejs.org/docs/pages/OrbitControls.html

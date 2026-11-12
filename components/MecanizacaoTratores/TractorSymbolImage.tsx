@@ -39,9 +39,10 @@ const FALLBACK_ICONS = {
 type Props = {
   symbol: TractorSymbol;
   className?: string;
+  revealMeaning?: boolean;
 };
 
-export function TractorSymbolImage({ symbol, className = 'h-20 w-20' }: Props) {
+export function TractorSymbolImage({ symbol, className = 'h-20 w-20', revealMeaning = true }: Props) {
   const [failed, setFailed] = useState(false);
   const Icon = FALLBACK_ICONS[symbol.id as keyof typeof FALLBACK_ICONS] ?? Gauge;
 
@@ -49,7 +50,7 @@ export function TractorSymbolImage({ symbol, className = 'h-20 w-20' }: Props) {
     return (
       <span
         role="img"
-        aria-label={symbol.title + ' — pictograma ilustrativo; imagem ISO externa indisponível'}
+        aria-label={revealMeaning ? symbol.title + ' — pictograma ilustrativo; imagem ISO externa indisponível' : symbol.iso + ' — pictograma ISO ilustrativo'}
         title="Pictograma ilustrativo: a imagem de referência externa não carregou"
         className="inline-flex h-full w-full flex-col items-center justify-center gap-1 text-[#42533D] dark:text-[#D1DEC9]"
       >
@@ -62,7 +63,7 @@ export function TractorSymbolImage({ symbol, className = 'h-20 w-20' }: Props) {
   return (
     <img
       src={symbol.imageUrl}
-      alt={symbol.title + ' — ' + symbol.iso}
+      alt={revealMeaning ? symbol.title + ' — ' + symbol.iso : symbol.iso + ' — pictograma ISO'}
       className={className + ' object-contain'}
       loading="lazy"
       decoding="async"

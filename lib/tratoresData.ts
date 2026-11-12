@@ -20,6 +20,13 @@ export const TRACTORS: TractorSpec[] = [
     notes:'Velocidades de avanço a 2400 rpm com pneu traseiro 18.4-30 R1. A configuração de rodado altera a velocidade.'
   },
   {
+    id:'john-deere-5078e', brand:'John Deere', model:'5078E (9x3 TSS)', label:'John Deere 5078E cabinado', powerCv:78, nominalRpm:2400, massKg:4140, traction:'4x2/TDA',
+    gears:[gear('A1',2.19),gear('A2',3.04),gear('A3',4.23),gear('B1',5.1),gear('B2',7.41),gear('B3',10.15),gear('C1',14.16),gear('C2',20.15),gear('C3',27.48),gear('R1',2.93),gear('R2',7.06),gear('R3',19.44)],
+    source:'https://www.deere.com.br/pt/tratores/s%C3%A9rie-5e-pequenos/5078e-cabinado-70cv/',
+    sourceLabel:'John Deere 5078E — ficha oficial + velocidades da transmissão sincronizada 9F/3R do manual do operador',
+    notes:'78 cv e 2400 rpm conforme ficha oficial da Série 5E. Velocidades A1–C3/R1–R3 referem-se à transmissão sincronizada 9F/3R e pneu 16.9-30 R1 do manual 5075E/5078E/5085E; não aplicar à opção PowrReverser 12x12 nem a outra configuração de pneus.'
+  },
+  {
     id:'new-holland-7630', brand:'New Holland', model:'7630 MAR-I', label:'New Holland 7630 MAR-I', powerCv:110, nominalRpm:2200, massKg:3886, traction:'4x4',
     gears:[gear('L1',4),gear('L2',5),gear('L3',6),gear('L4',7),gear('H1',8),gear('H2',9.5),gear('H3',10.8),gear('H4',12)],
     source:'https://assets.cnhindustrial.com/nhag/lar/pt-br/Documents/B3-0108-18%20FOLHETERIA%20TRATOR_30-v2%20-%20Em%20Baixa%20%281%29.pdf',
