@@ -221,7 +221,7 @@ export default function Tractor3DLearning() {
           <div className="flex justify-between text-xs"><span className="font-semibold">Rotação do motor (simulação proporcional)</span><b className="tabular-nums">{rpm.toLocaleString('pt-BR')} rpm</b></div>
           <input aria-label="Rotação simulada do motor" type="range" min={Math.round(tractor.nominalRpm*.5)} max={tractor.nominalRpm} step="50" value={rpm} onChange={e=>setRpm(Number(e.target.value))} className="w-full accent-[#66865B]"/>
           <div className="flex items-center justify-between text-xs"><span className="text-[#788074]">Velocidade estimada na tabela</span><b className="text-base tabular-nums">{Math.abs(modelSpeed).toFixed(1).replace('.',',')} km/h</b></div>
-          <div className="h-2 overflow-hidden rounded-full bg-[#E9EDE5]"><div className="h-full rounded-full bg-[#66865B] transition-all" style={{width:Math.min(100,modelSpeed/35*100)+'%'}}/></div>
+          <div className="h-2 overflow-hidden rounded-full bg-[#E9EDE5]"><div className="h-full rounded-full bg-[#66865B] transition-all" style={{width:Math.min(100,Math.abs(modelSpeed)/35*100)+'%'}}/></div>
           <p className="text-[10px] leading-4 text-[#7A8177]">A escala tartaruga/lebre é um controle visual didático de 0,5×/1×, não uma relação de transmissão atribuída ao trator. O exterior genérico não possui telemetria nem representa uma máquina real específica.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-[10px] text-[#788074]">
