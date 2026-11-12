@@ -213,7 +213,7 @@ export default function Tractor3DLearning() {
           {mode==='cab'&&symbol&&<AnimatePresence mode="wait"><motion.div key={step.symbolId} initial={{opacity:0,x:36}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-36}} transition={{duration:.2}} ref={calloutRef} className="pointer-events-none absolute z-10 flex items-center gap-2 -translate-x-1/2 -translate-y-1/2">
             <div className="h-16 w-16 rounded-xl border-2 border-[#68895D] bg-white/95 p-2 shadow-lg"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></div>
             <svg width="100" height="60" viewBox="0 0 100 60" className="overflow-visible"><path d="M0 30 L95 30" stroke="#54784A" strokeWidth="2.5" fill="none" strokeDasharray="5 3"/><circle cx="95" cy="30" r="4" fill="#54784A"/></svg>
-          </div>}
+          </motion.div></AnimatePresence>}
           <div className="absolute left-3 top-3 rounded-lg bg-white/90 px-3 py-2 text-[10px] font-semibold text-[#344132]">
             {mode==='cab'?'REPRESENTAÇÃO DIDÁTICA — NÃO É CABINE OEM':'MODELO EXTERNO GENÉRICO CC0'}
           </div>
