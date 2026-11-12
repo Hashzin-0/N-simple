@@ -5,6 +5,7 @@ import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, ChevronUp, Clipboar
 import { getTractor, TRACTORS, type TractorSpec } from '@/lib/tratoresData';
 import { COURSE_MODULES as DETAILED_MODULES, COURSE_TOTAL_HOURS } from '@/lib/tratoristaCurso';
 import { TRACTOR_SYMBOLS } from '@/lib/tratoristaSimbolos';
+import { TractorSymbolImage } from './TractorSymbolImage';
 
 const clamp=(n:number,min:number,max:number)=>Math.min(max,Math.max(min,n));
 const fmt=(n:number,d=1)=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:d}).format(Number.isFinite(n)?n:0);
@@ -110,10 +111,10 @@ export default function MecanizacaoTratores(){
                 <section className="border-t border-[#E2E1D8] dark:border-[#353C30] py-3"><h5 className="font-bold text-sm">Pontos que você precisa dominar</h5><ul className="mt-3 space-y-2 text-xs leading-5 text-[#5E665B] dark:text-[#B6BDB2]">{m.keyPoints.map(x=><li key={x}>• {x}</li>)}</ul></section>
               </div>
               {m.id==='m2'&&<section className="border-t border-[#D5E0CF] dark:border-[#3B4937] py-4">
-                <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><Info className="size-4 text-[#5A7D54]"/><h5 className="font-bold text-sm">Catálogo de símbolos reais</h5></div><p className="mt-1 text-xs leading-5 text-[#657063] dark:text-[#B6BDB2]">Os desenhos abaixo são referências ISO 7000 em SVG, não ícones redesenhados pelo N-simple. A função do comando no trator específico deve ser confirmada no manual.</p></div><a href="https://www.iso.org/standard/60092.html" target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-[#4E794A]">ISO 3767-2 ↗</a></div>
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><Info className="size-4 text-[#5A7D54]"/><h5 className="font-bold text-sm">Catálogo de símbolos reais</h5></div><p className="mt-1 text-xs leading-5 text-[#657063] dark:text-[#B6BDB2]">As imagens de referência ISO 7000 são carregadas em SVG. Se a fonte externa estiver indisponível, um pictograma ilustrativo identifica visualmente a função sem se passar pelo desenho normativo. Confirme a função no manual do trator.</p></div><a href="https://www.iso.org/standard/60092.html" target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-[#4E794A]">ISO 3767-2 ↗</a></div>
                 <div className="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {TRACTOR_SYMBOLS.map(s=><article key={s.id} className="border-t border-[#DDE4D8] dark:border-[#364132] py-3">
-                    <div className="h-24 bg-[#F3F5F0] dark:bg-[#252C23] flex items-center justify-center"><img src={s.imageUrl} alt={s.title+' — '+s.iso} className="h-20 w-20 object-contain" loading="lazy" onError={e=>{e.currentTarget.style.display="none";}}/></div>
+                    <div className="h-24 bg-[#F3F5F0] dark:bg-[#252C23] flex items-center justify-center"><TractorSymbolImage symbol={s} className="h-20 w-20"/></div>
                     <div className="mt-3 text-xs font-bold text-[#30382E] dark:text-[#EEF1E9]">{s.title}</div>
                     <div className="mt-1 text-[10px] font-bold text-[#5A7D54]">{s.iso}</div>
                     <p className="mt-1 text-[10px] leading-4 text-[#687064] dark:text-[#B6BDB2]">{s.meaning}</p>
@@ -161,7 +162,7 @@ export default function MecanizacaoTratores(){
                                 return <button type="button" key={symbol.id} title={symbol.title} aria-label={symbol.title+' — '+symbol.iso}
                                   onClick={()=>{const next=[...mapping];next[li]=oi;setAnswers(c=>({...c,[key]:next}));setCheckedAnswers(c=>({...c,[key]:false}));}}
                                   className={'rounded-xl border p-2 transition '+(right?'border-[#5A7D54] bg-[#EDF5E9]':wrong?'border-red-400/60 bg-red-50 dark:bg-red-950/20':selectedHere?'border-[#7A936B] bg-[#F4F7F0] dark:bg-[#273022]':'border-[#E0DFD6] dark:border-[#353C30] hover:border-[#7A936B]')}>
-                                  <span className="block h-16 rounded-lg bg-[#F5F6F1] dark:bg-[#252C23] p-2"><img src={symbol.imageUrl} alt="" className="h-full w-full object-contain" loading="lazy" onError={e=>{e.currentTarget.style.display='none';}}/></span>
+                                  <span className="block h-16 rounded-lg bg-[#F5F6F1] dark:bg-[#252C23] p-2"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></span>
                                   <span className="mt-2 block text-[9px] font-semibold text-[#687064] dark:text-[#B6BDB2]">Símbolo</span>
                                 </button>;
                               })}
