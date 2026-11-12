@@ -16,7 +16,7 @@ const EXTERIOR_SOURCE = 'https://3dassets.dev/assets/arable-fields-and-farm-mach
 
 function disposeObject3D(root: THREE.Object3D) {
   root.traverse(object => {
-    if (!(object instanceof THREE.Mesh)) return;
+    if (!(object instanceof THREE.Mesh || object instanceof THREE.LineSegments || object instanceof THREE.Points)) return;
     object.geometry.dispose();
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     materials.forEach(material => {
