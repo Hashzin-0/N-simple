@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { BookOpen, CheckCircle2, CircleHelp, ClipboardList, GraduationCap, RotateCcw, Shuffle, Sparkles, Sprout } from 'lucide-react';
 import SoybeanProductivityGenerator from '@/components/SoybeanProductivityGenerator';
+import OtherCropProductivityGenerator from '@/components/OtherCropProductivityGenerator';
 import {
   createRandomStudyPlan,
   getIndividualStudyExercises,
@@ -57,6 +58,7 @@ export default function SoybeanStudySection() {
   const [showSolution, setShowSolution] = useState(false);
   const [score, setScore] = useState(0);
   const [showProductivityGenerator, setShowProductivityGenerator] = useState(false);
+  const [showOtherCropGenerator, setShowOtherCropGenerator] = useState(false);
 
   const current = selected ?? plan[planIndex] ?? null;
   const isPlan = plan.length > 0;
@@ -120,6 +122,14 @@ export default function SoybeanStudySection() {
     );
   }
 
+  if (showOtherCropGenerator) {
+    return (
+      <section id="soybean_studies" className="w-full space-y-6 border-t border-[#E5E2D9] px-4 py-8 sm:px-6 lg:px-8 dark:border-[#343B30]">
+        <OtherCropProductivityGenerator onBack={() => setShowOtherCropGenerator(false)} />
+      </section>
+    );
+  }
+
   const cardClass = 'rounded-2xl border border-[#E5E2D9] bg-white dark:border-[#343B30] dark:bg-[#20251E]';
   const mutedClass = 'text-[#777468] dark:text-[#A6A395]';
 
@@ -152,6 +162,14 @@ export default function SoybeanStudySection() {
           <span><span className="block text-sm font-bold text-[#454638] dark:text-[#E8E7DF]">Gerador aleatório de produtividade de soja</span><span className={'mt-1 block text-xs ' + mutedClass}>Escolha o nível e a quantidade. Receba somente exercícios numéricos gerados na hora.</span></span>
         </span>
         <span className="shrink-0 text-xs font-bold text-[#2E6F40] dark:text-[#A8C69A]">Entrar →</span>
+      </button>
+
+      <button type="button" onClick={() => setShowOtherCropGenerator(true)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-[#557A91]/25 bg-[#557A91]/[0.06] p-4 text-left transition hover:border-[#557A91]/50 hover:bg-[#557A91]/[0.1] dark:border-[#557A91]/40 dark:bg-[#557A91]/10">
+        <span className="flex items-center gap-3">
+          <span className="rounded-xl bg-[#557A91]/10 p-2 text-[#557A91] dark:text-[#9DC0D2]"><Sparkles className="h-5 w-5" /></span>
+          <span><span className="block text-sm font-bold text-[#454638] dark:text-[#E8E7DF]">Gerador de produtividade de outras culturas</span><span className={'mt-1 block text-xs ' + mutedClass}>Sorgo granífero, trigo, arroz, feijão e girassol. Selecione cultura, nível e quantidade.</span></span>
+        </span>
+        <span className="shrink-0 text-xs font-bold text-[#557A91] dark:text-[#9DC0D2]">Entrar →</span>
       </button>
 
       <p className={'-mt-3 text-xs leading-relaxed ' + mutedClass}>Nas respostas abertas, a correção considera grupos de conceitos essenciais e aceita diferentes formulações. A resolução explica os pontos esperados.</p>
