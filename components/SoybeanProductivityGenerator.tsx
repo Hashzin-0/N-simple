@@ -138,7 +138,7 @@ export default function SoybeanProductivityGenerator({ onBack }: Props) {
   };
 
   const checkCurrent = () => {
-    if (!current) return;
+    if (!current || (checked && allCorrect)) return;
     const totalCorrect = current.answers.filter((answer) => answerIsCorrect(answer, values[answer.key] ?? '')).length;
     setChecked(true);
     if (totalCorrect === current.answers.length) setScore((previous) => previous + 1);
@@ -221,7 +221,7 @@ export default function SoybeanProductivityGenerator({ onBack }: Props) {
           <div className={cardClass + ' flex flex-wrap items-center justify-between gap-3 p-4'}>
             <div>
               <p className="text-xs font-bold text-[#2E6F40] dark:text-[#A8C69A]">{modeLabels[mode]} · {activities.length} atividades</p>
-              <p className={'mt-1 text-xs ' + mutedClass}>Conjunto verificado por hash SHA-256 · {hashPreview}…</p>
+              <p className={'mt-1 text-xs ' + mutedClass}>Conjunto identificado por hash de conteúdo · {hashPreview}…</p>
               {notice && <p className="mt-1 text-xs text-[#2E6F40] dark:text-[#A8C69A]">{notice}</p>}
               {storageWarning && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Comparação persistente indisponível; hash mantido apenas na sessão.</p>}
             </div>
