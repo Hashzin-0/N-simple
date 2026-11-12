@@ -42,37 +42,104 @@ const QUIZ: QuizStep[] = [
 ];
 
 function buildCab(scene: THREE.Scene) {
-  const root = new THREE.Group();
-  const mat = (color:string, roughness=0.72, metalness=0) => new THREE.MeshStandardMaterial({color,roughness,metalness});
-  const dark=mat('#252A25'), frame=mat('#657064',0.55,0.45), glass=new THREE.MeshStandardMaterial({color:'#8BA6A0',transparent:true,opacity:0.2,roughness:0.12,metalness:0.1}), seat=mat('#303A2F');
-  const addBox=(name:string,size:[number,number,number],pos:[number,number,number],material:THREE.Material)=>{
-    const mesh=new THREE.Mesh(new THREE.BoxGeometry(...size),material); mesh.name=name; mesh.position.set(...pos); mesh.castShadow=true; mesh.receiveShadow=true; root.add(mesh); return mesh;
+  // Reconstrução didática do posto de operação John Deere 5078E Série 5E cabinado.
+  // Não é CAD OEM: dimensões e posições são aproximadas para visualização e ensino.
+  const root=new THREE.Group();
+  const mat=(color:string,roughness=.72,metalness=0)=>new THREE.MeshStandardMaterial({color,roughness,metalness});
+  const green=mat('#36733A',.48,.12),dark=mat('#20251F'),panel=mat('#303630'),metal=mat('#737A70',.55,.4);
+  const seat=mat('#252B25'),rubber=mat('#171B18',.95),yellow=mat('#E4B82F'),red=mat('#C94B3D'),white=mat('#DCE4D9',.35);
+  const glass=new THREE.MeshStandardMaterial({color:'#91B6B7',transparent:true,opacity:.16,roughness:.1,side:THREE.DoubleSide});
+  const box=(name:string,size:[number,number,number],pos:[number,number,number],material:THREE.Material,rot?:[number,number,number])=>{
+    const m=new THREE.Mesh(new THREE.BoxGeometry(...size),material);m.name=name;m.position.set(...pos);if(rot)m.rotation.set(...rot);m.castShadow=true;m.receiveShadow=true;root.add(m);return m;
   };
-  addBox('floor',[2.2,.12,2.5],[0,.35,0],dark);
-  addBox('roof',[2.15,.12,2.3],[0,2.55,-.1],frame);
-  for(const x of [-1,1]) for(const z of [-1,1]) addBox('cab-post',[.09,2.15,.09],[x,1.48,z-.1],frame);
-  addBox('windscreen',[1.9,1.45,.025],[0,1.65,-1.02],glass);
-  addBox('rear-glass',[1.9,1.45,.025],[0,1.65,1.03],glass);
-  addBox('left-window',[.025,1.45,1.9],[-1,1.65,-.05],glass);
-  addBox('right-window',[.025,1.45,1.9],[1,1.65,-.05],glass);
-  addBox('dashboard',[1.55,.38,.42],[0,1.18,-.78],dark);
-  addBox('seat-base',[.62,.16,.62],[0,.68,.55],frame);
-  addBox('seat-cushion',[.68,.18,.58],[0,.9,.55],seat);
-  addBox('seat-back',[.68,.78,.16],[0,1.28,.82],seat);
-  const wheel=new THREE.Mesh(new THREE.TorusGeometry(.31,.045,10,36),dark); wheel.name='steering-wheel'; wheel.position.set(-.42,1.28,-.42); wheel.rotation.x=0.35; root.add(wheel);
-  const steeringColumn=new THREE.Mesh(new THREE.CylinderGeometry(.045,.055,.55,12),frame); steeringColumn.position.set(-.42,1.02,-.42); steeringColumn.rotation.x=-.5; root.add(steeringColumn);
-  const lever=(name:string,x:number,z:number,height:number)=>{
-    const group=new THREE.Group(); group.name=name; group.position.set(x,.42,z);
-    const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.025,.035,height,10),frame); shaft.position.y=height/2; group.add(shaft);
-    const knob=new THREE.Mesh(new THREE.SphereGeometry(.09,16,12),dark); knob.position.y=height; group.add(knob); root.add(group); return group;
+  const cyl=(name:string,r:number,h:number,pos:[number,number,number],material:THREE.Material,rot:[number,number,number]=[0,0,0])=>{
+    const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,18),material);m.name=name;m.position.set(...pos);m.rotation.set(...rot);m.castShadow=true;root.add(m);return m;
   };
-  lever('rockshaft',.55,-.2,.48); lever('remote-cylinder',.78,-.05,.4); lever('gear-lever',.22,.22,.38); lever('pto-cw',-.78,.1,.32);
-  const pedal=addBox('diff-lock',[.16,.07,.3],[.55,.45,-.48],frame); pedal.rotation.x=-.25;
-  const lightSwitch=new THREE.Mesh(new THREE.CylinderGeometry(.065,.065,.1,16),dark); lightSwitch.name='position-lights'; lightSwitch.rotation.x=Math.PI/2; lightSwitch.position.set(.62,1.35,-.96); root.add(lightSwitch);
-  scene.add(root);
-  return root;
-}
+  const lever=(name:string,x:number,z:number,h:number,color=dark)=>{
+    const g=new THREE.Group();g.name=name;g.position.set(x,.42,z);
+    const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.022,.032,h,10),metal);shaft.position.y=h/2;g.add(shaft);
+    const knob=new THREE.Mesh(new THREE.SphereGeometry(.075,16,12),color);knob.position.y=h;g.add(knob);
+    const boot=new THREE.Mesh(new THREE.CylinderGeometry(.075,.09,.1,12),rubber);boot.position.y=.07;g.add(boot);root.add(g);return g;
+  };
+  const sw=(name:string,x:number,y:number,z:number,color=dark)=>{
+    const g=new THREE.Group();g.name=name;g.position.set(x,y,z);
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(.07,.075,.07,16),panel);base.rotation.x=Math.PI/2;g.add(base);
+    const cap=new THREE.Mesh(new THREE.CylinderGeometry(.045,.05,.045,16),color);cap.rotation.x=Math.PI/2;cap.position.z=-.05;g.add(cap);root.add(g);
+  };
 
+  // Cabine, piso plano, colunas, vidros e teto.
+  box('cab-floor',[2.05,.14,2.55],[0,.34,.02],panel);
+  box('cab-roof',[2.12,.16,2.3],[0,2.48,-.02],green);
+  box('roof-liner',[1.98,.045,2.16],[0,2.38,-.02],dark);
+  for(const x of [-.98,.98])for(const z of [-1.02,1.04])box('cab-pillar',[.085,2.08,.09],[x,1.38,z],green);
+  box('front-windscreen',[1.84,1.58,.025],[0,1.55,-1.08],glass);
+  box('rear-window',[1.84,1.52,.025],[0,1.54,1.08],glass);
+  box('left-window',[.025,1.52,1.98],[-1,1.55,.02],glass);
+  box('right-window',[.025,1.52,1.98],[1,1.55,.02],glass);
+  box('front-roof-header',[2,.12,.12],[0,2.31,-1.03],green);
+  box('rear-roof-header',[2,.12,.12],[0,2.31,1.03],green);
+
+  // Assento, braços, volante e coluna de direção.
+  box('seat-suspension',[.48,.25,.48],[0,.57,.58],metal);
+  box('seat-base',[.62,.14,.58],[0,.76,.58],dark);
+  box('seat-cushion',[.68,.18,.62],[0,.91,.58],seat);
+  box('seat-back',[.68,.76,.17],[0,1.3,.85],seat,[-.12,0,0]);
+  box('left-armrest',[.12,.09,.42],[-.43,1.12,.61],dark);
+  box('right-armrest',[.12,.09,.42],[.43,1.12,.61],dark);
+  const wheel=new THREE.Mesh(new THREE.TorusGeometry(.29,.035,10,40),dark);wheel.name='steering-wheel';wheel.position.set(-.03,1.42,-.55);wheel.rotation.x=.42;root.add(wheel);
+  cyl('steering-column',.045,.58,[-.03,1.13,-.55],metal,[.42,0,0]);
+
+  // Painel dianteiro e conjunto de instrumentos.
+  box('front-dashboard',[1.35,.35,.38],[0,1.34,-.92],dark,[.12,0,0]);
+  box('instrument-cluster',[.68,.29,.055],[0,1.58,-.91],panel,[.12,0,0]);
+  box('digital-display',[.29,.14,.012],[0,1.59,-.945],white);
+  for(const x of [-.24,.24]){
+    const dial=cyl('instrument-gauge',.085,.025,[x,1.59,-.95],white,[Math.PI/2,0,0]);
+    box('gauge-needle',[.012,.065,.012],[x,1.6,-.97],red);
+  }
+  sw('light-switch',-.55,1.42,-.95);sw('high-beam-switch',-.36,1.42,-.95,yellow);
+  sw('hazard-switch',.39,1.42,-.95,red);sw('wiper-switch',.57,1.42,-.95);
+  cyl('ignition-switch',.045,.09,[.68,1.32,-.92],yellow,[Math.PI/2,0,0]);
+
+  // Pedais dianteiros: embreagem, freios separados, acelerador e diferencial.
+  const pedal=(name:string,x:number,z:number,w=.16)=>{
+    box(name+'-arm',[.055,.28,.055],[x,.55,z],metal,[.25,0,0]);
+    box(name,[w,.07,.2],[x,.42,z-.08],rubber,[.25,0,0]);
+  };
+  pedal('clutch-pedal',-.48,-.65,.17);pedal('left-brake-pedal',-.2,-.67,.15);
+  pedal('right-brake-pedal',.02,-.67,.15);pedal('accelerator-pedal',.38,-.62,.12);
+  pedal('diff-lock',.68,-.48,.13);
+
+  // Console direito: VCRs, acelerador manual, levante, limitador, controle de tração,
+  // alavancas de câmbio e grupos.
+  box('right-console-base',[.48,.16,1.42],[.78,.83,.04],green,[0,-.06,0]);
+  box('right-console-top',[.46,.08,1.34],[.78,.94,.04],panel,[0,-.06,0]);
+  box('right-console-side',[.055,.42,1.32],[1.01,.75,.04],dark);
+  lever('remote-valve-1',.66,-.42,.42);lever('remote-valve-2',.82,-.18,.44);lever('remote-valve-3',.96,.04,.4);
+  lever('manual-throttle',.62,.34,.3,yellow);lever('rockshaft',.84,.34,.42);
+  lever('draft-control',.98,.55,.34);lever('gear-lever',.62,.75,.48);lever('range-lever',.86,.78,.4);
+  cyl('rockshaft-height-limiter',.065,.13,[.99,1.02,.73],yellow,[Math.PI/2,0,0]);
+  cyl('rockshaft-drop-speed-knob',.06,.12,[.66,1.02,.76],dark,[Math.PI/2,0,0]);
+
+  // Console esquerdo: tração dianteira e acionamento da TDP.
+  box('left-console-base',[.4,.14,1.1],[-.79,.82,.12],green,[0,.06,0]);
+  box('left-console-top',[.38,.07,1.04],[-.79,.92,.12],panel,[0,.06,0]);
+  lever('front-wheel-drive',-.72,.05,.36);lever('pto-engagement',-.88,.38,.42,yellow);
+  lever('pto-economy',-.68,.62,.32);
+
+  // Comandos traseiros: ajuste de velocidade de descida e TDP econômica.
+  box('rear-control-panel',[.72,.28,.07],[0,1.12,.99],dark);
+  cyl('rear-lowering-speed-valve',.07,.1,[-.22,1.12,.94],yellow,[Math.PI/2,0,0]);
+  lever('rear-pto-economy',.24,.88,.26,yellow);
+
+  // Limpador e retrovisores.
+  box('wiper-arm',[.025,.5,.025],[0,1.9,-1.045],dark,[0,0,-.2]);
+  for(const x of [-1.12,1.12]){
+    box('mirror-arm',[.035,.035,.42],[x,1.72,-.55],metal,[0,0,.15]);
+    box('side-mirror',[.16,.28,.07],[x*1.04,1.83,-.34],dark);
+  }
+  scene.add(root);return root;
+}
 function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef }: {
   mode:ViewMode; modelSpeed:number; onLoadState:(state:'loading'|'ready'|'error'|'unsupported')=>void; activeAnchor:string; calloutRef:{current:HTMLDivElement|null};
 }) {
@@ -87,7 +154,7 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
   useEffect(()=>{
     const element=host.current;
     if(!element) return;
-    let disposed=false, frame=0, mixer:THREE.AnimationMixer|undefined, action:THREE.AnimationAction|undefined, lastAnchor='';
+    let disposed=false, frame=0, mixer:THREE.AnimationMixer|undefined, action:THREE.AnimationAction|undefined, lastAnchor='', lastMode:ViewMode|undefined;
     const scene=new THREE.Scene(); scene.background=new THREE.Color('#e8ece4');
     scene.fog=new THREE.Fog('#e8ece4',12,30);
     const camera=new THREE.PerspectiveCamera(42,1,.1,100);
@@ -135,6 +202,11 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
       frame=requestAnimationFrame(animate);
       const cabMode=modeRef.current==='cab';
       cabRoot.visible=cabMode; if(tractorRoot) tractorRoot.visible=!cabMode; fallback.visible=!cabMode&&!tractorRoot;
+      if(cabMode&&lastMode!=='cab'){
+        camera.position.set(0,1.72,3.25);controls.target.set(0,1.25,-.45);controls.update();lastMode='cab';
+      } else if(!cabMode&&lastMode!=='exterior'){
+        camera.position.set(7,4.5,8);controls.target.set(0,1,0);controls.update();lastMode='exterior';
+      }
       if(cabMode){
         const anchor=anchorRef.current;
         if(anchor!==lastAnchor){
@@ -144,8 +216,8 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
           target?.traverse(node=>{if(node instanceof THREE.Mesh){const materials=Array.isArray(node.material)?node.material:[node.material];materials.forEach(material=>{if(material instanceof THREE.MeshStandardMaterial)material.emissive.set('#75B95E');});}});
           lastAnchor=anchor;
         }
-        camera.position.lerp(new THREE.Vector3(0,1.72,3.25),.035);controls.target.lerp(new THREE.Vector3(0,1.25,-.45),.035);controls.minDistance=1.8;controls.maxDistance=5;}
-      else {camera.position.lerp(new THREE.Vector3(7,4.5,8),.025);controls.target.lerp(new THREE.Vector3(0,1,0),.025);controls.minDistance=2.5;controls.maxDistance=14;}
+        controls.minDistance=1.8;controls.maxDistance=5;}
+      else {controls.minDistance=2.5;controls.maxDistance=14;}
       const scale=Math.max(-2.5,Math.min(2.5,speedRef.current/12));
       if(action) action.timeScale=scale;
       else wheelPivots.forEach(w=>{w.rotation.x-=scale*.025;});
@@ -175,8 +247,8 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
 }
 
 export default function Tractor3DLearning() {
-  const [mode,setMode]=useState<ViewMode>('exterior');
-  const [tractorId,setTractorId]=useState(TRACTORS[0].id);
+  const [mode,setMode]=useState<ViewMode>('cab');
+  const [tractorId,setTractorId]=useState('john-deere-5705');
   const [gearId,setGearId]=useState(TRACTORS[0].gears[0].id);
   const [rpm,setRpm]=useState(TRACTORS[0].nominalRpm);
   const [range,setRange]=useState<'turtle'|'hare'>('turtle');
@@ -215,7 +287,7 @@ export default function Tractor3DLearning() {
 
   return <section className="space-y-4 border-y border-[#D8DED2] dark:border-[#394334] py-6" id="tratorista_3d">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><div className="flex items-center gap-2"><Tractor className="size-5 text-[#66865B]"/><h4 className="text-lg font-bold">Simulador 3D e cabine interativa</h4></div><p className="mt-1 max-w-3xl text-xs leading-5 text-[#788074] dark:text-[#AAB2A5]">Exterior genérico CC0 com cabine didática construída no projeto. Não representa a geometria nem a disposição real dos comandos de um modelo comercial específico.</p></div>
+      <div><div className="flex items-center gap-2"><Tractor className="size-5 text-[#66865B]"/><h4 className="text-lg font-bold">Simulador 3D e cabine interativa</h4></div><p className="mt-1 max-w-3xl text-xs leading-5 text-[#788074] dark:text-[#AAB2A5]">Cabine didática John Deere 5078E Série 5E, reconstruída a partir da documentação do fabricante. A malha é uma interpretação 3D educacional, não um arquivo CAD OEM.</p></div>
       <div className="flex gap-2">
         <button type="button" onClick={()=>setMode('exterior')} className={'rounded-lg border px-3 py-2 text-xs font-semibold '+(mode==='exterior'?'bg-[#EAF1E5] border-[#78966D]':'border-[#D9DED4]')}>Exterior 3D</button>
         <button type="button" onClick={()=>setMode('cab')} className={'rounded-lg border px-3 py-2 text-xs font-semibold '+(mode==='cab'?'bg-[#EAF1E5] border-[#78966D]':'border-[#D9DED4]')}>Cabine didática</button>
@@ -230,7 +302,7 @@ export default function Tractor3DLearning() {
             <svg width="100" height="60" viewBox="0 0 100 60" className="overflow-visible"><path d="M0 30 L95 30" stroke="#54784A" strokeWidth="2.5" fill="none" strokeDasharray="5 3"/><circle cx="95" cy="30" r="4" fill="#54784A"/></svg>
           </motion.div></AnimatePresence>}
           <div className="absolute left-3 top-3 rounded-lg bg-white/90 px-3 py-2 text-[10px] font-semibold text-[#344132]">
-            {mode==='cab'?'REPRESENTAÇÃO DIDÁTICA — NÃO É CABINE OEM':'MODELO EXTERNO GENÉRICO CC0'}
+            {mode==='cab'?'JOHN DEERE 5078E — CABINE DIDÁTICA':'MODELO EXTERNO GENÉRICO CC0'}
           </div>
           <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-2 text-[10px] text-[#344132]">
             {loadState==='loading'?'Carregando modelo 3D…':loadState==='unsupported'?'WebGL indisponível neste dispositivo':loadState==='error'?'Modelo externo indisponível — visual alternativo':'Modelo 3D carregado'}
@@ -259,10 +331,10 @@ export default function Tractor3DLearning() {
         <div className="h-1.5 rounded-full bg-[#E9EDE5] overflow-hidden"><div className="h-full bg-[#66865B] transition-all" style={{width:((stepIndex%QUIZ.length+1)/QUIZ.length*100)+'%'}}/></div>
         <AnimatePresence mode="wait">
           <motion.div key={step.symbolId} initial={{opacity:0,x:40}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-40}} transition={{duration:.2}} className="space-y-3">
-            {mode==='cab'&&symbol?<div className="flex items-center gap-3 rounded-lg bg-[#F2F5EF] dark:bg-[#252D22] p-3"><div className="h-16 w-16 shrink-0 rounded-lg bg-white p-2"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></div><div><b className="text-xs">{symbol.iso}</b><p className="text-[10px] text-[#788074]">{step.control}</p><p className="text-[9px] text-[#788074]">Componente didático destacado</p></div></div>:<p className="text-xs text-[#788074]">Ative a cabine didática para visualizar o símbolo conectado ao comando em 3D.</p>}
+            {mode==='cab'&&symbol?<div className="flex items-center gap-3 rounded-lg bg-[#F2F5EF] dark:bg-[#252D22] p-3"><div className="h-16 w-16 shrink-0 rounded-lg bg-white p-2"><TractorSymbolImage symbol={symbol} revealMeaning={false} className="h-full w-full"/></div><div><b className="text-xs">{symbol.iso}</b><p className="text-[10px] text-[#788074]">Observe o pictograma e identifique sua função.</p></div></div>:<p className="text-xs text-[#788074]">Ative a cabine John Deere para visualizar o símbolo conectado ao comando em 3D.</p>}
             <p className="text-sm font-semibold leading-5">{step.question}</p>
             <div className="space-y-2">{choices.map((option,index)=><button key={option} type="button" disabled={submitted} onClick={()=>setAnswer(index)} className={'w-full rounded-lg border p-3 text-left text-xs leading-5 transition '+(answer===index?'border-[#68895D] bg-[#EDF3E9] dark:bg-[#2A3526]':'border-[#E0E5DC] dark:border-[#394334] hover:border-[#9DAF94]')}>{option}</button>)}</div>
-            {submitted&&<div role="status" className={'rounded-lg p-3 text-xs leading-5 '+(answer===0?'bg-[#EDF5E9] text-[#426B3B]':'bg-[#FBF2E5] text-[#87602D]')}>{answer===0?'Resposta correta.':'Resposta incorreta.'} {symbol?.meaning}</div>}
+            {submitted&&<div role="status" className={'rounded-lg p-3 text-xs leading-5 '+(answer===0?'bg-[#EDF5E9] text-[#426B3B]':'bg-[#FBF2E5] text-[#87602D]')}><b>{answer===0?'Resposta correta.':'Resposta incorreta.'} {symbol?.title}</b><p className="mt-1">{symbol?.meaning}</p><p className="mt-1 text-[10px]">{symbol?.application}</p></div>}
           </motion.div>
         </AnimatePresence>
         <div className="flex flex-wrap gap-2">
@@ -273,6 +345,6 @@ export default function Tractor3DLearning() {
         <p className="text-[9px] leading-4 text-[#858C82]">A cabine é uma maquete interativa criada para ensino. A posição física real dos comandos varia conforme fabricante, série, ano, versão e opcionais; consulte sempre o manual específico.</p>
       </aside>
     </div>
-    <div className="rounded-lg bg-[#F3F5F0] dark:bg-[#252D22] p-3 text-[10px] leading-5 text-[#697366] dark:text-[#B6C0B1]"><Info className="inline size-3 mr-1"/> Modelo externo: Mid-size row-crop tractor, 3DAssets.dev, CC0 1.0, 6.444 triângulos, animações open/close/wheel-roll. É um projeto genérico de 150 hp, não é um John Deere, Massey Ferguson, Valtra ou New Holland. A cabine é geometria original procedural do N-simple e não é uma reprodução OEM.</div>
+    <div className="rounded-lg bg-[#F3F5F0] dark:bg-[#252D22] p-3 text-[10px] leading-5 text-[#697366] dark:text-[#B6C0B1]"><Info className="inline size-3 mr-1"/> Referência da cabine: John Deere 5078E Série 5E cabinado. A disposição dos comandos foi reconstruída a partir da página oficial do modelo e do guia/manual de operação da Série 5E. A geometria é educacional e não substitui o manual do número de série e da configuração efetiva.</div>
   </section>;
 }
