@@ -87,7 +87,7 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
   useEffect(()=>{
     const element=host.current;
     if(!element) return;
-    let disposed=false, frame=0, mixer:THREE.AnimationMixer|undefined, action:THREE.AnimationAction|undefined, lastAnchor='';
+    let disposed=false, frame=0, mixer:THREE.AnimationMixer|undefined, action:THREE.AnimationAction|undefined, lastAnchor='', lastMode:ViewMode|undefined;
     const scene=new THREE.Scene(); scene.background=new THREE.Color('#e8ece4');
     scene.fog=new THREE.Fog('#e8ece4',12,30);
     const camera=new THREE.PerspectiveCamera(42,1,.1,100);
@@ -136,6 +136,13 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
       const cabMode=modeRef.current==='cab';
       cabRoot.visible=cabMode; if(tractorRoot) tractorRoot.visible=!cabMode; fallback.visible=!cabMode&&!tractorRoot;
       if(cabMode){
+        if(lastMode!=='cab'){
+          camera.position.set(0,1.72,3.25);
+          controls.target.set(0,1.25,-.45);
+          controls.minDistance=1.2;
+          controls.maxDistance=6;
+          controls.update();
+        }
         const anchor=anchorRef.current;
         if(anchor!==lastAnchor){
           if(lastAnchor){const previousName=lastAnchor==='rockshaft-up'||lastAnchor==='rockshaft-down'?'rockshaft':lastAnchor;const previous=cabRoot.getObjectByName(previousName);previous?.traverse(node=>{if(node instanceof THREE.Mesh){const materials=Array.isArray(node.material)?node.material:[node.material];materials.forEach(material=>{if(material instanceof THREE.MeshStandardMaterial)material.emissive.set('#000000');});}});}
@@ -144,8 +151,15 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
           target?.traverse(node=>{if(node instanceof THREE.Mesh){const materials=Array.isArray(node.material)?node.material:[node.material];materials.forEach(material=>{if(material instanceof THREE.MeshStandardMaterial)material.emissive.set('#75B95E');});}});
           lastAnchor=anchor;
         }
-        camera.position.lerp(new THREE.Vector3(0,1.72,3.25),.035);controls.target.lerp(new THREE.Vector3(0,1.25,-.45),.035);controls.minDistance=1.8;controls.maxDistance=5;}
-      else {camera.position.lerp(new THREE.Vector3(7,4.5,8),.025);controls.target.lerp(new THREE.Vector3(0,1,0),.025);controls.minDistance=2.5;controls.maxDistance=14;}
+      }
+      else if(lastMode==='cab'){
+        camera.position.set(7,4.5,8);
+        controls.target.set(0,1,0);
+        controls.minDistance=2.5;
+        controls.maxDistance=14;
+        controls.update();
+      }
+      lastMode=modeRef.current;
       const scale=Math.max(-2.5,Math.min(2.5,speedRef.current/12));
       if(action) action.timeScale=scale;
       else wheelPivots.forEach(w=>{w.rotation.x-=scale*.025;});
@@ -259,10 +273,10 @@ export default function Tractor3DLearning() {
         <div className="h-1.5 rounded-full bg-[#E9EDE5] overflow-hidden"><div className="h-full bg-[#66865B] transition-all" style={{width:((stepIndex%QUIZ.length+1)/QUIZ.length*100)+'%'}}/></div>
         <AnimatePresence mode="wait">
           <motion.div key={step.symbolId} initial={{opacity:0,x:40}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-40}} transition={{duration:.2}} className="space-y-3">
-            {mode==='cab'&&symbol?<div className="flex items-center gap-3 rounded-lg bg-[#F2F5EF] dark:bg-[#252D22] p-3"><div className="h-16 w-16 shrink-0 rounded-lg bg-white p-2"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></div><div><b className="text-xs">{symbol.iso}</b><p className="text-[10px] text-[#788074]">{step.control}</p><p className="text-[9px] text-[#788074]">Componente didático destacado</p></div></div>:<p className="text-xs text-[#788074]">Ative a cabine didática para visualizar o símbolo conectado ao comando em 3D.</p>}
+            {mode==='cab'&&symbol?<div className="flex items-center gap-3 rounded-lg bg-[#F2F5EF] dark:bg-[#252D22] p-3"><div className="h-16 w-16 shrink-0 rounded-lg bg-white p-2"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></div><div><b className="text-xs">{symbol.iso}</b><p className="text-[9px] text-[#788074]">Identifique o símbolo</p></div></div>:<p className="text-xs text-[#788074]">Ative a cabine didática para visualizar o símbolo conectado ao comando em 3D.</p>}
             <p className="text-sm font-semibold leading-5">{step.question}</p>
             <div className="space-y-2">{choices.map((option,index)=><button key={option} type="button" disabled={submitted} onClick={()=>setAnswer(index)} className={'w-full rounded-lg border p-3 text-left text-xs leading-5 transition '+(answer===index?'border-[#68895D] bg-[#EDF3E9] dark:bg-[#2A3526]':'border-[#E0E5DC] dark:border-[#394334] hover:border-[#9DAF94]')}>{option}</button>)}</div>
-            {submitted&&<div role="status" className={'rounded-lg p-3 text-xs leading-5 '+(answer===0?'bg-[#EDF5E9] text-[#426B3B]':'bg-[#FBF2E5] text-[#87602D]')}>{answer===0?'Resposta correta.':'Resposta incorreta.'} {symbol?.meaning}</div>}
+            {submitted&&<div role="status" className={'rounded-lg p-3 text-xs leading-5 '+(answer===0?'bg-[#EDF5E9] text-[#426B3B]':'bg-[#FBF2E5] text-[#87602D]')}><b>{answer===0?'Resposta correta.':'Resposta incorreta.'} {symbol?.title}</b><p className="mt-1">{symbol?.meaning}</p><p className="mt-1 text-[10px] opacity-80">{symbol?.application}</p></div>}
           </motion.div>
         </AnimatePresence>
         <div className="flex flex-wrap gap-2">
