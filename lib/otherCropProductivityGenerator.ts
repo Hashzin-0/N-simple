@@ -1,6 +1,6 @@
 import type { StudyAnswer, StudyDifficulty, StudyValue } from '@/lib/agronomyStudy';
 
-export type OtherCropId = 'sorghum' | 'wheat' | 'rice' | 'common-bean' | 'sunflower';
+export type OtherCropId = 'sorghum' | 'wheat' | 'rice' | 'common-bean' | 'sunflower' | 'peanut' | 'sugarcane';
 export type CropGenerationMode = 'basic' | 'intermediate' | 'advanced' | 'balanced';
 
 export interface CropProductivityExercise {
@@ -30,6 +30,8 @@ export const OTHER_CROP_OPTIONS: Array<{ value: OtherCropId; label: string }> = 
   { value: 'rice', label: 'Arroz (grãos)' },
   { value: 'common-bean', label: 'Feijão (grãos secos)' },
   { value: 'sunflower', label: 'Girassol (aquênios)' },
+  { value: 'peanut', label: 'Amendoim (em casca)' },
+  { value: 'sugarcane', label: 'Cana-de-açúcar' },
 ];
 
 interface CropDefinition {
@@ -39,6 +41,7 @@ interface CropDefinition {
   yieldTargets: number[];
   source: string[];
   componentDescription: string;
+  yieldUnit?: 'kg/ha' | 't/ha';
 }
 
 const CROP_DEFINITIONS: Record<OtherCropId, CropDefinition> = {
@@ -85,6 +88,29 @@ const CROP_DEFINITIONS: Record<OtherCropId, CropDefinition> = {
       'https://www.embrapa.br/en/web/agencia-de-informacao-tecnologica/cultivos/feijao/pre-producao/fisiologia',
     ],
     componentDescription: 'vagens por metro quadrado, grãos por vagem e massa de mil sementes',
+  },
+  peanut: {
+    name: 'Amendoim (em casca)',
+    minYield: 1500,
+    maxYield: 5500,
+    yieldTargets: [1600, 1800, 2000, 2200, 2400, 2600, 2800, 3000, 3200, 3400, 3600, 3800, 4000, 4200, 4400, 4600, 4800, 5000, 5200, 5400],
+    source: [
+      'https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/578407/1/500perguntasamendoim.pdf',
+      'https://www.infoteca.cnptia.embrapa.br/bitstream/doc/956886/1/BOLPES93.pdf',
+    ],
+    componentDescription: 'plantas por metro quadrado, vagens por planta e massa de cem vagens',
+  },
+  sugarcane: {
+    name: 'Cana-de-açúcar',
+    minYield: 55000,
+    maxYield: 180000,
+    yieldTargets: [60000, 65000, 70000, 75000, 80000, 85000, 90000, 95000, 100000, 105000, 110000, 115000, 120000, 125000, 130000, 135000, 140000, 145000, 150000, 155000, 160000, 165000, 170000, 175000, 180000],
+    source: [
+      'https://www.alice.cnptia.embrapa.br/alice/bitstream/doc/1166988/1/LV-Inovacao-desenvolvimento-2024.pdf',
+      'https://www.embrapa.br/web/agencia-de-informacao-tecnologica/cultivos/cana-de-acucar/producao',
+    ],
+    componentDescription: 'diâmetro e altura médios dos colmos, colmos por metro e espaçamento entre sulcos',
+    yieldUnit: 't/ha',
   },
   sunflower: {
     name: 'Girassol (aquênios)',
@@ -172,6 +198,31 @@ function getComponentSample(crop: OtherCropId, random: () => number): ComponentS
         { label: 'Massa de mil sementes', value: thousandGrainWeight, unit: 'g' },
       ];
       formula = 'Produtividade (kg/ha) = vagens/m² × grãos/vagem × M1000 (g) ÷ 100.';
+    } else if (crop === 'peanut') {
+      const plantsPerM2 = pick([10, 12, 14, 16, 18], random);
+      const podsPerPlant = pick([20, 25, 30, 35, 40], random);
+      const hundredPodWeight = pick([120, 140, 160, 180], random);
+      yieldKgPerHa = plantsPerM2 * podsPerPlant * hundredPodWeight / 10;
+      data = [
+        { label: 'Plantas', value: plantsPerM2, unit: 'plantas/m²' },
+        { label: 'Vagens por planta', value: podsPerPlant, unit: 'vagens' },
+        { label: 'Massa de 100 vagens', value: hundredPodWeight, unit: 'g' },
+      ];
+      formula = 'Produtividade em casca (kg/ha) = plantas/m² × vagens/planta × massa de 100 vagens (g) ÷ 10.';
+    } else if (crop === 'sugarcane') {
+      const stalkDiameter = pick([2, 2.2, 2.4, 2.6, 2.8, 3], random);
+      const stalksPerMeter = pick([8, 10, 12, 14, 16], random);
+      const stalkHeight = pick([150, 175, 200, 225, 250, 275], random);
+      const rowSpacing = pick([1.2, 1.4, 1.5, 1.6], random);
+      const tonsPerHa = stalkDiameter ** 2 * stalksPerMeter * stalkHeight * 0.007854 / rowSpacing;
+      yieldKgPerHa = tonsPerHa * 1000;
+      data = [
+        { label: 'Diâmetro médio do colmo', value: stalkDiameter, unit: 'cm' },
+        { label: 'Colmos por metro', value: stalksPerMeter, unit: 'colmos/m' },
+        { label: 'Altura média do colmo', value: stalkHeight, unit: 'cm' },
+        { label: 'Espaçamento entre sulcos', value: rowSpacing, unit: 'm' },
+      ];
+      formula = 'TCH (t/ha) = diâmetro² (cm) × colmos/m × altura (cm) × 0,007854 ÷ espaçamento (m).';
     } else {
       const population = pick([35000, 40000, 45000, 50000, 55000], random);
       const headsPerPlant = pick([0.9, 1, 1.05], random);
@@ -204,17 +255,19 @@ function makeComponentExercise(
   const definition = CROP_DEFINITIONS[crop];
   const sample = getComponentSample(crop, random);
   const grossKg = sample.yieldKgPerHa;
+  const yieldUnit = definition.yieldUnit ?? 'kg/ha';
+  const displayYield = (value: number) => yieldUnit === 't/ha' ? round(value / 1000) : round(value);
   const lossPercent = pick([2, 3, 4, 5, 6, 7, 8, 9, 10], random);
   const lossKg = grossKg * lossPercent / 100;
   const netKg = grossKg - lossKg;
   const area = pick([5, 8, 10, 15, 20, 25, 30, 40, 50, 75, 100], random);
   const answers: StudyAnswer[] = [
-    { key: 'grossKg', label: 'Produtividade bruta estimada', unit: 'kg/ha', value: round(grossKg), tolerance: 2 },
+    { key: 'grossKg', label: 'Produtividade bruta estimada', unit: yieldUnit, value: displayYield(grossKg), tolerance: yieldUnit === 't/ha' ? 0.02 : 2 },
   ];
   if (difficulty >= 2) {
     answers.push(
-      { key: 'lossKg', label: 'Perda estimada', unit: 'kg/ha', value: round(lossKg), tolerance: 1 },
-      { key: 'netKg', label: 'Produtividade líquida', unit: 'kg/ha', value: round(netKg), tolerance: 2 },
+      { key: 'lossKg', label: 'Perda estimada', unit: yieldUnit, value: displayYield(lossKg), tolerance: yieldUnit === 't/ha' ? 0.02 : 1 },
+      { key: 'netKg', label: 'Produtividade líquida', unit: yieldUnit, value: displayYield(netKg), tolerance: yieldUnit === 't/ha' ? 0.02 : 2 },
     );
   }
   if (difficulty >= 3) {
@@ -243,8 +296,8 @@ function makeComponentExercise(
       sample.formula,
       'Substituindo os valores, a produtividade bruta estimada é ' + round(grossKg) + ' kg/ha.',
       ...(difficulty >= 2 ? [
-        'Perda = ' + round(grossKg) + ' × ' + lossPercent + '% = ' + round(lossKg) + ' kg/ha.',
-        'Produtividade líquida = ' + round(grossKg) + ' − ' + round(lossKg) + ' = ' + round(netKg) + ' kg/ha.',
+        'Perda = ' + round(grossKg) + ' × ' + lossPercent + '% = ' + displayYield(lossKg) + ' ' + yieldUnit + '.',
+        'Produtividade líquida = ' + displayYield(grossKg) + ' − ' + displayYield(lossKg) + ' = ' + displayYield(netKg) + ' ' + yieldUnit + '.',
       ] : []),
       ...(difficulty >= 3 ? [
         'Produção total = ' + round(netKg) + ' kg/ha × ' + area + ' ha ÷ 1.000 = ' + round(netKg * area / 1000) + ' t.',
@@ -263,6 +316,8 @@ function makePlotSampleExercise(
 ): CropProductivityExercise {
   const definition = CROP_DEFINITIONS[crop];
   const targetKg = pick(definition.yieldTargets, random);
+  const yieldUnit = definition.yieldUnit ?? 'kg/ha';
+  const displayYield = (value: number) => yieldUnit === 't/ha' ? round(value / 1000) : round(value);
   const sampleArea = pick([2, 2.5, 4, 5, 10], random);
   const sampleMassGrams = round(targetKg * sampleArea / 10, 1);
   const lossPercent = pick([2, 3, 4, 5, 6, 7, 8], random);
@@ -270,12 +325,12 @@ function makePlotSampleExercise(
   const netKg = targetKg - lossKg;
   const area = pick([5, 8, 10, 15, 20, 25, 30, 40, 50, 75, 100], random);
   const answers: StudyAnswer[] = [
-    { key: 'grossKg', label: 'Produtividade bruta estimada', unit: 'kg/ha', value: round(targetKg), tolerance: 2 },
+    { key: 'grossKg', label: 'Produtividade bruta estimada', unit: yieldUnit, value: displayYield(targetKg), tolerance: yieldUnit === 't/ha' ? 0.02 : 2 },
   ];
   if (difficulty >= 2) {
     answers.push(
-      { key: 'lossKg', label: 'Perda estimada', unit: 'kg/ha', value: round(lossKg), tolerance: 1 },
-      { key: 'netKg', label: 'Produtividade líquida', unit: 'kg/ha', value: round(netKg), tolerance: 2 },
+      { key: 'lossKg', label: 'Perda estimada', unit: yieldUnit, value: displayYield(lossKg), tolerance: yieldUnit === 't/ha' ? 0.02 : 1 },
+      { key: 'netKg', label: 'Produtividade líquida', unit: yieldUnit, value: displayYield(netKg), tolerance: yieldUnit === 't/ha' ? 0.02 : 2 },
     );
   }
   if (difficulty >= 3) {
@@ -303,7 +358,7 @@ function makePlotSampleExercise(
     answers,
     solution: [
       'Massa por metro quadrado = ' + sampleMassGrams + ' g ÷ ' + sampleArea + ' m² = ' + round(sampleMassGrams / sampleArea) + ' g/m².',
-      'Como 1 g/m² equivale a 10 kg/ha, produtividade bruta = ' + round(sampleMassGrams / sampleArea * 10) + ' kg/ha.',
+      'Como 1 g/m² equivale a 10 kg/ha, produtividade bruta = ' + displayYield(sampleMassGrams / sampleArea * 10) + ' ' + yieldUnit + '.',
       ...(difficulty >= 2 ? [
         'Perda = ' + round(targetKg) + ' × ' + lossPercent + '% = ' + round(lossKg) + ' kg/ha.',
         'Produtividade líquida = ' + round(targetKg) + ' − ' + round(lossKg) + ' = ' + round(netKg) + ' kg/ha.',
@@ -325,6 +380,8 @@ function makeHarvestLossExercise(
 ): CropProductivityExercise {
   const definition = CROP_DEFINITIONS[crop];
   const grossKg = pick(definition.yieldTargets, random);
+  const yieldUnit = definition.yieldUnit ?? 'kg/ha';
+  const displayYield = (value: number) => yieldUnit === 't/ha' ? round(value / 1000) : round(value);
   const sampleArea = pick([2, 2.5, 4, 5], random);
   const lossPercent = pick([2, 3, 4, 5, 6, 7, 8, 9, 10], random);
   const lossKg = grossKg * lossPercent / 100;
@@ -336,8 +393,8 @@ function makeHarvestLossExercise(
   ];
   if (difficulty >= 2) {
     answers.push(
-      { key: 'grossKg', label: 'Produtividade bruta', unit: 'kg/ha', value: round(grossKg), tolerance: 2 },
-      { key: 'netKg', label: 'Produtividade líquida', unit: 'kg/ha', value: round(netKg), tolerance: 2 },
+      { key: 'grossKg', label: 'Produtividade bruta', unit: yieldUnit, value: displayYield(grossKg), tolerance: yieldUnit === 't/ha' ? 0.02 : 2 },
+      { key: 'netKg', label: 'Produtividade líquida', unit: yieldUnit, value: displayYield(netKg), tolerance: yieldUnit === 't/ha' ? 0.02 : 2 },
     );
   }
   if (difficulty >= 3) {
@@ -355,7 +412,7 @@ function makeHarvestLossExercise(
     data: [
       { label: 'Área de coleta', value: sampleArea, unit: 'm²' },
       { label: 'Massa perdida', value: collectedGrams, unit: 'g' },
-      ...(difficulty >= 2 ? [{ label: 'Produtividade bruta', value: grossKg.toLocaleString('pt-BR'), unit: 'kg/ha' }] : []),
+      ...(difficulty >= 2 ? [{ label: 'Produtividade bruta', value: displayYield(grossKg).toLocaleString('pt-BR'), unit: yieldUnit }] : []),
       ...(difficulty >= 2 ? [{ label: 'Perdas estimadas', value: lossPercent, unit: '%' }] : []),
       ...(difficulty >= 3 ? [{ label: 'Área colhida', value: area, unit: 'ha' }] : []),
     ],
@@ -367,7 +424,7 @@ function makeHarvestLossExercise(
     answers,
     solution: [
       'Massa por metro quadrado = ' + collectedGrams + ' g ÷ ' + sampleArea + ' m² = ' + round(collectedGrams / sampleArea) + ' g/m².',
-      'Perda em kg/ha = ' + round(collectedGrams / sampleArea) + ' × 10 = ' + round(lossKg) + ' kg/ha.',
+      'Perda em ' + yieldUnit + ' = ' + displayYield(collectedGrams / sampleArea * 10) + ' ' + yieldUnit + '.',
       ...(difficulty >= 2 ? [
         'Produtividade líquida = ' + round(grossKg) + ' − ' + round(lossKg) + ' = ' + round(netKg) + ' kg/ha.',
       ] : []),
