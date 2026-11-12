@@ -126,6 +126,7 @@ function buildCab(scene: THREE.Scene) {
   box('left-console-top',[.38,.07,1.04],[-.79,.92,.12],panel,[0,.06,0]);
   lever('front-wheel-drive',-.72,.05,.36);lever('pto-engagement',-.88,.38,.42,yellow);
   lever('pto-economy',-.68,.62,.32);
+  lever('parking-brake',-.56,.42,.3,red);
 
   // Comandos traseiros: ajuste de velocidade de descida e TDP econômica.
   box('rear-control-panel',[.72,.28,.07],[0,1.12,.99],dark);
@@ -210,8 +211,8 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
       if(cabMode){
         const anchor=anchorRef.current;
         if(anchor!==lastAnchor){
-          if(lastAnchor){const previousName=lastAnchor==='rockshaft-up'||lastAnchor==='rockshaft-down'?'rockshaft':lastAnchor;const previous=cabRoot.getObjectByName(previousName);previous?.traverse(node=>{if(node instanceof THREE.Mesh){const materials=Array.isArray(node.material)?node.material:[node.material];materials.forEach(material=>{if(material instanceof THREE.MeshStandardMaterial)material.emissive.set('#000000');});}});}
-          const targetName=anchor==='rockshaft-up'||anchor==='rockshaft-down'?'rockshaft':anchor;
+          if(lastAnchor){const previousName=lastAnchor==='rockshaft-up'||lastAnchor==='rockshaft-down'?'rockshaft':lastAnchor==='remote-cylinder'?'remote-valve-1':lastAnchor==='pto-cw'?'pto-engagement':lastAnchor==='position-lights'?'light-switch':lastAnchor;const previous=cabRoot.getObjectByName(previousName);previous?.traverse(node=>{if(node instanceof THREE.Mesh){const materials=Array.isArray(node.material)?node.material:[node.material];materials.forEach(material=>{if(material instanceof THREE.MeshStandardMaterial)material.emissive.set('#000000');});}});}
+          const targetName=anchor==='rockshaft-up'||anchor==='rockshaft-down'?'rockshaft':anchor==='remote-cylinder'?'remote-valve-1':anchor==='pto-cw'?'pto-engagement':anchor==='position-lights'?'light-switch':anchor==='parking-brake'?'parking-brake':anchor;
           const target=cabRoot.getObjectByName(targetName);
           target?.traverse(node=>{if(node instanceof THREE.Mesh){const materials=Array.isArray(node.material)?node.material:[node.material];materials.forEach(material=>{if(material instanceof THREE.MeshStandardMaterial)material.emissive.set('#75B95E');});}});
           lastAnchor=anchor;
@@ -223,7 +224,7 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
       else wheelPivots.forEach(w=>{w.rotation.x-=scale*.025;});
       mixer?.update(1/60); controls.update();
       if(cabMode&&calloutRef.current){
-        const targetName=anchorRef.current==='rockshaft-up'||anchorRef.current==='rockshaft-down'?'rockshaft':anchorRef.current;
+        const targetName=anchorRef.current==='rockshaft-up'||anchorRef.current==='rockshaft-down'?'rockshaft':anchorRef.current==='remote-cylinder'?'remote-valve-1':anchorRef.current==='pto-cw'?'pto-engagement':anchorRef.current==='position-lights'?'light-switch':anchorRef.current;
         const target=cabRoot.getObjectByName(targetName);
         if(target){
           const projected=target.getWorldPosition(new THREE.Vector3()).project(camera);
@@ -248,8 +249,8 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
 
 export default function Tractor3DLearning() {
   const [mode,setMode]=useState<ViewMode>('cab');
-  const [tractorId,setTractorId]=useState('john-deere-5705');
-  const [gearId,setGearId]=useState(TRACTORS[0].gears[0].id);
+  const [tractorId,setTractorId]=useState('john-deere-5078e');
+  const [gearId,setGearId]=useState(TRACTORS.find(item=>item.id==='john-deere-5078e')?.gears[0].id??TRACTORS[0].gears[0].id);
   const [rpm,setRpm]=useState(TRACTORS[0].nominalRpm);
   const [range,setRange]=useState<'turtle'|'hare'>('turtle');
   const [stepIndex,setStepIndex]=useState(0);
@@ -310,7 +311,7 @@ export default function Tractor3DLearning() {
           <button type="button" onClick={()=>{setMode(mode==='cab'?'exterior':'cab');}} aria-label="Alternar visualização 3D" className="absolute right-3 top-3 rounded-lg bg-white/90 p-2 text-[#344132]"><Camera className="size-4"/></button>
         </div>
         <div className="grid sm:grid-cols-3 gap-2">
-          <label className="text-xs font-semibold">Trator / tabela de referência<select value={tractorId} onChange={e=>changeTractor(e.target.value)} className="mt-1 w-full rounded-lg border border-[#D9DED4] bg-[#FAFAF7] px-2 py-2 text-xs">{TRACTORS.map(t=><option key={t.id} value={t.id}>{t.brand} {t.model}</option>)}</select></label>
+          <label className="text-xs font-semibold">Trator / tabela de referência<select value={tractorId} onChange={e=>changeTractor(e.target.value)} className="mt-1 w-full rounded-lg border border-[#D9DED4] bg-[#FAFAF7] px-2 py-2 text-xs">{TRACTORS.filter(t=>t.brand==='John Deere').map(t=><option key={t.id} value={t.id}>{t.brand} {t.model}</option>)}</select></label>
           <label className="text-xs font-semibold">Marcha<select value={gearId} onChange={e=>setGearId(e.target.value)} className="mt-1 w-full rounded-lg border border-[#D9DED4] bg-[#FAFAF7] px-2 py-2 text-xs">{tractor.gears.map(g=><option key={g.id} value={g.id}>{g.label} — {g.speedKmh} km/h</option>)}</select></label>
           <label className="text-xs font-semibold">Faixa visual de simulação<select value={range} onChange={e=>setRange(e.target.value as 'turtle'|'hare')} className="mt-1 w-full rounded-lg border border-[#D9DED4] bg-[#FAFAF7] px-2 py-2 text-xs"><option value="turtle">Tartaruga — escala 0,5×</option><option value="hare">Lebre — escala 1×</option></select></label>
         </div>
