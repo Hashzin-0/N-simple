@@ -11,6 +11,12 @@ import { TractorSymbolImage } from './TractorSymbolImage';
 
 const EXTERIOR_MODEL = 'https://cdn.3dassets.dev/assets/16840/v1/model.glb';
 const EXTERIOR_SOURCE = 'https://3dassets.dev/assets/arable-fields-and-farm-machinery-row-crop-tractor-eefceb01';
+const ANCHOR_OVERLAY: Record<string,{left:string;top:string}> = {
+  rockshaft:{left:'39%',top:'42%'}, 'rockshaft-up':{left:'39%',top:'42%'},
+  'rockshaft-down':{left:'39%',top:'42%'}, 'remote-cylinder':{left:'57%',top:'48%'},
+  'diff-lock':{left:'58%',top:'68%'}, 'pto-cw':{left:'24%',top:'48%'},
+  'position-lights':{left:'63%',top:'32%'}, 'parking-brake':{left:'54%',top:'68%'}
+};
 
 type ViewMode = 'exterior' | 'cab';
 type QuizStep = { symbolId: string; control: string; question: string; options: string[]; anchor: string };
@@ -194,9 +200,9 @@ export default function Tractor3DLearning() {
       <div className="space-y-3">
         <div className="relative h-[340px] sm:h-[480px] overflow-hidden rounded-xl border border-[#D5DCD0] bg-[#E8ECE4]">
           <ThreeViewport mode={mode} modelSpeed={modelSpeed} onLoadState={onLoadState} activeAnchor={step.anchor}/>
-          {mode==='cab'&&symbol&&<div className="pointer-events-none absolute left-[43%] top-[34%] z-10 flex items-center gap-2">
+          {mode==='cab'&&symbol&&<div className="pointer-events-none absolute z-10 flex items-center gap-2 transition-all duration-300" style={ANCHOR_OVERLAY[step.anchor]??{left:"43%",top:"34%"}}>
             <div className="h-16 w-16 rounded-xl border-2 border-[#68895D] bg-white/95 p-2 shadow-lg"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></div>
-            <svg width="100" height="60" viewBox="0 0 100 60" className="overflow-visible"><path d="M0 30 L95 30" stroke="#54784A" strokeWidth="2.5" fill="none"/><circle cx="95" cy="30" r="4" fill="#54784A"/></svg>
+            <svg width="100" height="60" viewBox="0 0 100 60" className="overflow-visible"><path d="M0 30 L95 30" stroke="#54784A" strokeWidth="2.5" fill="none" strokeDasharray="5 3"/><circle cx="95" cy="30" r="4" fill="#54784A"/></svg>
           </div>}
           <div className="absolute left-3 top-3 rounded-lg bg-white/90 px-3 py-2 text-[10px] font-semibold text-[#344132]">
             {mode==='cab'?'REPRESENTAÇÃO DIDÁTICA — NÃO É CABINE OEM':'MODELO EXTERNO GENÉRICO CC0'}
