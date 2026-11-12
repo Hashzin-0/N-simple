@@ -8,7 +8,7 @@ import {
 } from '@/lib/soybeanProductivityGenerator';
 import type { StudyAnswer, StudyExercise } from '@/lib/agronomyStudy';
 
-const STORAGE_KEY = 'n-simple:soybean-productivity:last-set-sha256';
+const STORAGE_KEY = 'n-simple:soybean-productivity:last-set-hash';
 const modeLabels: Record<SoybeanGenerationMode, string> = {
   basic: 'Básico',
   intermediate: 'Intermediário',
