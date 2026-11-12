@@ -26,12 +26,26 @@ function componentYieldExercise(
   difficulty: StudyDifficulty,
   random: () => number,
 ): StudyExercise {
-  const population = pick([180000, 200000, 220000, 240000, 260000, 280000, 300000, 320000], random);
-  const podsPerPlant = pick([28, 32, 36, 40, 44, 48], random);
-  const grainsPerPod = pick([1.8, 2, 2.1, 2.2, 2.3, 2.4], random);
   const targetBags = pick([42, 46, 50, 54, 58, 62, 66, 70, 74, 78, 82, 86], random);
   const grossKg = targetBags * 60;
-  const pmg = round(grossKg * 1_000_000 / (population * podsPerPlant * grainsPerPod), 1);
+  let population = 0;
+  let podsPerPlant = 0;
+  let grainsPerPod = 0;
+  let pmg = 0;
+  for (let sample = 0; sample < 120; sample += 1) {
+    const candidatePopulation = pick([180000, 200000, 220000, 240000, 260000, 280000, 300000, 320000], random);
+    const candidatePods = pick([28, 32, 36, 40, 44, 48], random);
+    const candidateGrains = pick([1.8, 2, 2.1, 2.2, 2.3, 2.4], random);
+    const candidatePmg = round(grossKg * 1_000_000 / (candidatePopulation * candidatePods * candidateGrains), 1);
+    if (candidatePmg >= 140 && candidatePmg <= 220) {
+      population = candidatePopulation;
+      podsPerPlant = candidatePods;
+      grainsPerPod = candidateGrains;
+      pmg = candidatePmg;
+      break;
+    }
+  }
+  if (pmg === 0) throw new Error('Não foi possível montar uma combinação coerente de componentes do rendimento.');
   const lossPercent = pick([2, 3, 4, 5, 6, 7, 8, 9, 10], random);
   const lossKg = grossKg * lossPercent / 100;
   const finalKg = grossKg - lossKg;
