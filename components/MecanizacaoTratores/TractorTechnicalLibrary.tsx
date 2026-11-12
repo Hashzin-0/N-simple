@@ -76,7 +76,7 @@ export default function TractorTechnicalLibrary() {
           </div>)}</dl>
         </article>)}
       </div>
-    </div> : <ExistingTractorCard tractor={tractor}/ >}
+    </div> : <ExistingTractorCard tractor={tractor}/>}
 
     <article className="rounded-xl border border-[#DCE3D7] dark:border-[#394334] p-4 sm:p-5 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
