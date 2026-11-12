@@ -15,6 +15,19 @@ const round = (value: number, digits = 2) => Number(value.toFixed(digits));
 const pick = <T,>(values: readonly T[], random: () => number): T =>
   values[Math.min(values.length - 1, Math.floor(random() * values.length))];
 
+function balancedDifficulties(count: number, random: () => number): StudyDifficulty[] {
+  const result: StudyDifficulty[] = [];
+  while (result.length < count) {
+    const batch: StudyDifficulty[] = [1, 2, 3];
+    for (let index = batch.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(random() * (index + 1));
+      [batch[index], batch[swapIndex]] = [batch[swapIndex], batch[index]];
+    }
+    result.push(...batch.slice(0, count - result.length));
+  }
+  return result;
+}
+
 function componentYieldExercise(
   id: string,
   difficulty: StudyDifficulty,
@@ -218,20 +231,9 @@ export function createSoybeanProductivityActivities({
     throw new RangeError('A quantidade deve ser um número inteiro entre 1 e 100.');
   }
 
-  const difficulties: StudyDifficulty[] = mode === 'basic'
-    ? Array<StudyDifficulty>(count).fill(1)
-    : mode === 'intermediate'
-      ? Array<StudyDifficulty>(count).fill(2)
-      : mode === 'advanced'
-        ? Array<StudyDifficulty>(count).fill(3)
-        : Array.from({ length: count }, (_, index) => ([1, 2, 3] as StudyDifficulty[])[index % 3]);
-
-  if (mode === 'balanced') {
-    for (let index = difficulties.length - 1; index > 0; index -= 1) {
-      const swapIndex = Math.floor(random() * (index + 1));
-      [difficulties[index], difficulties[swapIndex]] = [difficulties[swapIndex], difficulties[index]];
-    }
-  }
+  const difficulties: StudyDifficulty[] = mode === 'balanced'
+    ? balancedDifficulties(count, random)
+    : Array<StudyDifficulty>(count).fill(mode === 'basic' ? 1 : mode === 'intermediate' ? 2 : 3);
 
   const result: StudyExercise[] = [];
   const seen = new Set<string>();
