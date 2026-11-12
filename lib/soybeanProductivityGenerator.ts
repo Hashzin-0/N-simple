@@ -17,10 +17,6 @@ const pick = <T,>(values: readonly T[], random: () => number): T =>
 const randomInt = (min: number, max: number, random: () => number) =>
   min + Math.floor(random() * (max - min + 1));
 
-function buildAnswers(items: StudyAnswer[]): StudyAnswer[] {
-  return items;
-}
-
 function componentYieldExercise(
   id: string,
   difficulty: StudyDifficulty,
@@ -50,9 +46,9 @@ function componentYieldExercise(
   const lossKg = grossKg * lossPercent / 100;
   const finalKg = grossKg - lossKg;
   const area = pick([8, 10, 12, 15, 20, 25, 30, 40, 50], random);
-  const answers: StudyAnswer[] = buildAnswers([
+  const answers: StudyAnswer[] = [
     { key: 'grossBags', label: 'Produtividade bruta estimada', unit: 'sc/ha', value: round(grossKg / 60), tolerance: 0.04 },
-  ]);
+  ];
   if (difficulty >= 2) {
     answers.push({ key: 'lossBags', label: 'Perda estimada', unit: 'sc/ha', value: round(lossKg / 60), tolerance: 0.03 });
     answers.push({ key: 'finalBags', label: 'Produtividade líquida', unit: 'sc/ha', value: round(finalKg / 60), tolerance: 0.04 });
@@ -209,8 +205,7 @@ function generateOne(id: string, difficulty: StudyDifficulty, random: () => numb
 }
 
 function contentFingerprint(exercise: StudyExercise): string {
-  const { id: _id, ...content } = exercise;
-  return JSON.stringify(content);
+  return JSON.stringify({ ...exercise, id: undefined });
 }
 
 export function createSoybeanProductivityActivities({
