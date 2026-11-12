@@ -179,6 +179,7 @@ export default function SoybeanProductivityGenerator({ onBack }: Props) {
           <div>
             <h4 className="font-bold text-[#454638] dark:text-[#E8E7DF]">Configure sua sequência</h4>
             <p className={'mt-1 text-sm ' + mutedClass}>Cada atividade recebe dados próprios e gabarito calculado pelo motor matemático. Não são sorteadas questões fixas do banco de estudos.</p>
+            <p className={'mt-2 text-xs ' + mutedClass}>O navegador guarda somente o hash do último conjunto, não suas respostas. Se o próximo conjunto tiver o mesmo hash, a geração é repetida automaticamente.</p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
