@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -57,8 +57,8 @@ function buildCab(scene: THREE.Scene) {
   return root;
 }
 
-function ThreeViewport({ mode, modelSpeed, tractorId, onLoadState, activeAnchor }: {
-  mode:ViewMode; modelSpeed:number; tractorId:string; onLoadState:(state:'loading'|'ready'|'error')=>void; activeAnchor:string;
+function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor }: {
+  mode:ViewMode; modelSpeed:number; onLoadState:(state:'loading'|'ready'|'error')=>void; activeAnchor:string;
 }) {
   const host=useRef<HTMLDivElement>(null);
   const speedRef=useRef(modelSpeed);
@@ -71,7 +71,7 @@ function ThreeViewport({ mode, modelSpeed, tractorId, onLoadState, activeAnchor 
   useEffect(()=>{
     const element=host.current;
     if(!element) return;
-    let disposed=false, frame=0, mixer:THREE.AnimationMixer|undefined, action:THREE.AnimationAction|undefined;
+    let disposed=false, frame=0, mixer:THREE.AnimationMixer|undefined, action:THREE.AnimationAction|undefined, lastAnchor='';
     const scene=new THREE.Scene(); scene.background=new THREE.Color('#e8ece4');
     scene.fog=new THREE.Fog('#e8ece4',12,30);
     const camera=new THREE.PerspectiveCamera(42,1,.1,100);
@@ -117,9 +117,18 @@ function ThreeViewport({ mode, modelSpeed, tractorId, onLoadState, activeAnchor 
       frame=requestAnimationFrame(animate);
       const cabMode=modeRef.current==='cab';
       cabRoot.visible=cabMode; if(tractorRoot) tractorRoot.visible=!cabMode; fallback.visible=!cabMode&&!tractorRoot;
-      if(cabMode){camera.position.lerp(new THREE.Vector3(0,1.72,3.25),.035);controls.target.lerp(new THREE.Vector3(0,1.25,-.45),.035);controls.minDistance=1.8;controls.maxDistance=5;}
+      if(cabMode){
+        const anchor=anchorRef.current;
+        if(anchor!==lastAnchor){
+          if(lastAnchor){const previousName=lastAnchor==='rockshaft-up'||lastAnchor==='rockshaft-down'?'rockshaft':lastAnchor;const previous=cabRoot.getObjectByName(previousName);previous?.traverse(node=>{if(node instanceof THREE.Mesh){const materials=Array.isArray(node.material)?node.material:[node.material];materials.forEach(material=>{if(material instanceof THREE.MeshStandardMaterial)material.emissive.set('#000000');});}});}
+          const targetName=anchor==='rockshaft-up'||anchor==='rockshaft-down'?'rockshaft':anchor;
+          const target=cabRoot.getObjectByName(targetName);
+          target?.traverse(node=>{if(node instanceof THREE.Mesh){const materials=Array.isArray(node.material)?node.material:[node.material];materials.forEach(material=>{if(material instanceof THREE.MeshStandardMaterial)material.emissive.set('#75B95E');});}});
+          lastAnchor=anchor;
+        }
+        camera.position.lerp(new THREE.Vector3(0,1.72,3.25),.035);controls.target.lerp(new THREE.Vector3(0,1.25,-.45),.035);controls.minDistance=1.8;controls.maxDistance=5;}
       else {camera.position.lerp(new THREE.Vector3(7,4.5,8),.025);controls.target.lerp(new THREE.Vector3(0,1,0),.025);controls.minDistance=2.5;controls.maxDistance=14;}
-      const scale=Math.max(.15,Math.min(2.5,speedRef.current/12));
+      const scale=Math.max(-2.5,Math.min(2.5,speedRef.current/12));
       if(action) action.timeScale=scale;
       else wheelPivots.forEach(w=>{w.rotation.x-=scale*.025;});
       mixer?.update(1/60); controls.update(); renderer.render(scene,camera);
@@ -131,7 +140,7 @@ function ThreeViewport({ mode, modelSpeed, tractorId, onLoadState, activeAnchor 
       scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const materials=Array.isArray(o.material)?o.material:[o.material];materials.forEach(m=>m.dispose());}});
       if(renderer.domElement.parentElement===element) element.removeChild(renderer.domElement);
     };
-  },[tractorId,onLoadState]);
+  },[onLoadState]);
   return <div ref={host} className="absolute inset-0" aria-label={mode==='cab'?'Cabine didática 3D do trator':'Modelo 3D externo genérico do trator'}/>;
 }
 
@@ -150,12 +159,12 @@ export default function Tractor3DLearning() {
   const gear=tractor.gears.find(item=>item.id===gearId)??tractor.gears[0];
   const baseSpeed=gear.speedKmh*rpm/tractor.nominalRpm;
   const demoScale=range==='turtle'?.5:1;
-  const modelSpeed=baseSpeed*demoScale;
+  const direction=gear.label.toUpperCase().startsWith('R')?-1:1;
+  const modelSpeed=baseSpeed*demoScale*direction;
   const step=QUIZ[stepIndex%QUIZ.length];
   const symbol=TRACTOR_SYMBOLS.find(item=>item.id===step.symbolId);
-  const [modeNotice,setModeNotice]=useState(false);
   const choices=useMemo(()=>step.options,[step]);
-  const onLoadState=(state:'loading'|'ready'|'error')=>setLoadState(state);
+  const onLoadState=useCallback((state:'loading'|'ready'|'error')=>setLoadState(state),[]);
 
   const changeTractor=(id:string)=>{
     const next=TRACTORS.find(item=>item.id===id)??TRACTORS[0];
@@ -184,7 +193,7 @@ export default function Tractor3DLearning() {
     <div className="grid xl:grid-cols-[minmax(0,1.35fr)_minmax(290px,.65fr)] gap-4">
       <div className="space-y-3">
         <div className="relative h-[340px] sm:h-[480px] overflow-hidden rounded-xl border border-[#D5DCD0] bg-[#E8ECE4]">
-          <ThreeViewport mode={mode} modelSpeed={modelSpeed} tractorId={tractorId} onLoadState={onLoadState} activeAnchor={step.anchor}/>
+          <ThreeViewport mode={mode} modelSpeed={modelSpeed} onLoadState={onLoadState} activeAnchor={step.anchor}/>
           {mode==='cab'&&symbol&&<div className="pointer-events-none absolute left-[43%] top-[34%] z-10 flex items-center gap-2">
             <div className="h-16 w-16 rounded-xl border-2 border-[#68895D] bg-white/95 p-2 shadow-lg"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></div>
             <svg width="100" height="60" viewBox="0 0 100 60" className="overflow-visible"><path d="M0 30 L95 30" stroke="#54784A" strokeWidth="2.5" fill="none"/><circle cx="95" cy="30" r="4" fill="#54784A"/></svg>
@@ -195,7 +204,7 @@ export default function Tractor3DLearning() {
           <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-2 text-[10px] text-[#344132]">
             {loadState==='loading'?'Carregando modelo 3D…':loadState==='error'?'Modelo externo indisponível — visual alternativo':'Modelo 3D carregado'}
           </div>
-          <button type="button" onClick={()=>{setMode(mode==='cab'?'exterior':'cab');setModeNotice(true);}} aria-label="Alternar visualização 3D" className="absolute right-3 top-3 rounded-lg bg-white/90 p-2 text-[#344132]"><Camera className="size-4"/></button>
+          <button type="button" onClick={()=>{setMode(mode==='cab'?'exterior':'cab');}} aria-label="Alternar visualização 3D" className="absolute right-3 top-3 rounded-lg bg-white/90 p-2 text-[#344132]"><Camera className="size-4"/></button>
         </div>
         <div className="grid sm:grid-cols-3 gap-2">
           <label className="text-xs font-semibold">Trator / tabela de referência<select value={tractorId} onChange={e=>changeTractor(e.target.value)} className="mt-1 w-full rounded-lg border border-[#D9DED4] bg-[#FAFAF7] px-2 py-2 text-xs">{TRACTORS.map(t=><option key={t.id} value={t.id}>{t.brand} {t.model}</option>)}</select></label>
@@ -205,7 +214,7 @@ export default function Tractor3DLearning() {
         <div className="rounded-xl border border-[#DCE3D7] p-3 space-y-2">
           <div className="flex justify-between text-xs"><span className="font-semibold">Rotação do motor (simulação proporcional)</span><b className="tabular-nums">{rpm.toLocaleString('pt-BR')} rpm</b></div>
           <input aria-label="Rotação simulada do motor" type="range" min={Math.round(tractor.nominalRpm*.5)} max={tractor.nominalRpm} step="50" value={rpm} onChange={e=>setRpm(Number(e.target.value))} className="w-full accent-[#66865B]"/>
-          <div className="flex items-center justify-between text-xs"><span className="text-[#788074]">Velocidade estimada na tabela</span><b className="text-base tabular-nums">{modelSpeed.toFixed(1).replace('.',',')} km/h</b></div>
+          <div className="flex items-center justify-between text-xs"><span className="text-[#788074]">Velocidade estimada na tabela</span><b className="text-base tabular-nums">{Math.abs(modelSpeed).toFixed(1).replace('.',',')} km/h</b></div>
           <div className="h-2 overflow-hidden rounded-full bg-[#E9EDE5]"><div className="h-full rounded-full bg-[#66865B] transition-all" style={{width:Math.min(100,modelSpeed/35*100)+'%'}}/></div>
           <p className="text-[10px] leading-4 text-[#7A8177]">A escala tartaruga/lebre é um controle visual didático de 0,5×/1×, não uma relação de transmissão atribuída ao trator. O exterior genérico não possui telemetria nem representa uma máquina real específica.</p>
         </div>
