@@ -38,14 +38,15 @@ export default function ProductivityCrop3D({ crop, values }: Props) {
     if (!canvas || !webglSupported) return;
     let renderer: THREE.WebGLRenderer | null = null;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(isDark ? 0x181a15 : 0xfaf8f3);
+    const background = new THREE.Color(isDark ? 0x181a15 : 0xfaf8f3);
+    scene.background = background;
     const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
     camera.position.set(4.8, 3.1, 6.5);
     camera.lookAt(0, 0.1, 0);
     try {
       renderer = acquire(canvas, { antialias: true, powerPreference: 'low-power' });
       if (!renderer) return;
-      renderer.setClearColor(scene.background, 1);
+      renderer.setClearColor(background, 1);
       renderer.shadowMap.enabled = true;
       scene.add(new THREE.HemisphereLight(0xfff5dc, 0x526044, 2.1));
       const key = new THREE.DirectionalLight(0xfff0ce, 2.8); key.position.set(4, 7, 5); key.castShadow = true; scene.add(key);
@@ -61,12 +62,12 @@ export default function ProductivityCrop3D({ crop, values }: Props) {
       const countFrom = (...keys: string[]) => Math.max(1, Math.min(160, Math.round(keys.map(k => values[k] ?? 0).find(v => v > 0) ?? 1)));
       const seedCount = crop === 'corn' ? countFrom('fileiras', 'rows') * Math.max(1, Math.min(60, Math.round(values.graosPorFileira ?? 24))) :
         crop === 'soybean' ? countFrom('totalPods', 'podsPerPlant', 'total_pods') :
-        crop === 'sorghum' ? countFrom('grainsPerPanicle', 'grainsPerHead') :
-        crop === 'wheat' ? countFrom('grainsPerEar') :
-        crop === 'rice' ? countFrom('spikeletsPerPanicle') :
-        crop === 'common-bean' ? countFrom('grainsPerPod') :
-        crop === 'sunflower' ? countFrom('achenesPerHead') :
-        crop === 'peanut' ? countFrom('podsPerPlant') : countFrom('stalksPerMeter');
+        crop === 'sorghum' ? countFrom('grainsPerPanicle', 'paniclesPerPlant') :
+        crop === 'wheat' ? countFrom('grainsPerEar', 'earsPerM2') :
+        crop === 'rice' ? countFrom('spikeletsPerPanicle', 'paniclesPerM2') :
+        crop === 'common-bean' ? countFrom('grainsPerPod', 'podsPerM2') :
+        crop === 'sunflower' ? countFrom('achenesPerHead', 'headsPerPlant') :
+        crop === 'peanut' ? countFrom('podsPerPlant', 'plantsPerM2') : countFrom('stalksPerMeter');
       const bounded = Math.max(1, Math.min(220, seedCount));
       if (crop === 'corn') {
         const cob = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.23, 2.6, 32), new THREE.MeshStandardMaterial({ color: 0x9c7044, roughness: 0.95 }));
