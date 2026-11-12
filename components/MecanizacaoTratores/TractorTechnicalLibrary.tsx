@@ -114,6 +114,20 @@ export default function TractorTechnicalLibrary() {
         <li><b>Valide no campo:</b> use medição real e observe rotação, patinagem, carga, qualidade do trabalho e segurança.</li>
       </ol>
     </div>
+    <div className="rounded-xl border border-[#E1E5DC] dark:border-[#394334] p-4 space-y-3">
+      <h4 className="font-bold text-sm">Documentação do fabricante e referências regulatórias</h4>
+      <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs">
+        <a href="https://www.deere.com.br/pt/peças-e-serviços/manuais-e-treinamento/manuais/" target="_blank" rel="noreferrer" className="font-semibold text-[#52764A]">John Deere — manuais oficiais ↗</a>
+        <a href="https://www.masseyferguson.com/" target="_blank" rel="noreferrer" className="font-semibold text-[#52764A]">Massey Ferguson ↗</a>
+        <a href="https://www.valtra.com.br/" target="_blank" rel="noreferrer" className="font-semibold text-[#52764A]">Valtra ↗</a>
+        <a href="https://agriculture.newholland.com/pt-br/south-america" target="_blank" rel="noreferrer" className="font-semibold text-[#52764A]">New Holland Agriculture ↗</a>
+      </div>
+      <p className="text-[10px] text-[#788074]">Normas gerais de segurança e operação no Brasil (não substituem o manual específico do trator):</p>
+      <div className="flex flex-wrap gap-3 text-xs">
+        <a href="https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/participacao-social/conselhos-e-orgaos-colegiados/comissao-tripartite-paritaria-permanente/normas-regulamentadora/normas-regulamentadoras-vigentes/norma-regulamentadora-no-31-nr-31" target="_blank" rel="noreferrer" className="font-semibold text-[#52764A]">NR-31 — trabalho rural ↗</a>
+        <a href="https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/participacao-social/conselhos-e-orgaos-colegiados/comissao-tripartite-paritaria-permanente/normas-regulamentadora/normas-regulamentadoras-vigentes/norma-regulamentadora-no-12-nr-12" target="_blank" rel="noreferrer" className="font-semibold text-[#52764A]">NR-12 — máquinas e equipamentos ↗</a>
+      </div>
+    </div>
     {profile&&<p className="text-[10px] leading-5 text-[#7A8177] dark:text-[#AAB2A5]">{profile.disclaimer}</p>}
   </section>;
 }
