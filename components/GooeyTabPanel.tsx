@@ -4,14 +4,13 @@ import React, { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { useTheme } from './ThemeProvider';
 import { Sprout, TrendingUp, Wheat, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap, Tractor, FileText } from 'lucide-react';
 
-export type TabId = 'nitrogen' | 'productivity' | 'soja' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista' | 'professor';
+export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista' | 'professor';
 
 interface GooeyTabPanelProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   nitrogenContent: React.ReactNode;
   productivityContent: React.ReactNode;
-  soybeanContent?: React.ReactNode;
   itrContent?: React.ReactNode;
   abntContent?: React.ReactNode;
   pesquisadorContent?: React.ReactNode;
@@ -44,13 +43,6 @@ export const ALL_TABS: TabItem[] = [
     shortLabel: 'Produtividade',
     icon: TrendingUp,
     badge: '3D Milho',
-  },
-  {
-    id: 'soja',
-    label: 'Produtividade de Soja',
-    shortLabel: 'Soja',
-    icon: Wheat,
-    badge: 'Soja',
   },
   {
     id: 'itr',
@@ -113,25 +105,23 @@ export const ALL_TABS: TabItem[] = [
 const TAB_INDEX: Record<TabId, number> = {
   nitrogen: 0,
   productivity: 1,
-  soja: 2,
-  itr: 3,
-  abnt: 4,
-  pesquisador: 5,
-  libras: 6,
-  redacao: 7,
-  tutor: 8,
-  tratorista: 9,
-  professor: 10,
+  itr: 2,
+  abnt: 3,
+  pesquisador: 4,
+  libras: 5,
+  redacao: 6,
+  tutor: 7,
+  tratorista: 8,
+  professor: 9,
 };
 
-const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'soja', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista', 'professor'];
+const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista', 'professor'];
 
 export default function GooeyTabPanel({
   activeTab,
   onTabChange,
   nitrogenContent,
   productivityContent,
-  soybeanContent,
   itrContent,
   abntContent,
   pesquisadorContent,
@@ -273,8 +263,6 @@ export default function GooeyTabPanel({
         return nitrogenContent;
       case 'productivity':
         return productivityContent;
-      case 'soja':
-        return soybeanContent || null;
       case 'itr':
         return itrContent || null;
       case 'abnt':
