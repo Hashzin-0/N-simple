@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { useTheme } from './ThemeProvider';
-import { Sprout, TrendingUp, Wheat, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap, Tractor, FileText } from 'lucide-react';
+import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap, Tractor, FileText } from 'lucide-react';
 
 export type TabId = 'nitrogen' | 'productivity' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista' | 'professor';
 
@@ -42,7 +42,7 @@ export const ALL_TABS: TabItem[] = [
     label: 'Estimativa de Produtividade',
     shortLabel: 'Produtividade',
     icon: TrendingUp,
-    badge: '3D Milho',
+    badge: '9 Culturas',
   },
   {
     id: 'itr',
