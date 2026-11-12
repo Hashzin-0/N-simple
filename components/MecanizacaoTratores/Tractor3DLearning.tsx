@@ -13,6 +13,21 @@ import { TractorSymbolImage } from './TractorSymbolImage';
 const EXTERIOR_MODEL = 'https://cdn.3dassets.dev/assets/16840/v1/model.glb';
 const EXTERIOR_SOURCE = 'https://3dassets.dev/assets/arable-fields-and-farm-machinery-row-crop-tractor-eefceb01';
 
+
+function disposeObject3D(root: THREE.Object3D) {
+  root.traverse(object => {
+    if (!(object instanceof THREE.Mesh)) return;
+    object.geometry.dispose();
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    materials.forEach(material => {
+      Object.values(material).forEach(value => {
+        if (value instanceof THREE.Texture) value.dispose();
+      });
+      material.dispose();
+    });
+  });
+}
+
 type ViewMode = 'exterior' | 'cab';
 type QuizStep = { symbolId: string; control: string; question: string; options: string[]; anchor: string };
 const QUIZ: QuizStep[] = [
@@ -103,7 +118,7 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
     const loader=new GLTFLoader();
     onLoadState('loading');
     loader.load(EXTERIOR_MODEL,(gltf)=>{
-      if(disposed){gltf.scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();}});return;}
+      if(disposed){disposeObject3D(gltf.scene);return;}
       tractorRoot=gltf.scene; tractorRoot.scale.setScalar(.9); tractorRoot.position.set(0,0,0);
       tractorRoot.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
       scene.add(tractorRoot);
@@ -152,7 +167,7 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
     return ()=>{
       disposed=true; cancelAnimationFrame(frame); observer.disconnect(); controls.dispose(); renderer.dispose();
       if(mixer) mixer.stopAllAction();
-      scene.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const materials=Array.isArray(o.material)?o.material:[o.material];materials.forEach(m=>m.dispose());}});
+      disposeObject3D(scene);
       if(renderer.domElement.parentElement===element) element.removeChild(renderer.domElement);
     };
   },[onLoadState]);
