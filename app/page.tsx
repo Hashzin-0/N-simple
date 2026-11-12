@@ -78,11 +78,7 @@ import GoogleSignInIsland from '@/components/auth/GoogleSignInIsland';
 const VoiceAssistantHUD = dynamic(() => import('@/components/VoiceAssistantHUD'), { ssr: false });
 const DarkMode3DToggle = dynamic(() => import('@/components/DarkMode3DToggle'), { ssr: false });
 const SectionNavGooey = dynamic(() => import('@/components/SectionNavGooey'), { ssr: false });
-const CornYieldCalculator = dynamic(() => import('@/components/CornYieldCalculator'), { ssr: false });
-const OtherCropProductivityCalculator = dynamic(() => import('@/components/OtherCropProductivityCalculator'), { ssr: false });
-const CornProductivityGenerator = dynamic(() => import('@/components/CornProductivityGenerator'), { ssr: false });
-const SoybeanYieldCalculator = dynamic(() => import('@/components/SoybeanYieldCalculator'), { ssr: false });
-const SoybeanStudySection = dynamic(() => import('@/components/SoybeanStudySection'), { ssr: false });
+const ProductivityHub = dynamic(() => import('@/components/ProductivityHub'), { ssr: false });
 const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr: false });
 const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
 const AnaliseMorfologica = dynamic(() => import('@/components/AnaliseMorfologica'), { ssr: false });
@@ -778,30 +774,14 @@ export default function Home() {
   const productivityContent = useMemo(
     () => (
       <div className="w-full">
-        <ScrollStack peek={12} blur pinTop="4vh">
-          <CornYieldCalculator
-            isConnected
-            onApplyYieldGoal={handleApplyYieldGoal}
-            fillRequest={cornYieldFill}
-          />
-        </ScrollStack>
-        <div className="mt-6 space-y-6">
-          <OtherCropProductivityCalculator />
-          <CornProductivityGenerator />
-        </div>
+        <ProductivityHub
+          isConnected
+          onApplyYieldGoal={handleApplyYieldGoal}
+          fillRequest={cornYieldFill}
+        />
       </div>
     ),
     [handleApplyYieldGoal, cornYieldFill],
-  );
-
-  const soybeanContent = useMemo(
-    () => (
-      <div className="w-full">
-        <SoybeanYieldCalculator />
-        <SoybeanStudySection />
-      </div>
-    ),
-    [],
   );
 
   const itrContent = useMemo(
@@ -1760,7 +1740,6 @@ export default function Home() {
             </div>
           }
           productivityContent={productivityContent}
-          soybeanContent={soybeanContent}
           itrContent={itrContent}
           abntContent={abntContent}
           pesquisadorContent={pesquisadorContent}
