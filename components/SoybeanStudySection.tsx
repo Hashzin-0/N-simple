@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { BookOpen, CheckCircle2, CircleHelp, ClipboardList, GraduationCap, RotateCcw, Shuffle, Sprout } from 'lucide-react';
+import { BookOpen, CheckCircle2, CircleHelp, ClipboardList, GraduationCap, RotateCcw, Shuffle, Sparkles, Sprout } from 'lucide-react';
+import SoybeanProductivityGenerator from '@/components/SoybeanProductivityGenerator';
+import OtherCropProductivityGenerator from '@/components/OtherCropProductivityGenerator';
 import {
   createRandomStudyPlan,
   getIndividualStudyExercises,
@@ -55,6 +57,8 @@ export default function SoybeanStudySection() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [showSolution, setShowSolution] = useState(false);
   const [score, setScore] = useState(0);
+  const [showProductivityGenerator, setShowProductivityGenerator] = useState(false);
+  const [showOtherCropGenerator, setShowOtherCropGenerator] = useState(false);
 
   const current = selected ?? plan[planIndex] ?? null;
   const isPlan = plan.length > 0;
@@ -110,6 +114,22 @@ export default function SoybeanStudySection() {
     setShowSolution(false);
   };
 
+  if (showProductivityGenerator) {
+    return (
+      <section id="soybean_studies" className="w-full space-y-6 border-t border-[#E5E2D9] px-4 py-8 sm:px-6 lg:px-8 dark:border-[#343B30]">
+        <SoybeanProductivityGenerator onBack={() => setShowProductivityGenerator(false)} />
+      </section>
+    );
+  }
+
+  if (showOtherCropGenerator) {
+    return (
+      <section id="soybean_studies" className="w-full space-y-6 border-t border-[#E5E2D9] px-4 py-8 sm:px-6 lg:px-8 dark:border-[#343B30]">
+        <OtherCropProductivityGenerator onBack={() => setShowOtherCropGenerator(false)} />
+      </section>
+    );
+  }
+
   const cardClass = 'rounded-2xl border border-[#E5E2D9] bg-white dark:border-[#343B30] dark:bg-[#20251E]';
   const mutedClass = 'text-[#777468] dark:text-[#A6A395]';
 
@@ -123,7 +143,7 @@ export default function SoybeanStudySection() {
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#8C897E] dark:text-[#A6A395]">Depois da calculadora</p>
             <h2 className="text-xl font-bold text-[#5A5A40] dark:text-[#E8E7DF] sm:text-2xl">Estudos e atividades práticas</h2>
-            <p className={'mt-1 text-xs sm:text-sm ' + mutedClass}>Treine cálculos e conceitos de produtividade, calagem e gessagem com dados de campo.</p>
+            <p className={'mt-1 text-xs sm:text-sm ' + mutedClass}>Estude soja, estimativa de produtividade em outras culturas, calagem e gessagem.</p>
           </div>
         </div>
         <button
@@ -136,11 +156,27 @@ export default function SoybeanStudySection() {
         </button>
       </div>
 
+      <button type="button" onClick={() => setShowProductivityGenerator(true)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-[#2E6F40]/25 bg-[#2E6F40]/[0.06] p-4 text-left transition hover:border-[#2E6F40]/50 hover:bg-[#2E6F40]/[0.1] dark:border-[#55764F]/40 dark:bg-[#55764F]/10">
+        <span className="flex items-center gap-3">
+          <span className="rounded-xl bg-[#2E6F40]/10 p-2 text-[#2E6F40] dark:text-[#A8C69A]"><Sparkles className="h-5 w-5" /></span>
+          <span><span className="block text-sm font-bold text-[#454638] dark:text-[#E8E7DF]">Gerador aleatório de produtividade de soja</span><span className={'mt-1 block text-xs ' + mutedClass}>Escolha o nível e a quantidade. Receba somente exercícios numéricos gerados na hora.</span></span>
+        </span>
+        <span className="shrink-0 text-xs font-bold text-[#2E6F40] dark:text-[#A8C69A]">Entrar →</span>
+      </button>
+
+      <button type="button" onClick={() => setShowOtherCropGenerator(true)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-[#557A91]/25 bg-[#557A91]/[0.06] p-4 text-left transition hover:border-[#557A91]/50 hover:bg-[#557A91]/[0.1] dark:border-[#557A91]/40 dark:bg-[#557A91]/10">
+        <span className="flex items-center gap-3">
+          <span className="rounded-xl bg-[#557A91]/10 p-2 text-[#557A91] dark:text-[#9DC0D2]"><Sparkles className="h-5 w-5" /></span>
+          <span><span className="block text-sm font-bold text-[#454638] dark:text-[#E8E7DF]">Gerador de produtividade de outras culturas</span><span className={'mt-1 block text-xs ' + mutedClass}>Sorgo, trigo, arroz, feijão, girassol, amendoim e cana-de-açúcar. Selecione cultura, nível e quantidade.</span></span>
+        </span>
+        <span className="shrink-0 text-xs font-bold text-[#557A91] dark:text-[#9DC0D2]">Entrar →</span>
+      </button>
+
       <p className={'-mt-3 text-xs leading-relaxed ' + mutedClass}>Nas respostas abertas, a correção considera grupos de conceitos essenciais e aceita diferentes formulações. A resolução explica os pontos esperados.</p>
 
       <div className="grid gap-3 md:grid-cols-3">
         {([
-          ['soja', 'Produtividade de soja', 'População, legumes, grãos, PMG, quebra e sacas.', 'text-[#2E6F40]'],
+          ['soja', 'Estudos completos de soja', 'Implantação, fenologia, nutrição, FBN, manejo, produtividade e colheita.', 'text-[#2E6F40]'],
           ['calagem', 'Calagem', 'Saturação por bases, CTC, PRNT e dose de calcário.', 'text-[#B77936]'],
           ['gessagem', 'Gessagem', 'Diagnóstico de subsuperfície, argila e dose de gesso.', 'text-[#557A91]'],
         ] as const).map(([topic, title, description, color]) => (
@@ -152,7 +188,7 @@ export default function SoybeanStudySection() {
           >
             <div className="mb-2 flex items-center justify-between">
               <Sprout className={'h-5 w-5 ' + color} />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C897E] dark:text-[#A6A395]">{topic === 'calagem' ? '6 atividades' : '5 atividades'}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C897E] dark:text-[#A6A395]">{topic === 'soja' ? exercises.filter((exercise) => exercise.topic === 'soja').length + ' atividades' : topic === 'calagem' ? exercises.filter((exercise) => exercise.topic === 'calagem').length + ' atividades' : exercises.filter((exercise) => exercise.topic === 'gessagem').length + ' atividades'}</span>
             </div>
             <h3 className="font-bold text-[#454638] dark:text-[#E8E7DF]">{title}</h3>
             <p className={'mt-1 text-xs leading-relaxed ' + mutedClass}>{description}</p>
@@ -273,7 +309,7 @@ export default function SoybeanStudySection() {
           <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-[#CFCABB] p-4 dark:border-[#454D3F] sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="font-bold text-[#5A5A40] dark:text-[#E8E7DF]">Plano progressivo aleatório</h3>
-              <p className={'mt-1 text-xs ' + mutedClass}>12 questões sorteadas: nove exercícios de cálculo e três questões conceituais, em ordem progressiva de dificuldade.</p>
+              <p className={'mt-1 text-xs ' + mutedClass}>24 questões sorteadas: 15 atividades de soja, seis de correção do solo e três questões conceituais, em ordem progressiva de dificuldade.</p>
             </div>
             <button type="button" onClick={startPlan} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#2E6F40] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#245B34] dark:bg-[#55764F]">
               <Shuffle className="h-4 w-4" /> Iniciar plano
@@ -312,8 +348,18 @@ export default function SoybeanStudySection() {
           <BookOpen className="h-4 w-4" /> Referências técnicas consultadas
         </div>
         <ul className="mt-3 space-y-2 text-xs leading-relaxed text-[#777468] dark:text-[#A6A395]">
-          <li><a href="https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1122295/1/BOLETIM-PD-24-ol.pdf" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Desempenho de cultivares de soja em função da população de plantas</a>: componentes de produção incluem população final, legumes por planta, grãos por legume e massa de mil grãos.</li>
-          <li><a href="https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1127264/1/LV-RecomendacaoSolo-2020-261-264.pdf" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Recomendações de calagem e adubação para culturas anuais, capítulo da soja</a>: método de saturação por bases, V₂ de 60% no material consultado e critérios de gessagem para 20–40 cm.</li>
+          <li><a href="https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1122295/1/BOLETIM-PD-24-ol.pdf" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Componentes de rendimento da soja</a>: população final, legumes por planta, grãos por legume e massa de mil grãos.</li>
+          <li><a href="https://www.embrapa.br/web/agencia-de-informacao-tecnologica/cultivos/soja/pre-producao/caracteristicas-da-especie-e-relacoes-com-o-ambiente/estadios-de-desenvolvimento" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Estádios fenológicos</a>: escala vegetativa e reprodutiva VE–R8.</li>
+          <li><a href="https://www.embrapa.br/en/web/agencia-de-informacao-tecnologica/cultivos/soja/pre-producao/instalacao-da-lavoura/aspectos-a-serem-considerados" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Instalação da lavoura</a>: profundidade, qualidade de semeadura e estabelecimento.</li>
+          <li><a href="https://www.embrapa.br/en/web/agencia-de-informacao-tecnologica/cultivos/soja/producao/inoculacao-e-inoculante" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Inoculação e inoculantes</a>: Bradyrhizobium, nodulação e fixação biológica de nitrogênio.</li>
+          <li><a href="https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1120127/1/SISTPROD06Soja.pdf" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Avaliação da nodulação</a>: inspeção de nódulos e interpretação da coloração interna associada à atividade da FBN.</li>
+          <li><a href="https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1160226/1/Doc-458-OL-versao-5.pdf" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Manejo da fertilidade e estado nutricional</a>: recomendações de manejo de fósforo, potássio e avaliação nutricional.</li>
+          <li><a href="https://www.embrapa.br/web/agencia-de-informacao-tecnologica/cultivos/soja/producao/manejo-integrado-de-pragas" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Manejo integrado de pragas</a>: monitoramento, pano-de-batida, nível de ação e inimigos naturais.</li>
+          <li><a href="https://www.embrapa.br/en/web/agencia-de-informacao-tecnologica/cultivos/soja/producao/manejo-de-plantas-daninhas/manejo-de-plantas-daninhas-na-soja" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Manejo de plantas daninhas</a>: competição, manejo integrado e prevenção de resistência.</li>
+          <li><a href="https://www.embrapa.br/web/soja/ferrugem" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Ferrugem-asiática</a>: vazio sanitário, calendário de semeadura e estratégias de manejo.</li>
+          <li><a href="https://www.embrapa.br/web/agencia-de-informacao-tecnologica/cultivos/soja/producao/manejo-do-solo/rotacao-de-culturas" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Rotação de culturas</a>: diversificação, cobertura e conservação do solo.</li>
+          <li><a href="https://www.embrapa.br/web/agencia-de-informacao-tecnologica/cultivos/soja/producao/colheita/fatores-que-afetam-a-colheita" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Fatores que afetam a colheita</a>: regulagem, velocidade e perdas operacionais.</li>
+          <li><a href="https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1127264/1/LV-RecomendacaoSolo-2020-261-264.pdf" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">Embrapa — Recomendações de calagem e adubação para culturas anuais</a>: saturação por bases e critérios de gessagem no capítulo da soja.</li>
           <li><a href="https://www.iac.sp.gov.br/publicacoes/boletim100.php" target="_blank" rel="noreferrer" className="font-semibold text-[#2E6F40] underline dark:text-[#A8C69A]">IAC — Boletim 100, edição 2022</a>: referência estadual de recomendações de adubação e calagem para São Paulo.</li>
         </ul>
         <p className="mt-3 text-[11px] leading-relaxed text-[#8C897E] dark:text-[#A6A395]">As atividades são didáticas. A dose real de corretivos depende de amostragem representativa, camada avaliada, sistema de cultivo, cultura, PRNT e recomendação regional vigente. O gesso não substitui o calcário.</p>
