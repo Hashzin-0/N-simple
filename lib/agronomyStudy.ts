@@ -107,6 +107,7 @@ function soybeanExercise(
 const SOY_PHENOLOGY_SOURCE = 'https://www.embrapa.br/web/agencia-de-informacao-tecnologica/cultivos/soja/pre-producao/caracteristicas-da-especie-e-relacoes-com-o-ambiente/estadios-de-desenvolvimento';
 const SOY_SEEDING_SOURCE = 'https://www.embrapa.br/en/web/agencia-de-informacao-tecnologica/cultivos/soja/pre-producao/instalacao-da-lavoura/aspectos-a-serem-considerados';
 const SOY_FBN_SOURCE = 'https://www.embrapa.br/en/web/agencia-de-informacao-tecnologica/cultivos/soja/producao/inoculacao-e-inoculante';
+const SOY_NODULATION_SOURCE = 'https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1120127/1/SISTPROD06Soja.pdf';
 const SOY_PEST_SOURCE = 'https://www.embrapa.br/web/agencia-de-informacao-tecnologica/cultivos/soja/producao/manejo-integrado-de-pragas';
 const SOY_WEED_SOURCE = 'https://www.embrapa.br/en/web/agencia-de-informacao-tecnologica/cultivos/soja/producao/manejo-de-plantas-daninhas/manejo-de-plantas-daninhas-na-soja';
 const SOY_RUST_SOURCE = 'https://www.embrapa.br/web/soja/ferrugem';
@@ -420,7 +421,7 @@ function soybeanConceptExercises(): StudyExercise[] {
     'soja-estande-falhas': [SOY_SEEDING_SOURCE],
     'soja-fbn': [SOY_FBN_SOURCE],
     'soja-inoculacao': [SOY_FBN_SOURCE],
-    'soja-nodulos': [SOY_FBN_SOURCE],
+    'soja-nodulos': [SOY_NODULATION_SOURCE, SOY_FBN_SOURCE],
     'soja-fbn-compatibilidade': [SOY_FBN_SOURCE],
     'soja-nutrientes-pk': [SOY_NUTRIENT_SOURCE],
     'soja-nitrogenio-fbn': [SOY_FBN_SOURCE, SOY_NUTRIENT_SOURCE],
