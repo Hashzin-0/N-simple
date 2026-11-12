@@ -62,7 +62,7 @@ export default function ProductivityHub({ onApplyYieldGoal, isConnected, fillReq
       <div className="rounded-2xl border border-[#E5E2D9] bg-white p-3 dark:border-[#343B30] dark:bg-[#1F221B]"><p className="text-xs font-semibold text-[#5A5A40] dark:text-[#C7CEBC]">Gerador de atividades · {active.label}</p><p className="mt-1 text-[11px] text-[#8C897E]">Cada cultura mantém seu próprio motor de questões, gabarito, tolerância numérica e resolução passo a passo.</p></div>
       {activeCrop==='corn' && <CornProductivityGenerator/>}
       {activeCrop==='soybean' && <SoybeanProductivityGenerator onBack={()=>setShowActivities(false)}/>}
-      {OTHER_CROP_IDS.has(activeCrop) && <OtherCropProductivityGenerator fixedCrop={activeCrop as 'sorghum'|'wheat'|'rice'|'common-bean'|'sunflower'|'peanut'|'sugarcane'} onBack={()=>setShowActivities(false)}/>}
+      {OTHER_CROP_IDS.has(activeCrop) && <OtherCropProductivityGenerator key={activeCrop} fixedCrop={activeCrop as 'sorghum'|'wheat'|'rice'|'common-bean'|'sunflower'|'peanut'|'sugarcane'} onBack={()=>setShowActivities(false)}/>}
     </section> : <>
       {activeCrop==='corn' && <CornYieldCalculator isConnected={isConnected} onApplyYieldGoal={onApplyYieldGoal} fillRequest={fillRequest} onValuesChange={onValuesChange}/>}
       {activeCrop==='soybean' && <><SoybeanYieldCalculator onValuesChange={onValuesChange}/><ProductivityCrop3D crop="soybean" values={cropValues}/></>}
