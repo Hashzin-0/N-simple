@@ -16,6 +16,29 @@ interface CornEar3DVisualizerProps {
 const COB_LENGTH = 3.8;
 const COB_RADIUS = 0.39;
 
+function createNaturalBumpTexture(seed: number, strength = 34) {
+  const size = 128;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const wave = Math.sin((x + seed) * 0.31) * 7 + Math.cos((y - seed) * 0.27) * 6;
+      const noise = ((x * 17 + y * 31 + seed * 13) % 29) / 29;
+      const value = Math.max(0, Math.min(255, 128 + wave + (noise - 0.5) * strength));
+      const index = (y * size + x) * 4;
+      data[index] = value;
+      data[index + 1] = value;
+      data[index + 2] = value;
+      data[index + 3] = 255;
+    }
+  }
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(2, 2);
+  texture.needsUpdate = true;
+  return texture;
+}
+
 function createKernelGeometry() {
   // Rounded, slightly tapered maize kernel with a soft crown and a narrow attachment base.
   const profile = [
@@ -206,10 +229,12 @@ export default function CornEar3DVisualizer({
         new THREE.Vector2(0.015, 2.0),
       ];
       const cobGeometry = new THREE.LatheGeometry(cobProfile, 48);
+      const cobBumpMap = createNaturalBumpTexture(7, 24);
       const cobMaterial = new THREE.MeshStandardMaterial({
         color: 0xb8793c,
-        roughness: 0.96,
-        bumpScale: 0.018,
+        roughness: 0.94,
+        bumpMap: cobBumpMap,
+        bumpScale: 0.026,
       });
       const cob = new THREE.Mesh(cobGeometry, cobMaterial);
       cob.castShadow = true;
@@ -223,10 +248,15 @@ export default function CornEar3DVisualizer({
       const instanceCount = safeRows * safeKernels;
       if (instanceCount > 0) {
         const kernelGeometry = createKernelGeometry();
-        const kernelMaterial = new THREE.MeshStandardMaterial({
+        const kernelBumpMap = createNaturalBumpTexture(19, 42);
+        const kernelMaterial = new THREE.MeshPhysicalMaterial({
           color: 0xffffff,
-          roughness: 0.43,
+          roughness: 0.49,
           metalness: 0.0,
+          bumpMap: kernelBumpMap,
+          bumpScale: 0.012,
+          clearcoat: 0.12,
+          clearcoatRoughness: 0.72,
         });
         const kernels = new THREE.InstancedMesh(kernelGeometry, kernelMaterial, instanceCount);
         kernels.castShadow = true;
