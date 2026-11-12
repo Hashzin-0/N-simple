@@ -14,8 +14,6 @@ const SOY_HARVEST_SOURCE = 'https://www.embrapa.br/web/agencia-de-informacao-tec
 const round = (value: number, digits = 2) => Number(value.toFixed(digits));
 const pick = <T,>(values: readonly T[], random: () => number): T =>
   values[Math.min(values.length - 1, Math.floor(random() * values.length))];
-const randomInt = (min: number, max: number, random: () => number) =>
-  min + Math.floor(random() * (max - min + 1));
 
 function componentYieldExercise(
   id: string,
