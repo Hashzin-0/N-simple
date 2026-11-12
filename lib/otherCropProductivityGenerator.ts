@@ -47,9 +47,9 @@ interface CropDefinition {
 const CROP_DEFINITIONS: Record<OtherCropId, CropDefinition> = {
   sorghum: {
     name: 'Sorgo granífero',
-    minYield: 2200,
-    maxYield: 7500,
-    yieldTargets: [2500, 2800, 3200, 3600, 4000, 4400, 4800, 5200, 5600, 6000, 6400, 6800, 7200],
+    minYield: 1500,
+    maxYield: 5500,
+    yieldTargets: [2500, 2800, 3200, 3500, 3800, 4000, 4200, 4500, 4800, 5000, 5200, 5400],
     source: [
       'https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1177156/1/Situacao-atual-e-perspectivas-para-o-sorgo-granifero.pdf',
       'https://apct.sede.embrapa.br/pab/pt_BR/article/view/13486',
