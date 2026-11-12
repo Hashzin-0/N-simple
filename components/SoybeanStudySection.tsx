@@ -143,7 +143,7 @@ export default function SoybeanStudySection() {
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#8C897E] dark:text-[#A6A395]">Depois da calculadora</p>
             <h2 className="text-xl font-bold text-[#5A5A40] dark:text-[#E8E7DF] sm:text-2xl">Estudos e atividades práticas</h2>
-            <p className={'mt-1 text-xs sm:text-sm ' + mutedClass}>Estude implantação, fenologia, nutrição, fixação biológica, manejo fitossanitário, produtividade e colheita da soja, além de calagem e gessagem.</p>
+            <p className={'mt-1 text-xs sm:text-sm ' + mutedClass}>Estude soja, estimativa de produtividade em outras culturas, calagem e gessagem.</p>
           </div>
         </div>
         <button
@@ -167,7 +167,7 @@ export default function SoybeanStudySection() {
       <button type="button" onClick={() => setShowOtherCropGenerator(true)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-[#557A91]/25 bg-[#557A91]/[0.06] p-4 text-left transition hover:border-[#557A91]/50 hover:bg-[#557A91]/[0.1] dark:border-[#557A91]/40 dark:bg-[#557A91]/10">
         <span className="flex items-center gap-3">
           <span className="rounded-xl bg-[#557A91]/10 p-2 text-[#557A91] dark:text-[#9DC0D2]"><Sparkles className="h-5 w-5" /></span>
-          <span><span className="block text-sm font-bold text-[#454638] dark:text-[#E8E7DF]">Gerador de produtividade de outras culturas</span><span className={'mt-1 block text-xs ' + mutedClass}>Sorgo granífero, trigo, arroz, feijão e girassol. Selecione cultura, nível e quantidade.</span></span>
+          <span><span className="block text-sm font-bold text-[#454638] dark:text-[#E8E7DF]">Gerador de produtividade de outras culturas</span><span className={'mt-1 block text-xs ' + mutedClass}>Sorgo, trigo, arroz, feijão, girassol, amendoim e cana-de-açúcar. Selecione cultura, nível e quantidade.</span></span>
         </span>
         <span className="shrink-0 text-xs font-bold text-[#557A91] dark:text-[#9DC0D2]">Entrar →</span>
       </button>
