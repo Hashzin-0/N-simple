@@ -140,7 +140,7 @@ export default function SoybeanStudySection() {
 
       <div className="grid gap-3 md:grid-cols-3">
         {([
-          ['soja', 'Produtividade de soja', 'População, legumes, grãos, PMG, quebra e sacas.', 'text-[#2E6F40]'],
+          ['soja', 'Estudos completos de soja', 'Implantação, fenologia, nutrição, FBN, manejo, produtividade e colheita.', 'text-[#2E6F40]'],
           ['calagem', 'Calagem', 'Saturação por bases, CTC, PRNT e dose de calcário.', 'text-[#B77936]'],
           ['gessagem', 'Gessagem', 'Diagnóstico de subsuperfície, argila e dose de gesso.', 'text-[#557A91]'],
         ] as const).map(([topic, title, description, color]) => (
@@ -152,7 +152,7 @@ export default function SoybeanStudySection() {
           >
             <div className="mb-2 flex items-center justify-between">
               <Sprout className={'h-5 w-5 ' + color} />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C897E] dark:text-[#A6A395]">{topic === 'calagem' ? '6 atividades' : '5 atividades'}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#8C897E] dark:text-[#A6A395]">{topic === 'soja' ? exercises.filter((exercise) => exercise.topic === 'soja').length + ' atividades' : topic === 'calagem' ? exercises.filter((exercise) => exercise.topic === 'calagem').length + ' atividades' : exercises.filter((exercise) => exercise.topic === 'gessagem').length + ' atividades'}</span>
             </div>
             <h3 className="font-bold text-[#454638] dark:text-[#E8E7DF]">{title}</h3>
             <p className={'mt-1 text-xs leading-relaxed ' + mutedClass}>{description}</p>
@@ -273,7 +273,7 @@ export default function SoybeanStudySection() {
           <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-[#CFCABB] p-4 dark:border-[#454D3F] sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="font-bold text-[#5A5A40] dark:text-[#E8E7DF]">Plano progressivo aleatório</h3>
-              <p className={'mt-1 text-xs ' + mutedClass}>12 questões sorteadas: nove exercícios de cálculo e três questões conceituais, em ordem progressiva de dificuldade.</p>
+              <p className={'mt-1 text-xs ' + mutedClass}>24 questões sorteadas: 15 atividades de soja, seis de correção do solo e três questões conceituais, em ordem progressiva de dificuldade.</p>
             </div>
             <button type="button" onClick={startPlan} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#2E6F40] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#245B34] dark:bg-[#55764F]">
               <Shuffle className="h-4 w-4" /> Iniciar plano
