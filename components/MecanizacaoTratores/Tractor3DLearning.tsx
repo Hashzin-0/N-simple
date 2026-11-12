@@ -94,7 +94,7 @@ function buildCab(scene: THREE.Scene) {
   box('instrument-cluster',[.68,.29,.055],[0,1.58,-.91],panel,[.12,0,0]);
   box('digital-display',[.29,.14,.012],[0,1.59,-.945],white);
   for(const x of [-.24,.24]){
-    const dial=cyl('instrument-gauge',.085,.025,[x,1.59,-.95],white,[Math.PI/2,0,0]);
+    cyl('instrument-gauge',.085,.025,[x,1.59,-.95],white,[Math.PI/2,0,0]);
     box('gauge-needle',[.012,.065,.012],[x,1.6,-.97],red);
   }
   sw('light-switch',-.55,1.42,-.95);sw('high-beam-switch',-.36,1.42,-.95,yellow);
