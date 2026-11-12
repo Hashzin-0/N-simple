@@ -78,7 +78,7 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
     camera.position.set(7,4.5,8);
     let renderer:THREE.WebGLRenderer;
     try { renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'low-power'}); }
-    catch { onLoadState('unsupported'); return ()=>{disposed=true;}; }
+    catch { onLoadState('unsupported'); if(calloutRef.current) calloutRef.current.style.display='none'; return ()=>{disposed=true;}; }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.6));
     renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     renderer.outputColorSpace=THREE.SRGBColorSpace;
