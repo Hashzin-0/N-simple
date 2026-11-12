@@ -19,7 +19,7 @@ const modeLabels: Record<SoybeanGenerationMode, string> = {
 const difficultyLabels = ['', 'Básica', 'Intermediária', 'Avançada'];
 
 function serializeActivities(activities: StudyExercise[]): string {
-  return JSON.stringify(activities.map(({ id: _id, ...content }) => content));
+  return JSON.stringify(activities.map((exercise) => ({ ...exercise, id: undefined })));
 }
 
 async function hashActivities(activities: StudyExercise[]): Promise<string> {
@@ -69,7 +69,7 @@ export default function SoybeanProductivityGenerator({ onBack }: Props) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState(false);
   const [showSolution, setShowSolution] = useState(false);
-  const [score, setScore] = useState(0);
+  const [solvedIds, setSolvedIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -97,7 +97,7 @@ export default function SoybeanProductivityGenerator({ onBack }: Props) {
     setValues({});
     setChecked(false);
     setShowSolution(false);
-    setScore(0);
+    setSolvedIds([]);
 
     let previousHash = lastHashRef.current;
     try {
@@ -141,7 +141,9 @@ export default function SoybeanProductivityGenerator({ onBack }: Props) {
     if (!current || (checked && allCorrect)) return;
     const totalCorrect = current.answers.filter((answer) => answerIsCorrect(answer, values[answer.key] ?? '')).length;
     setChecked(true);
-    if (totalCorrect === current.answers.length) setScore((previous) => previous + 1);
+    if (totalCorrect === current.answers.length) {
+      setSolvedIds((previous) => previous.includes(current.id) ? previous : [...previous, current.id]);
+    }
   };
 
   const move = (direction: -1 | 1) => {
@@ -226,7 +228,7 @@ export default function SoybeanProductivityGenerator({ onBack }: Props) {
               {storageWarning && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Comparação persistente indisponível; hash mantido apenas na sessão.</p>}
             </div>
             <div className="text-right">
-              <p className="text-sm font-bold text-[#454638] dark:text-[#E8E7DF]">{score}/{activities.length}</p>
+              <p className="text-sm font-bold text-[#454638] dark:text-[#E8E7DF]">{solvedIds.length}/{activities.length}</p>
               <p className={'text-[10px] ' + mutedClass}>atividades corretas</p>
             </div>
           </div>
