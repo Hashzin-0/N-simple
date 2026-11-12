@@ -127,6 +127,7 @@ function buildCab(scene: THREE.Scene) {
   lever('front-wheel-drive',-.72,.05,.36);lever('pto-engagement',-.88,.38,.42,yellow);
   lever('pto-economy',-.68,.62,.32);
   lever('parking-brake',-.56,.42,.3,red);
+  lever('parking-brake',-.56,.42,.3,red);
 
   // Comandos traseiros: ajuste de velocidade de descida e TDP econômica.
   box('rear-control-panel',[.72,.28,.07],[0,1.12,.99],dark);
@@ -138,6 +139,27 @@ function buildCab(scene: THREE.Scene) {
   for(const x of [-1.12,1.12]){
     box('mirror-arm',[.035,.035,.42],[x,1.72,-.55],metal,[0,0,.15]);
     box('side-mirror',[.16,.28,.07],[x*1.04,1.83,-.34],dark);
+  }
+  // Pictogramas ISO aplicados fisicamente aos painéis/controles correspondentes.
+  // A imagem é apenas o pictograma; o nome permanece reservado ao feedback do exercício.
+  const symbolLoader=new THREE.TextureLoader();
+  const symbolPlacements=[
+    {id:'position-lights',pos:[-.55,1.56,-.985] as [number,number,number],rot:[0,0,0] as [number,number,number]},
+    {id:'rockshaft',pos:[.84,.995,.34] as [number,number,number],rot:[-Math.PI/2,0,0] as [number,number,number]},
+    {id:'rockshaft-up',pos:[.72,.995,.27] as [number,number,number],rot:[-Math.PI/2,0,0] as [number,number,number]},
+    {id:'rockshaft-down',pos:[.92,.995,.27] as [number,number,number],rot:[-Math.PI/2,0,0] as [number,number,number]},
+    {id:'remote-cylinder',pos:[.66,.995,-.42] as [number,number,number],rot:[-Math.PI/2,0,0] as [number,number,number]},
+    {id:'pto-cw',pos:[-.88,.995,.38] as [number,number,number],rot:[-Math.PI/2,0,0] as [number,number,number]},
+    {id:'parking-brake',pos:[-.56,.995,.42] as [number,number,number],rot:[-Math.PI/2,0,0] as [number,number,number]},
+    {id:'diff-lock',pos:[.68,.49,-.57] as [number,number,number],rot:[-Math.PI/2,0,0] as [number,number,number]},
+  ];
+  for(const placement of symbolPlacements){
+    const symbol=TRACTOR_SYMBOLS.find(item=>item.id===placement.id);
+    if(!symbol)continue;
+    const material=new THREE.MeshBasicMaterial({color:'#FFFFFF',side:THREE.DoubleSide,transparent:true});
+    const plate=new THREE.Mesh(new THREE.PlaneGeometry(.115,.115),material);
+    plate.name='iso-symbol-'+placement.id;plate.position.set(...placement.pos);plate.rotation.set(...placement.rot);root.add(plate);
+    symbolLoader.load(symbol.imageUrl,texture=>{texture.colorSpace=THREE.SRGBColorSpace;material.map=texture;material.needsUpdate=true;},undefined,()=>{});
   }
   scene.add(root);return root;
 }
@@ -251,7 +273,7 @@ export default function Tractor3DLearning() {
   const [mode,setMode]=useState<ViewMode>('cab');
   const [tractorId,setTractorId]=useState('john-deere-5078e');
   const [gearId,setGearId]=useState(TRACTORS.find(item=>item.id==='john-deere-5078e')?.gears[0].id??TRACTORS[0].gears[0].id);
-  const [rpm,setRpm]=useState(TRACTORS[0].nominalRpm);
+  const [rpm,setRpm]=useState(TRACTORS.find(item=>item.id==='john-deere-5078e')?.nominalRpm??TRACTORS[0].nominalRpm);
   const [range,setRange]=useState<'turtle'|'hare'>('turtle');
   const [stepIndex,setStepIndex]=useState(0);
   const [answer,setAnswer]=useState<number|null>(null);
@@ -299,7 +321,7 @@ export default function Tractor3DLearning() {
         <div className="relative h-[340px] sm:h-[480px] overflow-hidden rounded-xl border border-[#D5DCD0] bg-[#E8ECE4]">
           <ThreeViewport mode={mode} modelSpeed={modelSpeed} onLoadState={onLoadState} activeAnchor={step.anchor} calloutRef={calloutRef}/>
           {mode==='cab'&&symbol&&<AnimatePresence mode="wait"><motion.div key={step.symbolId} initial={{opacity:0,x:36}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-36}} transition={{duration:.2}} ref={calloutRef} className="pointer-events-none absolute z-10 flex items-center gap-2 -translate-x-1/2 -translate-y-1/2">
-            <div className="h-16 w-16 rounded-xl border-2 border-[#68895D] bg-white/95 p-2 shadow-lg"><TractorSymbolImage symbol={symbol} className="h-full w-full"/></div>
+            <div className="h-16 w-16 rounded-xl border-2 border-[#68895D] bg-white/95 p-2 shadow-lg"><TractorSymbolImage symbol={symbol} revealMeaning={false} className="h-full w-full"/></div>
             <svg width="100" height="60" viewBox="0 0 100 60" className="overflow-visible"><path d="M0 30 L95 30" stroke="#54784A" strokeWidth="2.5" fill="none" strokeDasharray="5 3"/><circle cx="95" cy="30" r="4" fill="#54784A"/></svg>
           </motion.div></AnimatePresence>}
           <div className="absolute left-3 top-3 rounded-lg bg-white/90 px-3 py-2 text-[10px] font-semibold text-[#344132]">
