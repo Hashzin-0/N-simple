@@ -45,6 +45,7 @@ interface CornYieldCalculatorProps {
   onApplyYieldGoal?: (scHa: number) => void;
   isConnected?: boolean;
   fillRequest?: CornYieldFillRequest | null;
+  onValuesChange?: (values: Record<string, number>) => void;
 }
 
 interface YieldPreset {
@@ -99,7 +100,7 @@ const YIELD_PRESETS: YieldPreset[] = [
   },
 ];
 
-export default function CornYieldCalculator({ onApplyYieldGoal, isConnected, fillRequest }: CornYieldCalculatorProps) {
+export default function CornYieldCalculator({ onApplyYieldGoal, isConnected, fillRequest, onValuesChange }: CornYieldCalculatorProps) {
   const { isDark } = useTheme();
 
   const [plantasPorMetro, setPlantasPorMetro] = usePersistedState<number>('corn_yield_plantas', 0);
@@ -114,6 +115,11 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected, fil
   const [estandeDirect, setEstandeDirect] = usePersistedState<number>('corn_yield_estande_direct', 0);
   const [graosPorEspigaDirect, setGraosPorEspigaDirect] = usePersistedState<number>('corn_yield_graos_espiga_direct', 0);
   const [showFormulaDetails, setShowFormulaDetails] = useState<boolean>(true);
+
+  useEffect(() => {
+    onValuesChange?.({ plantasPorMetro, espacamentoLinhas, fileiras, graosPorFileira, espigas, pmg, quebraDecimal, estandeDirect, graosPorEspigaDirect, directMode: directMode ? 1 : 0 });
+  }, [onValuesChange, plantasPorMetro, espacamentoLinhas, fileiras, graosPorFileira, espigas, pmg, quebraDecimal, estandeDirect, graosPorEspigaDirect, directMode]);
+
   const { withLock } = useAnimationLock(400);
   const [appliedToast, setAppliedToast] = useState<string | null>(null);
   
