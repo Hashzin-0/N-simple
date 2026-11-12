@@ -16,8 +16,8 @@ export interface OtherCropYieldResult {
 const SOURCES = {
   sorghum: ['https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1177156/1/Situacao-atual-e-perspectivas-para-o-sorgo-granifero.pdf', 'https://apct.sede.embrapa.br/pab/pt_BR/article/view/13486'],
   wheat: ['https://www.alice.cnptia.embrapa.br/alice/handle/doc/914301', 'https://apct.sede.embrapa.br/pab/pt_BR/article/view/19626'],
-  rice: ['https://www.alice.cnptia.embrapa.br/alice/bitstream/doc/941339/1/asp1.pdf'],
-  bean: ['https://www.alice.cnptia.embrapa.br/alice/bitstream/doc/1023574/1/Nutricao-mineral-do-feijoeiro-2015.pdf'],
+  rice: ['https://www.alice.cnptia.embrapa.br/alice/bitstream/doc/941339/1/asp1.pdf', 'https://www.embrapa.br/en/web/agencia-de-informacao-tecnologica/cultivos/arroz/producao/sistema-de-cultivo/arroz-irrigado-na-regiao-subtropical/manejo-do-solo-e-sistema-de-plantio'],
+  bean: ['https://www.alice.cnptia.embrapa.br/alice/bitstream/doc/1023574/1/Nutricao-mineral-do-feijoeiro-2015.pdf', 'https://www.embrapa.br/en/web/agencia-de-informacao-tecnologica/cultivos/feijao/pre-producao/fisiologia'],
   sunflower: ['https://www.alice.cnptia.embrapa.br/alice/bitstream/doc/1106985/1/Marchesini.pdf', 'https://www.alice.cnptia.embrapa.br/alice/handle/doc/1028046'],
   peanut: ['https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/578407/1/500perguntasamendoim.pdf', 'https://www.infoteca.cnptia.embrapa.br/bitstream/doc/956886/1/BOLPES93.pdf'],
   sugarcane: ['https://www.alice.cnptia.embrapa.br/alice/bitstream/doc/1166988/1/LV-Inovacao-desenvolvimento-2024.pdf', 'https://www.embrapa.br/web/agencia-de-informacao-tecnologica/cultivos/cana-de-acucar/producao'],
