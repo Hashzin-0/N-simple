@@ -21,7 +21,7 @@ A cabine interna é uma reconstrução procedural Three.js do posto de operaçã
 
 A geometria é uma interpretação educacional aproximada, não um CAD OEM, digitalização ou promessa de equivalência milimétrica. A Série 5E pode variar por ano, número de série, transmissão (9x3 TSS ou 12x12 PowrReverser), quantidade de VCRs e opcionais. Para treinamento operacional, o manual correspondente à máquina real prevalece.
 
-A seleção do simulador foi restringida aos tratores John Deere nesta etapa. O 5078E 9x3 TSS foi cadastrado com 78 cv, 2400 rpm e velocidades publicadas para a transmissão sincronizada e pneu 16.9-30 R1; os dados não devem ser usados para a opção 12x12 ou outra configuração.
+A seleção do simulador foi restringida aos tratores John Deere nesta etapa. Os pictogramas ISO estudados também foram posicionados como placas nos painéis e comandos físicos correspondentes na maquete 3D; o destaque do exercício acompanha o comando selecionado. O 5078E 9x3 TSS foi cadastrado com 78 cv, 2400 rpm e velocidades publicadas para a transmissão sincronizada e pneu 16.9-30 R1; os dados não devem ser usados para a opção 12x12 ou outra configuração.
 
 No exercício ISO, o cartão pré-resposta exibe somente o pictograma e o código ISO. O componente de imagem também reduz o texto alternativo acessível ao código ISO durante o exercício, evitando revelar o nome do símbolo por leitor de tela. A descrição e a aplicação completas aparecem após a submissão. A biblioteca de estudo continua exibindo o conteúdo integral.
 
