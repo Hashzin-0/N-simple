@@ -127,7 +127,6 @@ function buildCab(scene: THREE.Scene) {
   lever('front-wheel-drive',-.72,.05,.36);lever('pto-engagement',-.88,.38,.42,yellow);
   lever('pto-economy',-.68,.62,.32);
   lever('parking-brake',-.56,.42,.3,red);
-  lever('parking-brake',-.56,.42,.3,red);
 
   // Comandos traseiros: ajuste de velocidade de descida e TDP econômica.
   box('rear-control-panel',[.72,.28,.07],[0,1.12,.99],dark);
@@ -328,7 +327,7 @@ export default function Tractor3DLearning() {
             {mode==='cab'?'JOHN DEERE 5078E — CABINE DIDÁTICA':'MODELO EXTERNO GENÉRICO CC0'}
           </div>
           <div className="absolute bottom-3 left-3 rounded-lg bg-white/90 px-3 py-2 text-[10px] text-[#344132]">
-            {loadState==='loading'?'Carregando modelo 3D…':loadState==='unsupported'?'WebGL indisponível neste dispositivo':loadState==='error'?'Modelo externo indisponível — visual alternativo':'Modelo 3D carregado'}
+            {loadState==='unsupported'?'WebGL indisponível neste dispositivo':mode==='cab'?'Cabine didática carregada':loadState==='loading'?'Carregando modelo externo…':loadState==='error'?'Modelo externo indisponível — visual alternativo':'Modelo externo carregado'}
           </div>
           <button type="button" onClick={()=>{setMode(mode==='cab'?'exterior':'cab');}} aria-label="Alternar visualização 3D" className="absolute right-3 top-3 rounded-lg bg-white/90 p-2 text-[#344132]"><Camera className="size-4"/></button>
         </div>
