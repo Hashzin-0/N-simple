@@ -11,7 +11,9 @@ import { calculateSoybeanYield } from '@/lib/soybeanYield';
 const formatNumber = (value: number, maximumFractionDigits = 2) =>
   value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits });
 
-export default function SoybeanYieldCalculator() {
+interface Props { onValuesChange?: (values: Record<string, number>) => void; }
+
+export default function SoybeanYieldCalculator({ onValuesChange }: Props) {
   const { isDark } = useTheme();
   const [populationPerHa, setPopulationPerHa] = useState(0);
   const [evaluatedPlants, setEvaluatedPlants] = useState(0);
@@ -21,6 +23,8 @@ export default function SoybeanYieldCalculator() {
   const [lossPercent, setLossPercent] = useState(0);
   const [areaHa, setAreaHa] = useState(0);
   const [showCalculation, setShowCalculation] = useState(false);
+
+  React.useEffect(() => { onValuesChange?.({ populationPerHa, evaluatedPlants, totalPods, totalGrains, thousandGrainWeight, lossPercent, areaHa }); }, [onValuesChange, populationPerHa, evaluatedPlants, totalPods, totalGrains, thousandGrainWeight, lossPercent, areaHa]);
 
   const results = useMemo(() => calculateSoybeanYield({
     populationPerHa,
