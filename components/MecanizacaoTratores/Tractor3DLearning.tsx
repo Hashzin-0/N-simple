@@ -158,7 +158,7 @@ function buildCab(scene: THREE.Scene) {
     const material=new THREE.MeshBasicMaterial({color:'#FFFFFF',side:THREE.DoubleSide,transparent:true});
     const plate=new THREE.Mesh(new THREE.PlaneGeometry(.115,.115),material);
     plate.name='iso-symbol-'+placement.id;plate.position.set(...placement.pos);plate.rotation.set(...placement.rot);root.add(plate);
-    symbolLoader.load(symbol.imageUrl,texture=>{texture.colorSpace=THREE.SRGBColorSpace;material.map=texture;material.needsUpdate=true;},undefined,()=>{});
+    symbolLoader.load(symbol.imageUrl,texture=>{if(root.userData.disposed){texture.dispose();return;}texture.colorSpace=THREE.SRGBColorSpace;material.map=texture;material.needsUpdate=true;},undefined,()=>{});
   }
   scene.add(root);return root;
 }
@@ -259,7 +259,7 @@ function ThreeViewport({ mode, modelSpeed, onLoadState, activeAnchor, calloutRef
     };
     animate();
     return ()=>{
-      disposed=true; cancelAnimationFrame(frame); observer.disconnect(); controls.dispose(); renderer.dispose();
+      disposed=true; cabRoot.userData.disposed=true; cancelAnimationFrame(frame); observer.disconnect(); controls.dispose(); renderer.dispose();
       if(mixer) mixer.stopAllAction();
       disposeObject3D(scene);
       if(renderer.domElement.parentElement===element) element.removeChild(renderer.domElement);
