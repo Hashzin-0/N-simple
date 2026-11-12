@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { BookOpen, CheckCircle2, CircleHelp, ClipboardList, GraduationCap, RotateCcw, Shuffle, Sprout } from 'lucide-react';
+import { BookOpen, CheckCircle2, CircleHelp, ClipboardList, GraduationCap, RotateCcw, Shuffle, Sparkles, Sprout } from 'lucide-react';
+import SoybeanProductivityGenerator from '@/components/SoybeanProductivityGenerator';
 import {
   createRandomStudyPlan,
   getIndividualStudyExercises,
@@ -55,6 +56,7 @@ export default function SoybeanStudySection() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [showSolution, setShowSolution] = useState(false);
   const [score, setScore] = useState(0);
+  const [showProductivityGenerator, setShowProductivityGenerator] = useState(false);
 
   const current = selected ?? plan[planIndex] ?? null;
   const isPlan = plan.length > 0;
@@ -110,6 +112,14 @@ export default function SoybeanStudySection() {
     setShowSolution(false);
   };
 
+  if (showProductivityGenerator) {
+    return (
+      <section id="soybean_studies" className="w-full space-y-6 border-t border-[#E5E2D9] px-4 py-8 sm:px-6 lg:px-8 dark:border-[#343B30]">
+        <SoybeanProductivityGenerator onBack={() => setShowProductivityGenerator(false)} />
+      </section>
+    );
+  }
+
   const cardClass = 'rounded-2xl border border-[#E5E2D9] bg-white dark:border-[#343B30] dark:bg-[#20251E]';
   const mutedClass = 'text-[#777468] dark:text-[#A6A395]';
 
@@ -135,6 +145,14 @@ export default function SoybeanStudySection() {
           Sortear plano de estudos
         </button>
       </div>
+
+      <button type="button" onClick={() => setShowProductivityGenerator(true)} className="flex w-full items-center justify-between gap-3 rounded-2xl border border-[#2E6F40]/25 bg-[#2E6F40]/[0.06] p-4 text-left transition hover:border-[#2E6F40]/50 hover:bg-[#2E6F40]/[0.1] dark:border-[#55764F]/40 dark:bg-[#55764F]/10">
+        <span className="flex items-center gap-3">
+          <span className="rounded-xl bg-[#2E6F40]/10 p-2 text-[#2E6F40] dark:text-[#A8C69A]"><Sparkles className="h-5 w-5" /></span>
+          <span><span className="block text-sm font-bold text-[#454638] dark:text-[#E8E7DF]">Gerador aleatório de produtividade de soja</span><span className={'mt-1 block text-xs ' + mutedClass}>Escolha o nível e a quantidade. Receba somente exercícios numéricos gerados na hora.</span></span>
+        </span>
+        <span className="shrink-0 text-xs font-bold text-[#2E6F40] dark:text-[#A8C69A]">Entrar →</span>
+      </button>
 
       <p className={'-mt-3 text-xs leading-relaxed ' + mutedClass}>Nas respostas abertas, a correção considera grupos de conceitos essenciais e aceita diferentes formulações. A resolução explica os pontos esperados.</p>
 
