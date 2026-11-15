@@ -26,6 +26,8 @@ import {
   Languages,
   Tractor,
   Wheat,
+  CloudSun,
+  BarChart3,
 } from 'lucide-react';
 
 export interface SectionConfig {
@@ -56,6 +58,12 @@ export const SECTIONS_BY_TAB: Record<TabId, SectionConfig[]> = {
     { id: 'corn_yield_params', label: 'Parâmetros', shortLabel: 'Parâmetros', icon: Sliders, color: '#5A5A40', colorDark: '#9CB386' },
     { id: 'corn_yield_visual', label: 'Visual 3D', shortLabel: 'Visual', icon: Eye, color: '#C19262', colorDark: '#D4A373' },
     { id: 'corn_yield_results', label: 'Resultados', shortLabel: 'Resultados', icon: Trophy, color: '#2E6F40', colorDark: '#86efac' },
+  ],
+  clima: [
+    { id: 'weather_dashboard', label: 'Previsão e Agroclima', shortLabel: 'Previsão', icon: CloudSun, color: '#4E8790', colorDark: '#8ECAD1' },
+  ],
+  'dados-agro': [
+    { id: 'ibge_agro_dashboard', label: 'Produção por município', shortLabel: 'IBGE', icon: BarChart3, color: '#55764F', colorDark: '#A9C49D' },
   ],
   soja: [
     { id: 'soybean_yield_header', label: 'Visão Geral', shortLabel: 'Visão', icon: Wheat, color: '#2E6F40', colorDark: '#9CB386' },
@@ -141,6 +149,8 @@ export function tabForSection(section: string): TabId | null {
 const TAB_LABELS_PT: Record<TabId, string> = {
   nitrogen: 'Adubação Nitrogenada',
   productivity: 'Produtividade Agrícola',
+  clima: 'Tempo e Clima',
+  'dados-agro': 'Dados Agropecuários',
   soja: 'Produtividade de Soja',
   itr: 'Calculadora ITR',
   abnt: 'Referências ABNT',
