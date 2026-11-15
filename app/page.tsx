@@ -1222,7 +1222,7 @@ export default function Home() {
       )}
 
       {/* Main content area - offset for desktop sidebar */}
-      <div className={`${isDisciplineHome ? '' : 'lg:ml-[180px]'} px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <div className={`${isDisciplineHome ? '' : 'lg:ml-[180px]'} px-4 sm:px-6 lg:px-8 py-8 space-y-8` }>
 
         {/* TOAST NOTIFICATION */}
         <AnimatePresence>
