@@ -33,33 +33,14 @@ export default function PortaisConfiaveisSection({
   return (
     <section id="pesquisador_portais" className="space-y-6">
       {/* SECTION HEADER */}
-      <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl border border-[#E5E2D9] dark:border-[#2C3328] shadow-sm space-y-3">
-        <div className="flex items-center gap-3 border-b border-[#F0EDE5] dark:border-[#2C3328] pb-4">
-          <div className="p-3 rounded-2xl bg-[#D4A373]/20 text-[#8D6E63] dark:text-[#D4A373] border border-[#D4A373]/30 shrink-0">
-            <Globe className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#5A5A40] dark:text-[#E8E7DF]">
-                Portais & Acervos Confiáveis em Agropecuária
-              </h2>
-            </div>
-            <p className="text-xs sm:text-sm text-[#8C897E] dark:text-[#A6A395] mt-0.5">
-              Repositórios oficiais, indexadores globais e bibliotecas eletrônicas reconhecidas. Arraste o card para a esquerda ou direita para alternar entre os portais.
-            </p>
-          </div>
-        </div>
+      <div className="border-b border-[#E5E2D9] pb-3 dark:border-[#30372D]">
+        <h2 className="text-lg font-semibold text-[#344333] dark:text-[#E5EADF]">Portais e acervos</h2>
+      </div>
 
         {currentTheme && (
-          <div className="flex items-center justify-between gap-2 p-3 rounded-2xl bg-[#FAF8F5] dark:bg-[#121511] border border-[#F0EDE5] dark:border-[#242A20] text-xs">
-            <span className="text-[#5A5A40] dark:text-[#C5D9B0] flex items-center gap-1.5 font-medium">
-              <Search className="h-4 w-4 text-[#2E6F40] dark:text-[#9CB386]" />
-              Tema de busca ativo: <strong className="text-[#242A20] dark:text-[#F3F1EC]">&ldquo;{currentTheme}&rdquo;</strong>
-            </span>
-            <span className="text-[11px] text-[#8C897E] dark:text-[#9EA399] hidden sm:inline">
-              Os botões em cada card abrem a pesquisa direcionada no acervo
-            </span>
-          </div>
+          <p className="text-xs text-[#5A5A40] dark:text-[#C5D9B0]">
+            Tema ativo: <strong className="text-[#242A20] dark:text-[#F3F1EC]">&ldquo;{currentTheme}&rdquo;</strong>
+          </p>
         )}
       </div>
 
