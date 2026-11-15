@@ -87,17 +87,10 @@ export default function IBGEAgroDashboard() {
 
   return (
     <section id="ibge_agro_dashboard" className="mx-auto w-full max-w-7xl space-y-6" aria-labelledby="ibge-agro-title">
-      <div className="rounded-3xl border border-[#E2E0D6] bg-white p-6 shadow-sm dark:border-[#343D32] dark:bg-[#1C241D] sm:p-8">
-        <div className="flex items-start gap-4">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#EDF1E9] text-[#55764F] dark:bg-[#2B382B] dark:text-[#A9C49D]"><BarChart3 className="size-6" /></span>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#71836B]">Dados agropecuários oficiais</p>
-            <h2 id="ibge-agro-title" className="mt-1 text-2xl font-bold text-[#344333] dark:text-[#E5EADF] sm:text-3xl">Produção por município</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#737B70] dark:text-[#B0B8AA]">Consulte lavouras e efetivos pecuários a partir das séries anuais da PAM e da PPM do IBGE. Os dados são oficiais e identificados pelo ano de referência.</p>
-          </div>
-        </div>
+      <div className="space-y-4">
+        <h2 id="ibge-agro-title" className="text-2xl font-bold tracking-tight text-[#344333] dark:text-[#E5EADF] sm:text-3xl">Produção por município</h2>
 
-        <div className="relative mt-6 max-w-2xl">
+        <div className="relative max-w-2xl">
           <label htmlFor="ibge-municipality-search" className="mb-1.5 block text-xs font-semibold text-[#66705F] dark:text-[#C3CBBE]">Buscar município</label>
           <div className="flex items-center gap-2 rounded-xl border border-[#D9D6CB] bg-[#F8F9F5] px-3 dark:border-[#3C4739] dark:bg-[#151C16]">
             <MapPin className="size-4 shrink-0 text-[#71836B]" />
