@@ -20,13 +20,16 @@ import {
   ShieldCheck,
   Sprout,
   Tractor,
+  TrendingUp,
+  ChartNoAxesCombined,
   Users,
   type LucideIcon,
 } from 'lucide-react';
 import type { TabId } from '@/components/GooeyTabPanel';
 
 interface DisciplineFeature {
-  tab: TabId;
+  tab?: TabId;
+  href?: string;
   title: string;
   description: string;
   icon: LucideIcon;
@@ -62,6 +65,8 @@ const DISCIPLINES: Discipline[] = [
     features: [
       { tab: 'ibge', title: 'Dados agropecuários do IBGE', description: 'Consulte produção agrícola (PAM), efetivos pecuários (PPM) e séries municipais.', icon: BarChart3 },
       { tab: 'weather', title: 'Meteorologia agrícola', description: 'Consulte previsão, chuva, temperatura, vento e evapotranspiração.', icon: CloudSun },
+      { href: 'https://www.cepea.org.br/br/indicadores/', title: 'Indicadores CEPEA', description: 'Acesse os indicadores oficiais de preços e mercados agropecuários. Consulta externa; integração via API depende de contratação e credenciais.', icon: TrendingUp },
+      { href: 'https://consultaprecosdemercado.conab.gov.br/', title: 'Preços agropecuários CONAB', description: 'Consulte preços de mercado publicados pela CONAB no portal oficial.', icon: ChartNoAxesCombined },
     ],
   },
   {
@@ -193,7 +198,7 @@ export default function DisciplineHub({ onOpenTab }: DisciplineHubProps) {
                   <motion.button
                     key={`${feature.tab}-${feature.title}`}
                     type="button"
-                    onClick={() => onOpenTab(feature.tab)}
+                    onClick={() => { if (feature.tab) onOpenTab(feature.tab); else if (feature.href) window.open(feature.href, '_blank', 'noopener,noreferrer'); }}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.04 }}
@@ -204,7 +209,7 @@ export default function DisciplineHub({ onOpenTab }: DisciplineHubProps) {
                     </span>
                     <span className="mt-4 text-base font-bold text-[#394638] dark:text-[#E5EADF]">{feature.title}</span>
                     <span className="mt-1 flex-1 text-sm leading-5 text-[#7B8176] dark:text-[#B0B8AA]">{feature.description}</span>
-                    <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-[#55764F] dark:text-[#A9C49D]">Abrir ferramenta <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" /></span>
+                    <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-[#55764F] dark:text-[#A9C49D]">{feature.href ? 'Abrir fonte oficial' : 'Abrir ferramenta'} <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-1" /></span>
                   </motion.button>
                 );
               })}
