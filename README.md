@@ -9,6 +9,8 @@ Vercel. Interface em português (pt-BR).
 ## Recursos
 
 - **Portal por áreas de formação** — página Geral com oito áreas disciplinares e acesso contextual às ferramentas existentes (`components/DisciplineHub.tsx`). A navegação preserva as abas, os componentes e os fluxos de voz já existentes.
+- **Agroclima** — previsão meteorológica por cidade ou localização, chuva, vento, umidade e ET₀, compartilhada com a tool de voz (`lib/weather/`, `app/api/agro/weather/`).
+- **Dados agropecuários** — séries anuais PAM/PPM do IBGE por município; links oficiais CEPEA e CONAB enquanto a integração licenciada de preços não estiver configurada (`lib/agroData/`, `app/api/agro/ibge/`).
 
 - **Calculadora N milho** — dose, extração total, necessidade líquida,
   parcelamento e balanço, com memória de cálculo por fórmula
@@ -101,3 +103,8 @@ scripts/        build e verificações manuais
 ## Licença
 
 Privado. Todos os direitos reservados.
+
+
+## Meteorologia
+
+O painel e a tool de voz compartilham `POST /api/agro/weather` e o serviço `lib/weather/openMeteo.ts`. `OPEN_METEO_API_BASE_URL` e `OPEN_METEO_API_KEY` são opcionais e exclusivamente server-side. O plano gratuito do Open-Meteo é destinado a uso não comercial; uso comercial exige licença contratada e atribuição CC BY 4.0.
