@@ -44,7 +44,7 @@ export interface SectionConfig {
  * Fonte de verdade para o nav lateral/topo E para a tool de voz
  * `scrollToSection` (Global e Tutor) — id = âncora no DOM.
  */
-export const SECTIONS_BY_TAB: Record<TabId, SectionConfig[]> = {
+export const SECTIONS_BY_TAB: Record<string, SectionConfig[]> = {
   nitrogen: [
     { id: 'preset_selector', label: 'Cenários', shortLabel: 'Cenários', icon: FolderGit2, color: '#5A5A40', colorDark: '#9CB386' },
     { id: 'form_section', label: 'Parâmetros', shortLabel: 'Parâmetros', icon: Sliders, color: '#5A5A40', colorDark: '#9CB386' },
@@ -208,7 +208,7 @@ export function resolveSection(input: string): ResolvedSection | null {
 export function describeSections(): string {
   return (Object.entries(SECTIONS_BY_TAB) as Array<[TabId, SectionConfig[]]>)
     .map(([tab, sections]) =>
-      `${TAB_LABELS_PT[tab]}: ${sections.map((s) => `${s.id} (${s.label})`).join(', ')}`
+      `${TAB_LABELS_PT[tab as TabId] ?? tab}: ${sections.map((s) => `${s.id} (${s.label})`).join(', ')}`
     )
     .join('; ');
 }
