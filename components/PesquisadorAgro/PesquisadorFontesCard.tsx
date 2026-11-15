@@ -670,26 +670,9 @@ export default function PesquisadorFontesCard({
   return (
     <div id="pesquisador_fontes" className="space-y-6">
       {/* HEADER CARD */}
-      <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl border border-[#E5E2D9] dark:border-[#2C3328] shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#F0EDE5] dark:border-[#2C3328] pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-[#2E6F40]/15 text-[#2E6F40] dark:bg-[#9CB386]/20 dark:text-[#9CB386] border border-[#2E6F40]/25 shrink-0">
-              <Search className="h-6 w-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#5A5A40] dark:text-[#E8E7DF]">
-                  Pesquisador de Fontes Científicas
-                </h2>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-[#2E6F40]/10 text-[#2E6F40] dark:bg-[#9CB386]/20 dark:text-[#9CB386]">
-                  Semantic Scholar • SciELO • Embrapa • CAPES • BDTD • YouTube
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-[#8C897E] dark:text-[#A6A395] mt-0.5">
-                Pesquisa unificada em todos os repositórios oficiais e canais técnicos do YouTube com classificação por <strong>Similaridade Trigonométrica (cos θ)</strong> + <strong>BM25</strong>.
-              </p>
-            </div>
-          </div>
+      <div className="space-y-4">
+        <div className="border-b border-[#E5E2D9] pb-3 dark:border-[#30372D]">
+          <h2 className="text-lg font-semibold text-[#344333] dark:text-[#E5EADF]">Fontes científicas</h2>
         </div>
 
         {/* SEARCH INPUT BAR */}
