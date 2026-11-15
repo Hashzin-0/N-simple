@@ -140,7 +140,7 @@ export function tabForSection(section: string): TabId | null {
 
 const TAB_LABELS_PT: Record<TabId, string> = {
   nitrogen: 'Adubação Nitrogenada',
-  productivity: 'Produtividade de Milho',
+  productivity: 'Produtividade Agrícola',
   soja: 'Produtividade de Soja',
   itr: 'Calculadora ITR',
   abnt: 'Referências ABNT',

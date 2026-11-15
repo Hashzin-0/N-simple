@@ -25,12 +25,13 @@ const CROPS: CropTab[] = [
 
 const OTHER_CROP_IDS = new Set<ProductivityCrop>(['sorghum','wheat','rice','common-bean','sunflower','peanut','sugarcane']);
 
-export default function ProductivityHub({ onApplyYieldGoal, isConnected, fillRequest }: {
+export default function ProductivityHub({ onApplyYieldGoal, isConnected, fillRequest, initialCrop = 'corn' }: {
   onApplyYieldGoal: (scHa: number) => void;
   isConnected: boolean;
   fillRequest: React.ComponentProps<typeof CornYieldCalculator>['fillRequest'];
+  initialCrop?: ProductivityCrop;
 }) {
-  const [activeCrop, setActiveCrop] = useState<ProductivityCrop>('corn');
+  const [activeCrop, setActiveCrop] = useState<ProductivityCrop>(initialCrop);
   const [showActivities, setShowActivities] = useState(false);
   const [cropValues, setCropValues] = useState<Record<string, number>>({});
   const onValuesChange = useCallback((values: Record<string, number>) => setCropValues(values), []);

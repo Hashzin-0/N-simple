@@ -40,6 +40,7 @@ import { sortReferences } from '@/lib/abnt/utils';
 import { type Preset } from '@/lib/types';
 import BibliografiaAutoDetectCard from '@/components/metrics/BibliografiaAutoDetectCard';
 import GooeyTabPanel, { type TabId } from '@/components/GooeyTabPanel';
+import DisciplineHub from '@/components/DisciplineHub';
 import { ScrollStack } from '@/components/godui/scroll-stack';
 import { ElasticText } from '@/components/godui/elastic-text';
 import PresetMultiButton from '@/components/godui/preset-multi-button';
@@ -181,6 +182,7 @@ export default function Home() {
 
   // Tab state
   const [activeTab, setActiveTab] = usePersistedState<TabId>('n_calc_activeTab', 'nitrogen');
+  const [isDisciplineHome, setIsDisciplineHome] = useState(true);
   const [saveToast, setSaveToast] = useState<string | null>(null);
 
   // Accessibility panel state
@@ -307,8 +309,14 @@ export default function Home() {
 
   const handleTabChange = useCallback((tab: TabId) => {
     setActiveTab(tab);
+    setIsDisciplineHome(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [setActiveTab]);
+
+  const handleOpenHome = useCallback(() => {
+    setIsDisciplineHome(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const handleToastDismiss = useCallback(() => setSaveToast(null), []);
 
@@ -784,6 +792,20 @@ export default function Home() {
     [handleApplyYieldGoal, cornYieldFill],
   );
 
+  const soybeanContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ProductivityHub
+          isConnected
+          initialCrop="soybean"
+          onApplyYieldGoal={handleApplyYieldGoal}
+          fillRequest={cornYieldFill}
+        />
+      </div>
+    ),
+    [handleApplyYieldGoal, cornYieldFill],
+  );
+
   const itrContent = useMemo(
     () => (
       <div className="w-full" id="itr_section">
@@ -1110,6 +1132,9 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-2 self-stretch md:self-auto flex-wrap">
+              {!isDisciplineHome && (
+                <button type="button" onClick={handleOpenHome} className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/20">Início</button>
+              )}
               <div className="flex items-center">
                 <DarkMode3DToggle />
               </div>
@@ -1119,6 +1144,7 @@ export default function Home() {
               <button
                 id="btn_header_voice_agent"
                 onClick={() => {
+                  setIsDisciplineHome(false);
                   if (hudAgentState.isConnected) {
                     hudDisconnect();
                   } else {
@@ -1181,18 +1207,22 @@ export default function Home() {
         className="sticky top-0 z-50 bg-[#203B2A] dark:bg-[#1E2B20] shadow-none border-b border-white/10 transition-colors"
       >
         {/* Mobile: horizontal nav inside sticky header */}
-        <div className="lg:hidden px-4 sm:px-6 py-2">
-          <SectionNavGooey activeTab={activeTab} />
-        </div>
+        {!isDisciplineHome && (
+          <div className="lg:hidden px-4 sm:px-6 py-2">
+            <SectionNavGooey activeTab={activeTab} />
+          </div>
+        )}
       </header>
 
       {/* Desktop: fixed sidebar nav */}
-      <aside className="hidden lg:block fixed top-0 left-0 h-screen w-[180px] bg-[#203B2A] dark:bg-[#1E2B20] shadow-none border-r border-white/10 p-2 z-[60]">
-        <SectionNavGooey activeTab={activeTab} />
-      </aside>
+      {!isDisciplineHome && (
+        <aside className="hidden lg:block fixed top-0 left-0 h-screen w-[180px] bg-[#203B2A] dark:bg-[#1E2B20] shadow-none border-r border-white/10 p-2 z-[60]">
+          <SectionNavGooey activeTab={activeTab} />
+        </aside>
+      )}
 
       {/* Main content area - offset for desktop sidebar */}
-      <div className="lg:ml-[180px] px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <div className={`${isDisciplineHome ? '' : 'lg:ml-[180px]'} px-4 sm:px-6 lg:px-8 py-8 space-y-8` }>
 
         {/* TOAST NOTIFICATION */}
         <AnimatePresence>
@@ -1211,6 +1241,10 @@ export default function Home() {
           )}
         </AnimatePresence>
 
+        {isDisciplineHome ? (
+          <DisciplineHub onOpenTab={handleTabChange} />
+        ) : (
+        <>
         {/* TAB PANEL — GOOEY TABS WITH ANIMATED TRANSITIONS */}
         <GooeyTabPanel
           activeTab={activeTab}
@@ -1740,6 +1774,7 @@ export default function Home() {
             </div>
           }
           productivityContent={productivityContent}
+          sojaContent={soybeanContent}
           itrContent={itrContent}
           abntContent={abntContent}
           pesquisadorContent={pesquisadorContent}
@@ -1749,11 +1784,13 @@ export default function Home() {
           tratoristaContent={tratoristaContent}
           professorContent={professorContent}
         />
+        </>
+        )}
 
         {/* GEMINI LIVE VOICE ASSISTANT HUD WITH 3D ORB */}
         <VoiceAssistantHUD
           agentState={hudAgentState}
-          onConnect={hudConnect}
+          onConnect={() => { setIsDisciplineHome(false); hudConnect(); }}
           onDisconnect={hudDisconnect}
           onToggleMute={hudToggleMute}
         />
