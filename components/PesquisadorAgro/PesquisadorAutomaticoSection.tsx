@@ -418,26 +418,10 @@ export default function PesquisadorAutomaticoSection({
   return (
     <section id="pesquisador_automatico" className="space-y-6">
       {/* HEADER CARD */}
-      <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl border border-[#E5E2D9] dark:border-[#2C3328] shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#F0EDE5] dark:border-[#2C3328] pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-[#2E6F40]/15 text-[#2E6F40] dark:bg-[#9CB386]/20 dark:text-[#9CB386] border border-[#2E6F40]/25 shrink-0">
-              <Sparkles className="h-6 w-6 text-[#2E6F40] dark:text-[#9CB386]" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#5A5A40] dark:text-[#E8E7DF]">
-                  Pesquisador Automático de Artigos Científicos
-                </h2>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-[#2E6F40]/10 text-[#2E6F40] dark:bg-[#9CB386]/20 dark:text-[#9CB386]">
-                  Normas ABNT NBR 6022
-                </span>
-              </div>
-              <p className="text-xs sm:text-sm text-[#8C897E] dark:text-[#A6A395] mt-0.5">
-                Levantamento bibliográfico aprofundado com mínimo de 3 a 10 fontes científicas por tópico, comparação direta entre práticas agronômicas e formatação acadêmica integral.
-              </p>
-            </div>
-          </div>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-3 border-b border-[#E5E2D9] pb-3 dark:border-[#30372D]">
+          <h2 className="text-lg font-semibold text-[#344333] dark:text-[#E5EADF]">Gerar artigo científico</h2>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#7B8176] dark:text-[#A6A395]">ABNT NBR 6022</span>
         </div>
 
         {/* SEARCH & GENERATION INPUT */}
