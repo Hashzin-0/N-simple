@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookOpen, Copy, Check, Search } from 'lucide-react';
+import { Copy, Check, Search } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import { ABNTReference, ReferenceType } from '@/lib/abnt/types';
 import { REFERENCE_TYPES } from '@/lib/abnt/constants';
@@ -65,19 +65,7 @@ export default function AbntReferenceFormatter({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="p-2.5 bg-[#5A5A40]/10 dark:bg-[#9CB386]/10 rounded-xl">
-          <BookOpen className="h-5 w-5 text-[#5A5A40] dark:text-[#9CB386]" />
-        </div>
-        <div>
-          <h2 className="text-lg font-bold text-[#5A5A40] dark:text-[#E8E6DF]">
-            Formatador de Referências ABNT
-          </h2>
-          <p className="text-xs text-[#8C897E] dark:text-[#9EA399]">
-            NBR 6023:2025 — Referências bibliográficas
-          </p>
-        </div>
-      </div>
+      <p className="text-xs text-[#8C897E] dark:text-[#9EA399]">Norma aplicada: NBR 6023:2025</p>
 
       {/* Reference Type Selector or Form */}
       <AnimatePresence mode="wait">
