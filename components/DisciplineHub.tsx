@@ -21,7 +21,6 @@ import {
   Sprout,
   Tractor,
   TrendingUp,
-  ChartNoAxesCombined,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -66,7 +65,7 @@ const DISCIPLINES: Discipline[] = [
       { tab: 'ibge', title: 'Dados agropecuários do IBGE', description: 'Consulte produção agrícola (PAM), efetivos pecuários (PPM) e séries municipais.', icon: BarChart3 },
       { tab: 'weather', title: 'Meteorologia agrícola', description: 'Consulte previsão, chuva, temperatura, vento e evapotranspiração.', icon: CloudSun },
       { href: 'https://www.cepea.org.br/br/indicadores/', title: 'Indicadores CEPEA', description: 'Acesse os indicadores oficiais de preços e mercados agropecuários. Consulta externa; integração via API depende de contratação e credenciais.', icon: TrendingUp },
-      { href: 'https://consultaprecosdemercado.conab.gov.br/', title: 'Preços agropecuários CONAB', description: 'Consulte preços de mercado publicados pela CONAB no portal oficial.', icon: ChartNoAxesCombined },
+      { href: 'https://consultaprecosdemercado.conab.gov.br/', title: 'Preços agropecuários CONAB', description: 'Consulte preços de mercado publicados pela CONAB no portal oficial.', icon: BarChart3 },
     ],
   },
   {
