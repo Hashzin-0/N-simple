@@ -41,6 +41,8 @@ import { type Preset } from '@/lib/types';
 import BibliografiaAutoDetectCard from '@/components/metrics/BibliografiaAutoDetectCard';
 import GooeyTabPanel, { type TabId } from '@/components/GooeyTabPanel';
 import DisciplineHub from '@/components/DisciplineHub';
+import WeatherDashboard from '@/components/WeatherDashboard';
+import IBGEAgroDashboard from '@/components/IBGEAgroDashboard';
 import { ScrollStack } from '@/components/godui/scroll-stack';
 import { ElasticText } from '@/components/godui/elastic-text';
 import PresetMultiButton from '@/components/godui/preset-multi-button';
@@ -791,6 +793,9 @@ export default function Home() {
     ),
     [handleApplyYieldGoal, cornYieldFill],
   );
+
+  const climaContent = useMemo(() => <WeatherDashboard />, []);
+  const dadosAgroContent = useMemo(() => <IBGEAgroDashboard />, []);
 
   const soybeanContent = useMemo(
     () => (
@@ -1774,6 +1779,8 @@ export default function Home() {
             </div>
           }
           productivityContent={productivityContent}
+          climaContent={climaContent}
+          dadosAgroContent={dadosAgroContent}
           sojaContent={soybeanContent}
           itrContent={itrContent}
           abntContent={abntContent}
