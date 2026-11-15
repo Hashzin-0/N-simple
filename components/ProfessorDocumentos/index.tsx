@@ -187,7 +187,7 @@ export default function ProfessorDocumentos() {
           <input ref={inputRef} type="file" accept=".docx,.pptx" className="hidden" onChange={e => { const f=e.target.files?.[0]; if(f) upload(f); e.currentTarget.value=''; }} />
           {session && <div className="inline-flex items-center gap-2 text-sm font-semibold text-[#505249] dark:text-[#D0D2CA]"><CheckCircle2 className="size-4 text-[#2E6F40]" /> {session.fileName}</div>}
         </div>
-      </section>>
+      </section>
 
       <AnimatePresence>
         {loading && (
