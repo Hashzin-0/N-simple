@@ -66,7 +66,6 @@ export default function AccessibilityPanel({ isOpen, onClose }: AccessibilityPan
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold text-white">Acessibilidade Libras</h2>
-                  <p className="text-xs text-white/50">Comunicação em Língua Brasileira de Sinais</p>
                 </div>
               </div>
               <button
