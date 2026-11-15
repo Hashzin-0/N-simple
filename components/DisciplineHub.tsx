@@ -6,6 +6,8 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  BarChart3,
+  CloudSun,
   BriefcaseBusiness,
   Calculator,
   FileText,
@@ -49,6 +51,17 @@ const DISCIPLINES: Discipline[] = [
     features: [
       { tab: 'nitrogen', title: 'Adubação nitrogenada', description: 'Calcule a necessidade de nitrogênio e planeje o parcelamento da adubação.', icon: Sprout },
       { tab: 'productivity', title: 'Estimativa de produtividade', description: 'Estime a produtividade das culturas, incluindo soja, em uma ferramenta única.', icon: Calculator },
+    ],
+  },
+  {
+    id: 'inteligencia-dados-agropecuarios',
+    title: 'Inteligência de Dados Agropecuários',
+    description: 'Indicadores oficiais de produção, pecuária e condições meteorológicas para apoiar decisões no campo.',
+    icon: BarChart3,
+    accent: '#4E8790',
+    features: [
+      { tab: 'ibge', title: 'Dados agropecuários do IBGE', description: 'Consulte produção agrícola (PAM), efetivos pecuários (PPM) e séries municipais.', icon: BarChart3 },
+      { tab: 'weather', title: 'Meteorologia agrícola', description: 'Consulte previsão, chuva, temperatura, vento e evapotranspiração.', icon: CloudSun },
     ],
   },
   {
