@@ -2,15 +2,17 @@
 
 import React, { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { useTheme } from './ThemeProvider';
-import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap, Tractor, FileText } from 'lucide-react';
+import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap, Tractor, FileText, CloudSun, BarChart3 } from 'lucide-react';
 
-export type TabId = 'nitrogen' | 'productivity' | 'soja' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista' | 'professor';
+export type TabId = 'nitrogen' | 'productivity' | 'clima' | 'dados-agro' | 'soja' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista' | 'professor';
 
 interface GooeyTabPanelProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   nitrogenContent: React.ReactNode;
   productivityContent: React.ReactNode;
+  climaContent?: React.ReactNode;
+  dadosAgroContent?: React.ReactNode;
   sojaContent?: React.ReactNode;
   itrContent?: React.ReactNode;
   abntContent?: React.ReactNode;
@@ -44,6 +46,20 @@ export const ALL_TABS: TabItem[] = [
     shortLabel: 'Produtividade',
     icon: TrendingUp,
     badge: '9 Culturas',
+  },
+  {
+    id: 'clima',
+    label: 'Tempo e Clima',
+    shortLabel: 'Clima',
+    icon: CloudSun,
+    badge: 'Agroclima',
+  },
+  {
+    id: 'dados-agro',
+    label: 'Dados Agropecuários',
+    shortLabel: 'Dados Agro',
+    icon: BarChart3,
+    badge: 'IBGE & Mercado',
   },
   {
     id: 'soja',
@@ -113,24 +129,28 @@ export const ALL_TABS: TabItem[] = [
 const TAB_INDEX: Record<TabId, number> = {
   nitrogen: 0,
   productivity: 1,
-  soja: 2,
-  itr: 3,
-  abnt: 4,
-  pesquisador: 5,
-  libras: 6,
-  redacao: 7,
-  tutor: 8,
-  tratorista: 9,
-  professor: 10,
+  clima: 2,
+  'dados-agro': 3,
+  soja: 4,
+  itr: 5,
+  abnt: 6,
+  pesquisador: 7,
+  libras: 8,
+  redacao: 9,
+  tutor: 10,
+  tratorista: 11,
+  professor: 12,
 };
 
-const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'soja', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista', 'professor'];
+const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'clima', 'dados-agro', 'soja', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista', 'professor'];
 
 export default function GooeyTabPanel({
   activeTab,
   onTabChange,
   nitrogenContent,
   productivityContent,
+  climaContent,
+  dadosAgroContent,
   sojaContent,
   itrContent,
   abntContent,
@@ -273,6 +293,10 @@ export default function GooeyTabPanel({
         return nitrogenContent;
       case 'productivity':
         return productivityContent;
+      case 'clima':
+        return climaContent || null;
+      case 'dados-agro':
+        return dadosAgroContent || null;
       case 'soja':
         return sojaContent || productivityContent;
       case 'itr':
