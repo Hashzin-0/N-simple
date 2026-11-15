@@ -4,7 +4,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import {
   Sparkles,
-  FileText,
   Copy,
   Check,
   Printer,
@@ -14,9 +13,7 @@ import {
   Award,
   Layers,
   CheckCircle2,
-  ExternalLink,
   ArrowRightLeft,
-  GraduationCap,
   ChevronDown,
   ChevronUp,
   Link as LinkIcon,
