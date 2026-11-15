@@ -4,7 +4,7 @@ import React, { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { useTheme } from './ThemeProvider';
 import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap, Tractor, FileText, CloudSun, BarChart3 } from 'lucide-react';
 
-export type TabId = 'nitrogen' | 'productivity' | 'soja' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista' | 'professor';
+export type TabId = 'nitrogen' | 'productivity' | 'soja' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista' | 'professor' | 'ibge' | 'weather';
 
 interface GooeyTabPanelProps {
   activeTab: TabId;
@@ -21,6 +21,8 @@ interface GooeyTabPanelProps {
   tutorContent?: React.ReactNode;
   tratoristaContent?: React.ReactNode;
   professorContent?: React.ReactNode;
+  ibgeContent?: React.ReactNode;
+  weatherContent?: React.ReactNode;
 }
 
 interface TabItem {
@@ -109,6 +111,8 @@ export const ALL_TABS: TabItem[] = [
     icon: FileText,
     badge: 'Word & PowerPoint',
   },
+  { id: 'ibge', label: 'Dados Agropecuários IBGE', shortLabel: 'IBGE', icon: BarChart3, badge: 'PAM & PPM' },
+  { id: 'weather', label: 'Meteorologia Agrícola', shortLabel: 'Meteorologia', icon: CloudSun, badge: 'Previsão' },
 ];
 
 const TAB_INDEX: Record<TabId, number> = {
@@ -123,9 +127,11 @@ const TAB_INDEX: Record<TabId, number> = {
   tutor: 8,
   tratorista: 9,
   professor: 10,
+  ibge: 11,
+  weather: 12,
 };
 
-const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'soja', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista', 'professor'];
+const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'soja', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista', 'professor', 'ibge', 'weather'];
 
 export default function GooeyTabPanel({
   activeTab,
@@ -142,6 +148,8 @@ export default function GooeyTabPanel({
   tutorContent,
   tratoristaContent,
   professorContent,
+  ibgeContent,
+  weatherContent,
 }: GooeyTabPanelProps) {
   const { isDark } = useTheme();
   const rawId = useId();
@@ -294,6 +302,10 @@ export default function GooeyTabPanel({
         return tratoristaContent || null;
       case 'professor':
         return professorContent || null;
+      case 'ibge':
+        return ibgeContent || null;
+      case 'weather':
+        return weatherContent || null;
       default:
         return nitrogenContent;
     }
