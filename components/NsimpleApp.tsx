@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import AgentStatusOrb from '@/components/AgentStatusOrb';
 import type { OrbState } from 'thinking-orbs';
-import LoadingSkeleton3D from '@/components/LoadingSkeleton3D';
 import Input3D from '@/components/Input3D';
 import Select3D from '@/components/Select3D';
 import { CssGooeyStack } from '@/components/godui/css-gooey-stack';
@@ -175,7 +174,6 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
   const router = useRouter();
   const { isDark } = useTheme();
   const { withLock } = useAnimationLock(400);
-  const [isLoading, setIsLoading] = useState(true);
 
   // Input states (persisted to localStorage)
   const [yieldGoal, setYieldGoal] = usePersistedState<number>('n_calc_yieldGoal', 0);
@@ -1155,17 +1153,9 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
 
   return (
     <>
-      {!standaloneToolPage && (
-        <LoadingSkeleton3D
-          onComplete={() => setIsLoading(false)}
-          duration={2500}
-        />
-      )}
-
       <main
         id="main_container"
         className="min-h-screen bg-[var(--ns-bg)] dark:bg-[#151A16] text-[var(--ns-ink)] dark:text-[#E8E6DF] antialiased pb-8 font-sans transition-colors duration-300 overflow-x-clip"
-        style={{ opacity: !standaloneToolPage && isLoading ? 0 : 1, transition: 'opacity 0.25s ease-out' }}
       >
       {/* HERO SECTION - rolls with page */}
       <section className="bg-[#203B2A] dark:bg-[#1E2B20] text-white px-4 sm:px-6 lg:px-8 pt-6 pb-5 shadow-none border-b border-white/10">
