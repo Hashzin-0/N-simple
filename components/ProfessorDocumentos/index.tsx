@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { FileText, Upload, Brain, CheckCircle2, AlertTriangle, Sparkles, Image as ImageIcon, Wand2, SearchCheck, MessageCircle, Accessibility, ChevronRight } from 'lucide-react';
+import { Upload, CheckCircle2, AlertTriangle, Sparkles, Image as ImageIcon, Wand2, SearchCheck, MessageCircle, Accessibility, ChevronRight } from 'lucide-react';
 
 type Analysis = {
   documentType: 'word' | 'powerpoint';
@@ -174,41 +174,18 @@ export default function ProfessorDocumentos() {
   }
 
   return (
-    <div className="w-full p-4 sm:p-6 lg:p-8 space-y-6">
-      <section id="professor_documentos_inicio" className="scroll-mt-24 overflow-hidden rounded-[2rem] border border-[#DCD8CC] dark:border-[#30382D] bg-[#F8F6EF] dark:bg-[#1B2019]">
-        <div className="grid lg:grid-cols-[1.15fr_.85fr]">
-          <div className="p-6 sm:p-8 lg:p-10">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-[#2E6F40]/10 text-[#2E6F40] dark:text-[#9CB386]">
-                <Brain className="size-6" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#6E705F] dark:text-[#A7AF9E]">Professor de Documentos</p>
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#30352C] dark:text-[#F0EEE6]">Entender primeiro. Orientar depois.</h2>
-              </div>
-            </div>
-            <p className="mt-4 max-w-2xl text-sm sm:text-base leading-7 text-[#67685E] dark:text-[#C2C6BB]">
-              Carregue um Word ou PowerPoint. O Professor lê a estrutura, conteúdo, elementos visuais, notas e sinais de animação antes de começar a conversa.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <button onClick={() => inputRef.current?.click()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-[#2E6F40] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:brightness-105 disabled:opacity-50">
-                <Upload className="size-4" /> {session ? 'Trocar arquivo' : 'Carregar Word ou PowerPoint'}
-              </button>
-              <input ref={inputRef} type="file" accept=".docx,.pptx" className="hidden" onChange={e => { const f=e.target.files?.[0]; if(f) upload(f); e.currentTarget.value=''; }} />
-              {session && <div className="inline-flex items-center gap-2 rounded-xl border border-[#D8D4C8] dark:border-[#343D30] bg-white/70 dark:bg-white/5 px-4 py-3 text-sm font-semibold"><CheckCircle2 className="size-4 text-[#2E6F40]" /> {session.fileName}</div>}
-            </div>
-          </div>
-          <div className="border-t lg:border-t-0 lg:border-l border-[#DCD8CC] dark:border-[#30382D] p-6 sm:p-8 bg-white/60 dark:bg-black/10">
-            <div className="text-xs font-bold uppercase tracking-[0.16em] text-[#77786C] dark:text-[#A7AF9E]">Método de revisão</div>
-            <div className="mt-4 space-y-3">
-              {['Compreensão integral', 'Diagnóstico por evidência', 'Recomendações acionáveis', 'Perguntas adaptativas'].map((x,i) => (
-                <div key={x} className="flex items-start gap-3">
-                  <span className="mt-1 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#2E6F40]/10 text-[10px] font-bold text-[#2E6F40]">{i+1}</span>
-                  <span className="text-sm text-[#505249] dark:text-[#D0D2CA]">{x}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+    <div className="w-full space-y-6">
+      <section id="professor_documentos_inicio" className="scroll-mt-24 border-b border-[#DCD8CC] pb-6 dark:border-[#30382D]">
+        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#30352C] dark:text-[#F0EEE6]">Analisar documento</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#67685E] dark:text-[#C2C6BB]">
+          Envie um Word ou PowerPoint para analisar estrutura, conteúdo, elementos visuais, notas e animações.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button onClick={() => inputRef.current?.click()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-[#2E6F40] px-4 py-3 text-sm font-bold text-white transition hover:brightness-105 disabled:opacity-50">
+            <Upload className="size-4" /> {session ? 'Trocar arquivo' : 'Carregar arquivo'}
+          </button>
+          <input ref={inputRef} type="file" accept=".docx,.pptx" className="hidden" onChange={e => { const f=e.target.files?.[0]; if(f) upload(f); e.currentTarget.value=''; }} />
+          {session && <div className="inline-flex items-center gap-2 text-sm font-semibold text-[#505249] dark:text-[#D0D2CA]"><CheckCircle2 className="size-4 text-[#2E6F40]" /> {session.fileName}</div>}
         </div>
       </section>
 

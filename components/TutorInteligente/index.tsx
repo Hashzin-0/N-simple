@@ -659,7 +659,7 @@ export default function TutorInteligente(props: TutorInteligenteProps) {
       </div>
 
       {/* Material enviado + Estúdio de revisão */}
-      <div className="rounded-3xl border border-[#E5E2D9] dark:border-[#2C3328] bg-white dark:bg-[#1C201A] p-4 sm:p-5 space-y-5">
+      <div className="space-y-8 border-t border-[#E5E2D9] py-6 dark:border-[#2C3328]">
         <DocumentUploader userId={user?.id ?? null} />
         <ReviewStudio tema={currentTema} userId={user?.id ?? null} />
       </div>

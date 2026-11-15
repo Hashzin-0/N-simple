@@ -383,30 +383,11 @@ export default function GooeyTabPanel({
         id={`tabpanel-${activeTab}`}
         role="tabpanel"
         aria-labelledby={showToolTabs ? `tab-btn-${activeTab}` : undefined}
+        aria-label={!showToolTabs ? 'Conteúdo da ferramenta' : undefined}
         className="relative z-0 w-full overflow-x-auto no-scrollbar"
       >
-        <div
-          key={activeTab}
-          className={`w-full min-w-0 bg-white dark:bg-[#1C201A] border border-[#E5E2D9] dark:border-[#2C3328] shadow-lg border-r-[4px] border-b-[4px] border-r-[#D0CCC0] dark:border-r-[#242A20] border-b-[#D0CCC0] dark:border-b-[#242A20] transition-all duration-300 ease-out ${
-            activeTabIdx === 0
-              ? 'rounded-b-3xl rounded-tr-3xl rounded-tl-none'
-              :               activeTabIdx === ALL_TABS.length - 1
-              ? 'rounded-b-3xl rounded-tl-3xl rounded-tr-none'
-              : 'rounded-3xl'
-          }`}
-        >
-          <div
-            className="absolute inset-y-0 right-0 bg-gradient-to-b from-white/70 via-transparent to-black/15 dark:from-white/10 dark:to-black/35 pointer-events-none rounded-br-3xl"
-            style={{ width: 2 }}
-          />
-          <div
-            className="absolute inset-x-0 top-0 bg-gradient-to-r from-transparent via-white/40 dark:via-white/5 to-transparent pointer-events-none"
-            style={{ height: 1 }}
-          />
-
-          <div className="w-full min-w-0">
-            {renderActiveContent()}
-          </div>
+        <div key={activeTab} className="w-full min-w-0 py-2">
+          {renderActiveContent()}
         </div>
       </div>
     </div>

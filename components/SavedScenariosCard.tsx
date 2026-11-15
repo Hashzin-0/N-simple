@@ -18,9 +18,7 @@ export default React.memo(function SavedScenariosCard({ onLoad }: Props) {
   return (
     <div
       id="saved_scenarios_section"
-      className={`rounded-2xl border p-4 transition-colors ${
-        isDark ? 'bg-[#1C201A] border-[#2C3328]' : 'bg-[#F9F8F6] border-[#E5E2D9]'
-      }`}
+      className="space-y-3"
     >
       <div className="flex items-center gap-2 mb-3">
         <BookmarkCheck className={`h-4 w-4 ${isDark ? 'text-[#9CB386]' : 'text-[#5A5A40]'}`} />
@@ -31,12 +29,12 @@ export default React.memo(function SavedScenariosCard({ onLoad }: Props) {
         </span>
       </div>
 
-      <ul className="space-y-2">
+      <ul className="divide-y divide-[#E5E2D9] dark:divide-[#30372D]">
         {records.slice(0, 8).map((r) => (
           <li
             key={r.id}
-            className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2 border text-xs ${
-              isDark ? 'bg-[#232821] border-[#2C3328] text-[#E8E6DF]' : 'bg-white border-[#E5E2D9] text-[#3D3D3D]'
+            className={`flex items-center justify-between gap-2 py-3 text-xs ${
+              isDark ? 'text-[#E8E6DF]' : 'text-[#3D3D3D]'
             }`}
           >
             <div className="min-w-0">

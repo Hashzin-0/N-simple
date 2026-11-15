@@ -74,19 +74,10 @@ export default function WeatherDashboard() {
 
   return (
     <section id="weather_dashboard" className="mx-auto w-full max-w-7xl space-y-6" aria-labelledby="weather-dashboard-title">
-      <div className="rounded-3xl border border-[#E2E0D6] bg-white p-6 shadow-sm dark:border-[#343D32] dark:bg-[#1C241D] sm:p-8">
-        <div className="flex items-start gap-4">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#EDF1E9] text-[#55764F] dark:bg-[#2B382B] dark:text-[#A9C49D]">
-            <CloudSun className="size-6" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#71836B]">Agroclima</p>
-            <h2 id="weather-dashboard-title" className="mt-1 text-2xl font-bold text-[#344333] dark:text-[#E5EADF] sm:text-3xl">Tempo e planejamento da lavoura</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#737B70] dark:text-[#B0B8AA]">Consulte temperatura, chuva, vento e evapotranspiração de referência para apoiar o planejamento das operações agrícolas.</p>
-          </div>
-        </div>
+      <div className="space-y-4">
+        <h2 id="weather-dashboard-title" className="text-2xl font-bold tracking-tight text-[#344333] dark:text-[#E5EADF] sm:text-3xl">Tempo e planejamento da lavoura</h2>
 
-        <form onSubmit={handleSearch} className="mt-6 grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px_auto_auto]">
+        <form onSubmit={handleSearch} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_150px_auto_auto]">
           <label className="min-w-0">
             <span className="mb-1.5 block text-xs font-semibold text-[#66705F] dark:text-[#C3CBBE]">Município ou localidade</span>
             <span className="flex items-center gap-2 rounded-xl border border-[#D9D6CB] bg-[#F8F9F5] px-3 dark:border-[#3C4739] dark:bg-[#151C16]">

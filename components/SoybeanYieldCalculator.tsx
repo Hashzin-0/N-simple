@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Calculator, RotateCcw, Sprout, Wheat } from 'lucide-react';
+import { Calculator, RotateCcw, Wheat } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import Input3D from '@/components/Input3D';
 import CalculationIsland from '@/components/CalculationIsland';
@@ -54,20 +54,7 @@ export default function SoybeanYieldCalculator({ onValuesChange }: Props) {
 
   return (
     <section className="w-full p-4 sm:p-6 lg:p-8 space-y-6">
-      <div id="soybean_yield_header" className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-2xl bg-[#2E6F40]/10 text-[#2E6F40] dark:bg-[#9CB386]/15 dark:text-[#9CB386]">
-            <Sprout className="h-6 w-6" />
-          </div>
-          <div>
-            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#5A5A40] dark:text-[#E8E7DF]">
-              Estimativa de Produtividade de Soja
-            </h2>
-            <p className="text-xs sm:text-sm text-[#8C897E] dark:text-[#A6A395] mt-0.5">
-              Estimativa por amostragem de plantas, legumes, grãos e peso de mil grãos.
-            </p>
-          </div>
-        </div>
+      <div id="soybean_yield_header" className="flex justify-end">
         <button
           type="button"
           onClick={reset}

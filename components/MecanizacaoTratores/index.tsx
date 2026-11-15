@@ -82,15 +82,14 @@ export default function MecanizacaoTratores(){
   return <div className="w-full max-w-7xl mx-auto space-y-6 p-4 sm:p-6">
     <header id="tratorista_inicio" className="border-b border-[#E3E2D9] dark:border-[#353C30] py-5 sm:py-7">
       <div className="flex flex-wrap items-start justify-between gap-5"><div className="max-w-3xl">
-        <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.14em] text-[#55764F] dark:text-[#A9C49D]"><Tractor className="size-4"/> Mecanização Agrícola</div>
-        <h2 className="mt-2 text-2xl sm:text-4xl font-bold tracking-tight text-[#263024] dark:text-[#F0F2EB]">Curso integrado de operação de tratores</h2>
-        <p className="mt-3 text-sm leading-6 text-[#667062] dark:text-[#B1B9AC]">Conteúdo consolidado a partir dos materiais do SENAR, NR-31, SENAR Play e referências técnicas de desempenho. A calculadora usa dados de transmissão documentados e separa estimativa de engenharia de recomendação do fabricante.</p>
+        <h2 className="text-2xl sm:text-4xl font-bold tracking-tight text-[#263024] dark:text-[#F0F2EB]">Operação de tratores</h2>
+        <p className="mt-3 text-sm leading-6 text-[#667062] dark:text-[#B1B9AC]">Conteúdo baseado em SENAR, NR-31 e referências técnicas. A calculadora usa relações de transmissão documentadas e não substitui os limites do fabricante.</p>
       </div><div className="min-w-[170px] border-l-2 border-[#7A936B] pl-4 py-1"><div className="text-xs text-[#7B8277]">Carga de estudo</div><div className="text-xl font-bold text-[#2E6F40] dark:text-[#9CB386]">{COURSE_TOTAL_HOURS} h</div><div className="mt-2 text-[11px] text-[#7B8277]">{DETAILED_MODULES.length} módulos</div></div></div>
     </header>
 
     <section id="tratorista_curso" className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h3 className="text-xl font-bold text-[#30382E] dark:text-[#EEF1E9]">Aulas, atividades e avaliações</h3><p className="text-xs text-[#778074] dark:text-[#AAB2A5]">Cada módulo reúne teoria, pontos-chave, atividades teóricas e diferentes formatos de verificação de aprendizagem.</p></div>
+        <h3 className="text-lg font-semibold text-[#30382E] dark:text-[#EEF1E9]">Módulos</h3>
         <button type="button" onClick={resetCourse} className="text-[11px] font-semibold text-[#55764F] dark:text-[#A9C49D]">Reiniciar progresso</button>
       </div>
       <div className="border-b border-[#E1E0D7] dark:border-[#353C30] py-3">
