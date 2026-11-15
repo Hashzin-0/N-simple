@@ -54,8 +54,7 @@ export default function SoybeanYieldCalculator({ onValuesChange }: Props) {
 
   return (
     <section className="w-full p-4 sm:p-6 lg:p-8 space-y-6">
-      <div id="soybean_yield_header" className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div />
+      <div id="soybean_yield_header" className="flex justify-end">
         <button
           type="button"
           onClick={reset}
