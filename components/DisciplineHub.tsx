@@ -98,7 +98,7 @@ const DISCIPLINES: Discipline[] = [
     icon: ShieldCheck,
     accent: '#9A8051',
     features: [
-      { tab: 'tutor', title: 'Estudo dirigido', description: 'Revise legislação, conceitos ambientais e conteúdos profissionais.', icon: GraduationCap },
+      { tab: 'pesquisador', title: 'Pesquisa de legislação e fontes', description: 'Localize documentos e referências para consulta.', icon: Search },
     ],
   },
   {
@@ -108,7 +108,7 @@ const DISCIPLINES: Discipline[] = [
     icon: Search,
     accent: '#8A6E9E',
     features: [
-      { tab: 'pesquisador', title: 'Pesquisador Agro', description: 'Busque artigos, fontes e evidências científicas.', icon: Search },
+      { tab: 'abnt', title: 'Normas e referências ABNT', description: 'Formate referências e materiais acadêmicos.', icon: BookOpen },
     ],
   },
   {
@@ -118,7 +118,6 @@ const DISCIPLINES: Discipline[] = [
     icon: Languages,
     accent: '#B47B65',
     features: [
-      { tab: 'abnt', title: 'Normas e referências ABNT', description: 'Formate referências e materiais acadêmicos.', icon: BookOpen },
       { tab: 'redacao', title: 'Redação e repertório', description: 'Planeje textos, desenvolva argumentos e revise sua redação.', icon: FileText },
     ],
   },
@@ -128,7 +127,9 @@ const DISCIPLINES: Discipline[] = [
     description: 'Conduta, responsabilidade técnica e tomada de decisão profissional.',
     icon: ShieldCheck,
     accent: '#8C8C65',
-    features: [],
+    features: [
+      { tab: 'tutor', title: 'Estudo dirigido', description: 'Revise ética, legislação e conteúdos profissionais.', icon: GraduationCap },
+    ],
   },
 ];
 interface DisciplineHubProps {
