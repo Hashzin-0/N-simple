@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Landmark, Info, CheckCircle2 } from 'lucide-react';
+import { Info, CheckCircle2 } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import Input3D from '@/components/Input3D';
 import { cn } from '@/lib/utils';
@@ -86,19 +86,7 @@ export default function ITRCalculator({ isConnected, values, onChange }: ITRCalc
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="p-2.5 bg-[#5A5A40]/10 dark:bg-[#9CB386]/10 rounded-xl">
-          <Landmark className="h-5 w-5 text-[#5A5A40] dark:text-[#9CB386]" />
-        </div>
-        <div>
-          <h2 className="text-lg font-bold text-[#5A5A40] dark:text-[#E8E6DF]">
-            Calculadora de ITR
-          </h2>
-          <p className="text-xs text-[#8C897E] dark:text-[#9EA399]">
-            Imposto Territorial Rural — Lei 9.393/1996
-          </p>
-        </div>
-      </div>
+      <p className="text-xs text-[#8C897E] dark:text-[#9EA399]">Imposto Territorial Rural · Lei 9.393/1996</p>
 
       {/* Input Form */}
       <div id="itr_params_section" className={cn(
