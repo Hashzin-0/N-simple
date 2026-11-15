@@ -373,28 +373,10 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected, fil
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className={`p-6 sm:p-7 rounded-3xl border shadow-sm transition-colors ${
-          isDark ? 'bg-[#1C201A] border-[#2C3328]' : 'bg-white border-[#E5E2D9]'
-        }`}
+        className="transition-colors"
       >
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4 border-[#F0EDE5] dark:border-[#2F3329]">
-          <div className="flex items-center gap-3">
-            <motion.div
-              className="p-3 rounded-2xl bg-[#D4A373]/20 text-[#D4A373] border border-[#D4A373]/30"
-              animate={{ rotateY: [0, 360] }}
-              transition={{ duration: 0.8, ease: 'easeOut', delay: 0.3 }}
-            >
-              <Calculator className="h-6 w-6" />
-            </motion.div>
-            <div>
-              <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#5A5A40] dark:text-[#E8E7DF]">
-                Estimativa de Produtividade de Milho
-              </h2>
-              <p className="text-xs sm:text-sm text-[#8C897E] dark:text-[#A6A395] mt-0.5">
-                Cálculo de estande (população), grãos por espiga, PMG unitário, sc/ha e quebra por perdas.
-              </p>
-            </div>
-          </div>
+        <div className="flex justify-end items-center gap-4">
+          <div className="hidden" />
 
           {/* PRESET CHIPS */}
           <div className="flex items-center gap-3">
