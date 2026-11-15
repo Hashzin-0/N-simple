@@ -8,6 +8,8 @@ Vercel. Interface em português (pt-BR).
 
 ## Recursos
 
+- **Portal por áreas de formação** — página Geral com oito áreas disciplinares e acesso contextual às ferramentas existentes (`components/DisciplineHub.tsx`). A navegação preserva as abas, os componentes e os fluxos de voz já existentes.
+
 - **Calculadora N milho** — dose, extração total, necessidade líquida,
   parcelamento e balanço, com memória de cálculo por fórmula
   (`components/metrics/`, `lib/calculations.ts`).
@@ -78,7 +80,7 @@ npx inngest-cli@latest dev
 
 ```
 app/            página única (page.tsx) + rotas API (app/api/**)
-components/     UI compartilhada (metrics/, TutorInteligente/, LibrasNoAgro/, ...)
+components/     UI compartilhada (DisciplineHub, metrics/, TutorInteligente/, LibrasNoAgro/, ...)
 hooks/          useGeminiLiveAgent / useTutorLiveAgent / useLibrasLiveAgent
 lib/            lógica pura e serviços (calculations, semantic/, tutor/, scrapers/, ...)
 supabase/       schemas SQL
