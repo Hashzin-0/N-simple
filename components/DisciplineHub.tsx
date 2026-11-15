@@ -41,13 +41,23 @@ interface Discipline {
 
 const DISCIPLINES: Discipline[] = [
   {
+    id: 'praticas-pedagogicas-orientadas',
+    title: 'Práticas Pedagógicas Orientadas',
+    description: 'Aplicação prática dos conhecimentos agronômicos por meio de cálculos, estimativas e atividades orientadas.',
+    icon: GraduationCap,
+    accent: '#668A63',
+    features: [
+      { tab: 'nitrogen', title: 'Adubação nitrogenada', description: 'Calcule a necessidade de nitrogênio e planeje o parcelamento da adubação.', icon: Sprout },
+      { tab: 'productivity', title: 'Estimativa de produtividade', description: 'Estime a produtividade das culturas, incluindo soja, em uma ferramenta única.', icon: Calculator },
+    ],
+  },
+  {
     id: 'administracao-rural',
     title: 'Administração Rural',
     description: 'Planejamento, gestão da propriedade, custos e tomada de decisão no campo.',
     icon: BriefcaseBusiness,
     accent: '#C19262',
     features: [
-      { tab: 'itr', title: 'Gestão tributária rural', description: 'Calcule o ITR e organize os dados da propriedade.', icon: Calculator },
       { tab: 'productivity', title: 'Estimativa de produtividade', description: 'Estime a produção das culturas e planeje a safra.', icon: Sprout },
       { tab: 'nitrogen', title: 'Planejamento de adubação', description: 'Dimensione a necessidade de nitrogênio para milho.', icon: Calculator },
       { tab: 'tratorista', title: 'Mecanização agrícola', description: 'Estude operações, tração, máquinas e segurança.', icon: Tractor },
