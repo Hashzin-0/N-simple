@@ -376,8 +376,6 @@ export default function CornYieldCalculator({ onApplyYieldGoal, isConnected, fil
         className="transition-colors"
       >
         <div className="flex justify-end items-center gap-4">
-          <div className="hidden" />
-
           {/* PRESET CHIPS */}
           <div className="flex items-center gap-3">
             <PresetMultiButton
