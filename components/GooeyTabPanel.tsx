@@ -255,6 +255,7 @@ export default function GooeyTabPanel({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (!showToolTabs) return;
       const currentIndex = TAB_INDEX[activeTab] ?? 0;
       if (e.key === 'ArrowRight') {
         e.preventDefault();
@@ -266,7 +267,7 @@ export default function GooeyTabPanel({
         changeTab(TAB_ORDER[prev]);
       }
     },
-    [activeTab, changeTab],
+    [activeTab, changeTab, showToolTabs],
   );
 
   const renderActiveContent = () => {
@@ -370,7 +371,7 @@ export default function GooeyTabPanel({
         ref={tabpanelScrollRef}
         id={`tabpanel-${activeTab}`}
         role="tabpanel"
-        aria-labelledby={`tab-btn-${activeTab}`}
+        aria-labelledby={showToolTabs ? `tab-btn-${activeTab}` : undefined}
         className="relative z-0 w-full overflow-x-auto no-scrollbar"
       >
         <div
