@@ -58,9 +58,7 @@ const DISCIPLINES: Discipline[] = [
     icon: BriefcaseBusiness,
     accent: '#C19262',
     features: [
-      { tab: 'productivity', title: 'Estimativa de produtividade', description: 'Estime a produção das culturas e planeje a safra.', icon: Sprout },
-      { tab: 'nitrogen', title: 'Planejamento de adubação', description: 'Dimensione a necessidade de nitrogênio para milho.', icon: Calculator },
-      { tab: 'tratorista', title: 'Mecanização agrícola', description: 'Estude operações, tração, máquinas e segurança.', icon: Tractor },
+      { tab: 'itr', title: 'Gestão tributária rural', description: 'Calcule o ITR e organize os dados da propriedade.', icon: Calculator },
     ],
   },
   {
@@ -70,10 +68,7 @@ const DISCIPLINES: Discipline[] = [
     icon: Leaf,
     accent: '#5D8A58',
     features: [
-      { tab: 'productivity', title: 'Produtividade das culturas', description: 'Faça estimativas para apoiar o manejo e o planejamento.', icon: Sprout },
-      { tab: 'nitrogen', title: 'Nutrição e adubação', description: 'Avalie a demanda de nitrogênio e o parcelamento.', icon: Calculator },
-      { tab: 'pesquisador', title: 'Pesquisa agropecuária', description: 'Consulte literatura científica e fontes técnicas.', icon: Search },
-      { tab: 'tratorista', title: 'Mecanização e operações', description: 'Conheça máquinas, implementos e práticas operacionais.', icon: Tractor },
+      { tab: 'tratorista', title: 'Mecanização agrícola', description: 'Estude operações, tração, máquinas e segurança no trabalho rural.', icon: Tractor },
     ],
   },
   {
@@ -84,8 +79,6 @@ const DISCIPLINES: Discipline[] = [
     accent: '#4E8790',
     features: [
       { tab: 'libras', title: 'Libras no Agro', description: 'Aprenda sinais e pratique comunicação acessível.', icon: Hand },
-      { tab: 'tutor', title: 'Tutor Inteligente', description: 'Estude temas sociais, ambientais e profissionais.', icon: GraduationCap },
-      { tab: 'pesquisador', title: 'Pesquisa e evidências', description: 'Encontre referências para embasar decisões.', icon: Search },
     ],
   },
   {
@@ -96,8 +89,6 @@ const DISCIPLINES: Discipline[] = [
     accent: '#6685B5',
     features: [
       { tab: 'professor', title: 'Documentos e apresentações', description: 'Trabalhe com arquivos e materiais de estudo.', icon: FileText },
-      { tab: 'libras', title: 'Acessibilidade digital', description: 'Conheça recursos de comunicação inclusiva.', icon: Hand },
-      { tab: 'tutor', title: 'Aprendizagem orientada', description: 'Pratique conteúdos e acompanhe sua evolução.', icon: GraduationCap },
     ],
   },
   {
@@ -107,9 +98,7 @@ const DISCIPLINES: Discipline[] = [
     icon: ShieldCheck,
     accent: '#9A8051',
     features: [
-      { tab: 'itr', title: 'Calculadora de ITR', description: 'Organize áreas e parâmetros do cálculo tributário.', icon: Calculator },
-      { tab: 'pesquisador', title: 'Pesquisa de legislação e fontes', description: 'Localize documentos e referências para consulta.', icon: Search },
-      { tab: 'tutor', title: 'Estudo dirigido', description: 'Revise conceitos e teste seus conhecimentos.', icon: GraduationCap },
+      { tab: 'tutor', title: 'Estudo dirigido', description: 'Revise legislação, conceitos ambientais e conteúdos profissionais.', icon: GraduationCap },
     ],
   },
   {
@@ -120,8 +109,6 @@ const DISCIPLINES: Discipline[] = [
     accent: '#8A6E9E',
     features: [
       { tab: 'pesquisador', title: 'Pesquisador Agro', description: 'Busque artigos, fontes e evidências científicas.', icon: Search },
-      { tab: 'abnt', title: 'Normas e referências ABNT', description: 'Formate referências e materiais acadêmicos.', icon: BookOpen },
-      { tab: 'tutor', title: 'Tutor de estudos', description: 'Estude, revise documentos e pratique questões.', icon: GraduationCap },
     ],
   },
   {
@@ -131,9 +118,8 @@ const DISCIPLINES: Discipline[] = [
     icon: Languages,
     accent: '#B47B65',
     features: [
-      { tab: 'abnt', title: 'Normas ABNT', description: 'Organize e formate referências bibliográficas.', icon: BookOpen },
+      { tab: 'abnt', title: 'Normas e referências ABNT', description: 'Formate referências e materiais acadêmicos.', icon: BookOpen },
       { tab: 'redacao', title: 'Redação e repertório', description: 'Planeje textos, desenvolva argumentos e revise sua redação.', icon: FileText },
-      { tab: 'professor', title: 'Documentos', description: 'Prepare materiais e apresentações de apoio.', icon: Monitor },
     ],
   },
   {
@@ -142,14 +128,9 @@ const DISCIPLINES: Discipline[] = [
     description: 'Conduta, responsabilidade técnica e tomada de decisão profissional.',
     icon: ShieldCheck,
     accent: '#8C8C65',
-    features: [
-      { tab: 'tutor', title: 'Tutor Inteligente', description: 'Revise ética, legislação e conteúdos profissionais.', icon: GraduationCap },
-      { tab: 'pesquisador', title: 'Pesquisa de referências', description: 'Consulte fontes para fundamentar decisões.', icon: Search },
-      { tab: 'professor', title: 'Materiais de estudo', description: 'Organize documentos e conteúdos de apoio.', icon: FileText },
-    ],
+    features: [],
   },
 ];
-
 interface DisciplineHubProps {
   onOpenTab: (tab: TabId) => void;
 }
