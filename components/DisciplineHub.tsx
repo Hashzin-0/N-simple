@@ -177,16 +177,13 @@ export default function DisciplineHub({ onOpenTab }: DisciplineHubProps) {
               <ArrowLeft className="size-4" /> Voltar para Geral
             </button>
 
-            <div className="rounded-3xl border border-[#E2E0D6] bg-white p-6 shadow-sm dark:border-[#343D32] dark:bg-[#1C241D] sm:p-8">
-              <div className="flex items-start gap-4">
-                <div className="rounded-2xl p-3" style={{ backgroundColor: `${selectedDiscipline.accent}20`, color: selectedDiscipline.accent }}>
-                  <selectedDiscipline.icon className="size-7" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7D8677]">Área de formação</p>
-                  <h2 className="mt-1 text-2xl font-bold text-[#344333] dark:text-[#E5EADF] sm:text-3xl">{selectedDiscipline.title}</h2>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-[#737B70] dark:text-[#B0B8AA]">{selectedDiscipline.description}</p>
-                </div>
+            <div className="flex items-start gap-3 border-b border-[#E2E0D6] pb-5 dark:border-[#343D32]">
+              <span className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${selectedDiscipline.accent}20`, color: selectedDiscipline.accent }}>
+                <selectedDiscipline.icon className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-2xl font-bold tracking-tight text-[#344333] dark:text-[#E5EADF] sm:text-3xl">{selectedDiscipline.title}</h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-[#737B70] dark:text-[#B0B8AA]">{selectedDiscipline.description}</p>
               </div>
             </div>
 
@@ -223,24 +220,8 @@ export default function DisciplineHub({ onOpenTab }: DisciplineHubProps) {
             transition={{ duration: 0.2 }}
             className="space-y-7"
           >
-            <div className="rounded-3xl border border-[#E2E0D6] bg-white p-6 shadow-sm dark:border-[#343D32] dark:bg-[#1C241D] sm:p-8">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="max-w-3xl">
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#71836B]">Geral · N-simple</p>
-                  <h2 id="discipline-hub-title" className="mt-2 text-3xl font-bold tracking-tight text-[#344333] dark:text-[#E5EADF] sm:text-4xl">Seu ambiente de aprendizagem e gestão do agro</h2>
-                  <p className="mt-3 text-sm leading-6 text-[#737B70] dark:text-[#B0B8AA]">Acesse as ferramentas organizadas pelas áreas de formação. Cada área reúne calculadoras, pesquisa, cursos e recursos de aprendizagem relacionados.</p>
-                </div>
-                <div className="hidden size-20 shrink-0 items-center justify-center rounded-3xl bg-[#EDF1E9] text-[#55764F] dark:bg-[#2B382B] dark:text-[#A9C49D] sm:flex">
-                  <Sprout className="size-10" />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <h3 className="text-xl font-bold text-[#394638] dark:text-[#E5EADF]">Áreas de formação</h3>
-                <p className="mt-1 text-sm text-[#7B8176] dark:text-[#B0B8AA]">Selecione uma área para visualizar suas ferramentas.</p>
-              </div>
+            <div className="flex items-center justify-between gap-3 border-b border-[#E2E0D6] pb-4 dark:border-[#343D32]">
+              <h2 id="discipline-hub-title" className="text-xl font-bold tracking-tight text-[#344333] dark:text-[#E5EADF]">Áreas</h2>
               <span className="shrink-0 rounded-full bg-[#E9EEE4] px-3 py-1 text-xs font-bold text-[#55764F] dark:bg-[#2B382B] dark:text-[#A9C49D]">{DISCIPLINES.length} áreas</span>
             </div>
 
