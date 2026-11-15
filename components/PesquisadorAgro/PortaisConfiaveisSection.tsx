@@ -2,7 +2,6 @@
 
 import React, { useRef } from 'react';
 import {
-  Globe,
   ExternalLink,
   Search,
   Building2,
