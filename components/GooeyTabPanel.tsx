@@ -306,7 +306,6 @@ export default function GooeyTabPanel({
       onKeyDown={handleKeyDown}
     >
       {showToolTabs && (
-        {/* TABS BAR */}
         <div
           ref={tabsContainerRef}
           onTouchStart={handleTouchStart}
