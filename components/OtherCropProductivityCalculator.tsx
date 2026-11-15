@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Calculator, RotateCcw, Sprout, Wheat } from 'lucide-react';
+import { Calculator, RotateCcw, Wheat } from 'lucide-react';
 import Input3D from '@/components/Input3D';
 import { useTheme } from '@/components/ThemeProvider';
 import { calculateOtherCropYield, OTHER_CROP_CALCULATORS, type OtherCropCalculatorId } from '@/lib/otherCropProductivityCalculator';
@@ -28,10 +28,6 @@ export default function OtherCropProductivityCalculator({ selectedCrop, onValues
   return (
     <section id="other_crop_productivity_calculator" className="w-full space-y-5">
       <div className="flex justify-end">
-        <div className="hidden">
-          <div className="rounded-2xl border border-[#557A91]/25 bg-[#557A91]/10 p-3 text-[#557A91] dark:text-[#9DC0D2]"><Calculator className="h-6 w-6" /></div>
-          <div />
-        </div>
         <button type="button" onClick={reset} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2D9] px-4 py-2 text-xs font-semibold text-[#5A5A40] transition hover:bg-white dark:border-[#393E32] dark:text-[#C7CEBC] dark:hover:bg-[#242720]"><RotateCcw className="h-3.5 w-3.5" /> Limpar dados</button>
       </div>
 
@@ -45,10 +41,6 @@ export default function OtherCropProductivityCalculator({ selectedCrop, onValues
 
       <div className="grid gap-5 xl:grid-cols-12">
         <div className={'space-y-5 rounded-2xl border p-4 sm:p-5 xl:col-span-7 ' + cardClass}>
-          <div className="flex items-center gap-2 border-b border-[#E5E2D9] pb-3 dark:border-[#343B30]">
-            <Sprout className="h-4 w-4 text-[#557A91] dark:text-[#9DC0D2]" />
-            <div><h3 className="text-sm font-bold">{definition.name}</h3><p className="mt-0.5 text-xs text-[#777468] dark:text-[#A6A395]">{definition.description}</p></div>
-          </div>
           <div className="grid gap-5 sm:grid-cols-2">
             {definition.fields.map((item) => <Input3D key={item.key} id={'crop_' + crop + '_' + item.key} label={item.label} unit={item.unit} value={values[item.key] ?? 0} onChange={(value) => setValues((previous) => ({ ...previous, [item.key]: Math.min(item.max, Math.max(0, value)) }))} step={item.step} min={0} max={item.max} placeholder="Informe o valor medido" isDark={isDark} accentColor="#557A91" hint={item.hint} />)}
             <Input3D id="other_crop_loss_percent" label="Perdas estimadas" unit="%" value={lossPercent} onChange={(value) => setLossPercent(Math.min(100, Math.max(0, value)))} step={0.1} min={0} max={100} placeholder="Ex.: 5" isDark={isDark} accentColor="#D4A373" hint="Percentual de perdas a descontar da produtividade bruta." />
