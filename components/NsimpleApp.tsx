@@ -81,7 +81,27 @@ import GoogleSignInIsland from '@/components/auth/GoogleSignInIsland';
 const VoiceAssistantHUD = dynamic(() => import('@/components/VoiceAssistantHUD'), { ssr: false });
 const DarkMode3DToggle = dynamic(() => import('@/components/DarkMode3DToggle'), { ssr: false });
 const SectionNavGooey = dynamic(() => import('@/components/SectionNavGooey'), { ssr: false });
-const ProductivityHub = dynamic(() => import('@/components/ProductivityHub'), { ssr: false });
+const ProductivityLoading = () => (
+  <div role="status" aria-label="Carregando ferramenta" className="w-full space-y-6 animate-pulse">
+    <div className="flex gap-2 border-b border-[#E5E2D9] pb-4 dark:border-[#343B30]">
+      {[0, 1, 2, 3, 4].map((item) => <div key={item} className="h-10 w-20 rounded-lg bg-[#E8E6DF] dark:bg-[#292E26]" />)}
+    </div>
+    <div className="grid gap-6 xl:grid-cols-12">
+      <div className="space-y-5 xl:col-span-7">
+        <div className="h-7 w-2/5 rounded-md bg-[#E8E6DF] dark:bg-[#292E26]" />
+        <div className="grid grid-cols-2 gap-4">
+          {[0, 1, 2, 3, 4, 5].map((item) => <div key={item} className="h-20 rounded-lg bg-[#E8E6DF] dark:bg-[#292E26]" />)}
+        </div>
+      </div>
+      <div className="space-y-4 xl:col-span-5">
+        <div className="h-56 rounded-xl bg-[#E8E6DF] dark:bg-[#292E26]" />
+        <div className="h-28 rounded-xl bg-[#E8E6DF] dark:bg-[#292E26]" />
+      </div>
+    </div>
+    <span className="sr-only">Carregando conteúdo…</span>
+  </div>
+);
+const ProductivityHub = dynamic(() => import('@/components/ProductivityHub'), { ssr: false, loading: () => <ProductivityLoading /> });
 const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr: false });
 const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
 const AnaliseMorfologica = dynamic(() => import('@/components/AnaliseMorfologica'), { ssr: false });
@@ -1135,15 +1155,17 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
 
   return (
     <>
-      <LoadingSkeleton3D
-        onComplete={() => setIsLoading(false)}
-        duration={2500}
-      />
+      {!standaloneToolPage && (
+        <LoadingSkeleton3D
+          onComplete={() => setIsLoading(false)}
+          duration={2500}
+        />
+      )}
 
       <main
         id="main_container"
         className="min-h-screen bg-[var(--ns-bg)] dark:bg-[#151A16] text-[var(--ns-ink)] dark:text-[#E8E6DF] antialiased pb-8 font-sans transition-colors duration-300 overflow-x-clip"
-        style={{ opacity: isLoading ? 0 : 1, transition: 'opacity 0.5s ease-in-out' }}
+        style={{ opacity: !standaloneToolPage && isLoading ? 0 : 1, transition: 'opacity 0.25s ease-out' }}
       >
       {/* HERO SECTION - rolls with page */}
       <section className="bg-[#203B2A] dark:bg-[#1E2B20] text-white px-4 sm:px-6 lg:px-8 pt-6 pb-5 shadow-none border-b border-white/10">
