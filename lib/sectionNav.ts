@@ -158,6 +158,8 @@ const TAB_LABELS_PT: Record<TabId, string> = {
   tutor: 'Tutor Inteligente',
   tratorista: 'Mecanização Agrícola',
   professor: 'Professor de Documentos',
+  ibge: 'Dados Agropecuários IBGE',
+  weather: 'Meteorologia Agrícola',
 };
 
 const norm = (s: string) =>
