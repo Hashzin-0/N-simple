@@ -8,8 +8,6 @@ import {
   BookOpen,
   BriefcaseBusiness,
   Calculator,
-  CloudSun,
-  BarChart3,
   FileText,
   GraduationCap,
   Hand,
@@ -50,7 +48,6 @@ const DISCIPLINES: Discipline[] = [
     accent: '#C19262',
     features: [
       { tab: 'itr', title: 'Gestão tributária rural', description: 'Calcule o ITR e organize os dados da propriedade.', icon: Calculator },
-      { tab: 'dados-agro', title: 'Dados agropecuários', description: 'Consulte produção agrícola e efetivos pecuários por município.', icon: BarChart3 },
       { tab: 'productivity', title: 'Estimativa de produtividade', description: 'Estime a produção das culturas e planeje a safra.', icon: Sprout },
       { tab: 'nitrogen', title: 'Planejamento de adubação', description: 'Dimensione a necessidade de nitrogênio para milho.', icon: Calculator },
       { tab: 'tratorista', title: 'Mecanização agrícola', description: 'Estude operações, tração, máquinas e segurança.', icon: Tractor },
@@ -66,8 +63,6 @@ const DISCIPLINES: Discipline[] = [
       { tab: 'productivity', title: 'Produtividade das culturas', description: 'Faça estimativas para apoiar o manejo e o planejamento.', icon: Sprout },
       { tab: 'nitrogen', title: 'Nutrição e adubação', description: 'Avalie a demanda de nitrogênio e o parcelamento.', icon: Calculator },
       { tab: 'pesquisador', title: 'Pesquisa agropecuária', description: 'Consulte literatura científica e fontes técnicas.', icon: Search },
-      { tab: 'clima', title: 'Tempo e agroclima', description: 'Consulte previsão local, chuva, vento e evapotranspiração de referência.', icon: CloudSun },
-      { tab: 'dados-agro', title: 'Dados por município', description: 'Compare lavouras e rebanhos com séries anuais oficiais do IBGE.', icon: BarChart3 },
       { tab: 'tratorista', title: 'Mecanização e operações', description: 'Conheça máquinas, implementos e práticas operacionais.', icon: Tractor },
     ],
   },
@@ -104,7 +99,6 @@ const DISCIPLINES: Discipline[] = [
     features: [
       { tab: 'itr', title: 'Calculadora de ITR', description: 'Organize áreas e parâmetros do cálculo tributário.', icon: Calculator },
       { tab: 'pesquisador', title: 'Pesquisa de legislação e fontes', description: 'Localize documentos e referências para consulta.', icon: Search },
-      { tab: 'dados-agro', title: 'Estatísticas municipais', description: 'Consulte indicadores oficiais de produção agropecuária.', icon: BarChart3 },
       { tab: 'tutor', title: 'Estudo dirigido', description: 'Revise conceitos e teste seus conhecimentos.', icon: GraduationCap },
     ],
   },
