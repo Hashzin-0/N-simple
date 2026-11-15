@@ -4,11 +4,12 @@ import React, { useState, useCallback, useRef, useEffect, useId } from 'react';
 import { useTheme } from './ThemeProvider';
 import { Sprout, TrendingUp, Landmark, BookOpen, Compass, Hand, PenTool, GraduationCap, Tractor, FileText, CloudSun, BarChart3 } from 'lucide-react';
 
-export type TabId = 'nitrogen' | 'productivity' | 'soja' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista' | 'professor';
+export type TabId = 'nitrogen' | 'productivity' | 'soja' | 'itr' | 'abnt' | 'pesquisador' | 'libras' | 'redacao' | 'tutor' | 'tratorista' | 'professor' | 'ibge' | 'weather';
 
 interface GooeyTabPanelProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
+  showToolTabs?: boolean;
   nitrogenContent: React.ReactNode;
   productivityContent: React.ReactNode;
   sojaContent?: React.ReactNode;
@@ -20,6 +21,8 @@ interface GooeyTabPanelProps {
   tutorContent?: React.ReactNode;
   tratoristaContent?: React.ReactNode;
   professorContent?: React.ReactNode;
+  ibgeContent?: React.ReactNode;
+  weatherContent?: React.ReactNode;
 }
 
 interface TabItem {
@@ -108,6 +111,8 @@ export const ALL_TABS: TabItem[] = [
     icon: FileText,
     badge: 'Word & PowerPoint',
   },
+  { id: 'ibge', label: 'Dados Agropecuários IBGE', shortLabel: 'IBGE', icon: BarChart3, badge: 'PAM & PPM' },
+  { id: 'weather', label: 'Meteorologia Agrícola', shortLabel: 'Meteorologia', icon: CloudSun, badge: 'Previsão' },
 ];
 
 const TAB_INDEX: Record<TabId, number> = {
@@ -122,13 +127,16 @@ const TAB_INDEX: Record<TabId, number> = {
   tutor: 8,
   tratorista: 9,
   professor: 10,
+  ibge: 11,
+  weather: 12,
 };
 
-const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'soja', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista', 'professor'];
+const TAB_ORDER: TabId[] = ['nitrogen', 'productivity', 'soja', 'itr', 'abnt', 'pesquisador', 'libras', 'redacao', 'tutor', 'tratorista', 'professor', 'ibge', 'weather'];
 
 export default function GooeyTabPanel({
   activeTab,
   onTabChange,
+  showToolTabs = true,
   nitrogenContent,
   productivityContent,
   sojaContent,
@@ -140,6 +148,8 @@ export default function GooeyTabPanel({
   tutorContent,
   tratoristaContent,
   professorContent,
+  ibgeContent,
+  weatherContent,
 }: GooeyTabPanelProps) {
   const { isDark } = useTheme();
   const rawId = useId();
@@ -253,6 +263,7 @@ export default function GooeyTabPanel({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (!showToolTabs) return;
       const currentIndex = TAB_INDEX[activeTab] ?? 0;
       if (e.key === 'ArrowRight') {
         e.preventDefault();
@@ -264,7 +275,7 @@ export default function GooeyTabPanel({
         changeTab(TAB_ORDER[prev]);
       }
     },
-    [activeTab, changeTab],
+    [activeTab, changeTab, showToolTabs],
   );
 
   const renderActiveContent = () => {
@@ -291,6 +302,10 @@ export default function GooeyTabPanel({
         return tratoristaContent || null;
       case 'professor':
         return professorContent || null;
+      case 'ibge':
+        return ibgeContent || null;
+      case 'weather':
+        return weatherContent || null;
       default:
         return nitrogenContent;
     }
@@ -302,69 +317,72 @@ export default function GooeyTabPanel({
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
-      {/* TABS BAR */}
-      <div
-        ref={tabsContainerRef}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-        className="relative w-full select-none pt-2"
-      >
+      {showToolTabs && (
         <div
-          ref={tablistScrollRef}
-          role="tablist"
-          aria-label="Ferramentas do N-simple"
-          className="relative flex items-end gap-0 px-0 w-full h-[52px] overflow-x-auto no-scrollbar"
+          ref={tabsContainerRef}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          className="relative w-full select-none pt-2"
         >
-          {ALL_TABS.map((tab) => {
-            const isActive = activeTab === tab.id;
-            const Icon = tab.icon;
-
-            return (
-              <button
-                key={tab.id}
-                id={`tab-btn-${tab.id}`}
-                role="tab"
-                aria-selected={isActive}
-                aria-controls={`tabpanel-${tab.id}`}
-                onClick={() => changeTab(tab.id)}
-                className={`relative z-20 min-w-[92px] sm:min-w-[104px] flex-1 h-[48px] flex items-center justify-center gap-1.5 sm:gap-2 px-2 transition-all duration-200 focus:outline-none cursor-pointer ${
-                  isActive
-                    ? 'text-[#242A20] dark:text-[#F3F1EC] font-semibold'
-                    : 'text-[#8C897E] dark:text-[#9EA399] hover:text-[#3D3D3D] dark:hover:text-[#E8E6DF] font-medium'
-                }`}
-              >
-                <Icon
-                  className={`size-4 sm:size-[18px] transition-transform duration-200 ${
-                    isActive ? 'scale-110 text-[#2E6F40] dark:text-[#9CB386]' : 'opacity-75'
+          <div
+            ref={tablistScrollRef}
+            role="tablist"
+            aria-label="Ferramentas do N-simple"
+            className="relative flex items-end gap-0 px-0 w-full h-[52px] overflow-x-auto no-scrollbar"
+          >
+            {ALL_TABS.map((tab) => {
+              const isActive = activeTab === tab.id;
+              const Icon = tab.icon;
+  
+              return (
+                <button
+                  key={tab.id}
+                  id={`tab-btn-${tab.id}`}
+                  role="tab"
+                  aria-selected={isActive}
+                  aria-controls={`tabpanel-${tab.id}`}
+                  onClick={() => changeTab(tab.id)}
+                  className={`relative z-20 min-w-[92px] sm:min-w-[104px] flex-1 h-[48px] flex items-center justify-center gap-1.5 sm:gap-2 px-2 transition-all duration-200 focus:outline-none cursor-pointer ${
+                    isActive
+                      ? 'text-[#242A20] dark:text-[#F3F1EC] font-semibold'
+                      : 'text-[#8C897E] dark:text-[#9EA399] hover:text-[#3D3D3D] dark:hover:text-[#E8E6DF] font-medium'
                   }`}
-                />
-                <span className="text-xs sm:text-sm tracking-tight truncate">
-                  {tab.shortLabel}
-                </span>
-
-                {tab.badge && (
-                  <span
-                    className={`hidden xl:inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium transition-colors ${
-                      isActive
-                        ? 'bg-[#2E6F40]/10 text-[#2E6F40] dark:bg-[#9CB386]/15 dark:text-[#9CB386]'
-                        : 'bg-black/5 dark:bg-white/5 text-[#8C897E] dark:text-[#9EA399]'
+                >
+                  <Icon
+                    className={`size-4 sm:size-[18px] transition-transform duration-200 ${
+                      isActive ? 'scale-110 text-[#2E6F40] dark:text-[#9CB386]' : 'opacity-75'
                     }`}
-                  >
-                    {tab.badge}
+                  />
+                  <span className="text-xs sm:text-sm tracking-tight truncate">
+                    {tab.shortLabel}
                   </span>
-                )}
-              </button>
-            );
-          })}
+  
+                  {tab.badge && (
+                    <span
+                      className={`hidden xl:inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium transition-colors ${
+                        isActive
+                          ? 'bg-[#2E6F40]/10 text-[#2E6F40] dark:bg-[#9CB386]/15 dark:text-[#9CB386]'
+                          : 'bg-black/5 dark:bg-white/5 text-[#8C897E] dark:text-[#9EA399]'
+                      }`}
+                    >
+                      {tab.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+  
+  
+      )}
 
       {/* TAB CONTENT */}
       <div
         ref={tabpanelScrollRef}
         id={`tabpanel-${activeTab}`}
         role="tabpanel"
-        aria-labelledby={`tab-btn-${activeTab}`}
+        aria-labelledby={showToolTabs ? `tab-btn-${activeTab}` : undefined}
         className="relative z-0 w-full overflow-x-auto no-scrollbar"
       >
         <div

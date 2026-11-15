@@ -1,0 +1,1857 @@
+'use client';
+
+import React, { useState, useEffect, useCallback, useRef, useMemo, startTransition, useSyncExternalStore } from 'react';
+import { usePersistedState } from '@/hooks/usePersistedState';
+import { motion, AnimatePresence } from 'motion/react';
+import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
+import { toolRouteForTab } from '@/lib/toolRoutes';
+import {
+  Calculator,
+  RotateCcw,
+  CheckCircle2,
+  Percent,
+  Printer,
+  Sprout,
+  ArrowRightLeft,
+  Hand,
+} from 'lucide-react';
+import AgentStatusOrb from '@/components/AgentStatusOrb';
+import type { OrbState } from 'thinking-orbs';
+import LoadingSkeleton3D from '@/components/LoadingSkeleton3D';
+import Input3D from '@/components/Input3D';
+import Select3D from '@/components/Select3D';
+import { CssGooeyStack } from '@/components/godui/css-gooey-stack';
+import { useGeminiLiveAgent } from '@/hooks/useGeminiLiveAgent';
+import { useVoiceSettingsSync } from '@/hooks/useVoiceSettings';
+import { voiceHub } from '@/lib/voiceHub';
+import type { VoiceHUDState } from '@/components/VoiceAssistantHUD';
+import { useTheme } from '@/components/ThemeProvider';
+import { useAnimationLock } from '@/lib/useAnimationLock';
+import { computeCalculations } from '@/lib/calculations';
+import ExtracaoTotalCard from '@/components/metrics/ExtracaoTotalCard';
+import NecessidadeLiquidaCard from '@/components/metrics/NecessidadeLiquidaCard';
+import DoseRecomendadaCard from '@/components/metrics/DoseRecomendadaCard';
+import FonteNitrogenadaCard from '@/components/metrics/FonteNitrogenadaCard';
+import SecondaryCreditsCard from '@/components/metrics/SecondaryCreditsCard';
+import ParcelamentoSection from '@/components/metrics/ParcelamentoSection';
+import BalancoSection from '@/components/metrics/BalancoSection';
+import DetailedMathPanel from '@/components/metrics/DetailedMathPanel';
+import { ABNTReference } from '@/lib/abnt/types';
+import { sortReferences } from '@/lib/abnt/utils';
+import { type Preset } from '@/lib/types';
+import BibliografiaAutoDetectCard from '@/components/metrics/BibliografiaAutoDetectCard';
+import GooeyTabPanel, { type TabId } from '@/components/GooeyTabPanel';
+import DisciplineHub from '@/components/DisciplineHub';
+import { ScrollStack } from '@/components/godui/scroll-stack';
+import { ElasticText } from '@/components/godui/elastic-text';
+import PresetMultiButton from '@/components/godui/preset-multi-button';
+import SavedScenariosCard from '@/components/SavedScenariosCard';
+import { SQLikeCalculationDB } from '@/lib/storage';
+import type { CornYieldFillParams, CornYieldFillRequest } from '@/components/CornYieldCalculator';
+import type { PesqSourcesReport, PesqArticleReport } from '@/components/PesquisadorAgro';
+import type { FontesSearchProgress } from '@/components/PesquisadorAgro/PesquisadorFontesCard';
+import type { RedacaoVoiceReport } from '@/components/PesquisadorRedacao';
+import type { LibrasSubTab } from '@/components/LibrasNoAgro';
+import type { LibrasVoiceSearchReport, LibrasCoachReport } from '@/lib/libras-types';
+import type { LibrasLiveBridgeContext } from '@/hooks/useLibrasLiveAgent';
+import type { Frase } from '@/lib/analiseMorfologica/types';
+import MecanizacaoTratores from '@/components/MecanizacaoTratores';
+import { smoothScrollToSection, waitForElement } from '@/lib/pageAutomator';
+
+/** Âncoras das sessões de Libras (ids no DOM de LibrasNoAgro). */
+const LIBRAS_SECTION_IDS: Record<LibrasSubTab, string> = {
+  search: 'libras_search',
+  course: 'librascurso',
+  practice: 'libras_practice',
+  tutor: 'libras_tutor',
+  'capture-test': 'libras_capture_test',
+};
+
+/** Rótulo do botão de voz no header para cada agente de voz. */
+const VOICE_AGENT_LABELS: Record<string, string> = {
+  global: 'Falar com Puck',
+  tutor: 'Falar com Tutor',
+  libras: 'Falar com Libras',
+};
+import ProfileMenu from '@/components/auth/ProfileMenu';
+import GoogleSignInIsland from '@/components/auth/GoogleSignInIsland';
+
+// Lazy-loaded heavy components (Three.js, complex calculators)
+const VoiceAssistantHUD = dynamic(() => import('@/components/VoiceAssistantHUD'), { ssr: false });
+const DarkMode3DToggle = dynamic(() => import('@/components/DarkMode3DToggle'), { ssr: false });
+const SectionNavGooey = dynamic(() => import('@/components/SectionNavGooey'), { ssr: false });
+const ProductivityHub = dynamic(() => import('@/components/ProductivityHub'), { ssr: false });
+const ITRCalculator = dynamic(() => import('@/components/ITRCalculator'), { ssr: false });
+const AbntReferenceFormatter = dynamic(() => import('@/components/AbntReferenceFormatter'), { ssr: false });
+const AnaliseMorfologica = dynamic(() => import('@/components/AnaliseMorfologica'), { ssr: false });
+const PesquisadorAgro = dynamic(() => import('@/components/PesquisadorAgro'), { ssr: false });
+const LibrasNoAgro = dynamic(() => import('@/components/LibrasNoAgro'), { ssr: false });
+const TutorInteligente = dynamic(() => import('@/components/TutorInteligente'), { ssr: false });
+const PesquisadorRedacao = dynamic(() => import('@/components/PesquisadorRedacao'), { ssr: false });
+const AccessibilityPanel = dynamic(() => import('@/components/AccessibilityPanel'), { ssr: false });
+const ProfessorDocumentosDynamic = dynamic(() => import('@/components/ProfessorDocumentos'), { ssr: false });
+const IBGEAgroDashboard = dynamic(() => import('@/components/IBGEAgroDashboard'), { ssr: false });
+const WeatherDashboard = dynamic(() => import('@/components/WeatherDashboard'), { ssr: false });
+import VLibrasWidget from '@/components/LibrasWidget';
+
+const PRESETS: Preset[] = [
+  {
+    id: 'alta_produtividade',
+    name: 'Alta Produtividade',
+    description: 'Milho irrigado com alta tecnologia, produtividade superior a 160 sc/ha.',
+    yieldGoal: 180,
+    nRequirementPerBag: 1.45,
+    mosNContribution: 45,
+    soyNContribution: 25,
+    efficiency: 0.85,
+    baseDose: 35,
+    baseDose2: 0,
+    v4v6Percent: 55,
+    v4v6Percent2: 0,
+    v8v10Percent: 20,
+    v8v10Percent2: 0,
+  },
+  {
+    id: 'produtividade_media',
+    name: 'Produtividade Média',
+    description: 'Milho de sequeiro com manejo padrão, produtividade entre 100-140 sc/ha.',
+    yieldGoal: 120,
+    nRequirementPerBag: 1.35,
+    mosNContribution: 35,
+    soyNContribution: 20,
+    efficiency: 0.80,
+    baseDose: 30,
+    baseDose2: 0,
+    v4v6Percent: 50,
+    v4v6Percent2: 0,
+    v8v10Percent: 25,
+    v8v10Percent2: 0,
+  },
+  {
+    id: 'baixa_produtividade',
+    name: 'Baixa Produtividade',
+    description: 'Milho com limitações hídricas ou solo pobre, produtividade abaixo de 100 sc/ha.',
+    yieldGoal: 80,
+    nRequirementPerBag: 1.25,
+    mosNContribution: 25,
+    soyNContribution: 15,
+    efficiency: 0.75,
+    baseDose: 25,
+    baseDose2: 0,
+    v4v6Percent: 45,
+    v4v6Percent2: 0,
+    v8v10Percent: 30,
+    v8v10Percent2: 0,
+  },
+];
+
+export interface NsimpleAppProps {
+  initialTab?: TabId;
+  standaloneToolPage?: boolean;
+}
+
+export default function NsimpleApp({ initialTab, standaloneToolPage = false }: NsimpleAppProps) {
+  const router = useRouter();
+  const { isDark } = useTheme();
+  const { withLock } = useAnimationLock(400);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Input states (persisted to localStorage)
+  const [yieldGoal, setYieldGoal] = usePersistedState<number>('n_calc_yieldGoal', 0);
+  const [nRequirementPerBag, setNRequirementPerBag] = usePersistedState<number>('n_calc_nReq', 0);
+  const [mosNContribution, setMosNContribution] = usePersistedState<number>('n_calc_mos', 0);
+  const [soyNContribution, setSoyNContribution] = usePersistedState<number>('n_calc_soy', 0);
+  const [efficiency, setEfficiency] = usePersistedState<number>('n_calc_efficiency', 0);
+
+  // Direct input mode: user provides liquid need directly
+  const [useDirectInput, setUseDirectInput] = usePersistedState<boolean>('n_calc_directInput', false);
+  const [liquidNeedInput, setLiquidNeedInput] = usePersistedState<number>('n_calc_liquidNeed', 0);
+  const [efficiencyAlreadyApplied, setEfficiencyAlreadyApplied] = usePersistedState<boolean>('n_calc_effApplied', false);
+
+  // Custom interactive split parameters
+  const [baseDose, setBaseDose] = usePersistedState<number>('n_calc_baseDose', 0);
+  const [baseDose2, setBaseDose2] = usePersistedState<number>('n_calc_baseDose2', 0);
+  const [v4v6Percent, setV4v6Percent] = usePersistedState<number>('n_calc_v4v6', 0);
+  const [v4v6Percent2, setV4v6Percent2] = usePersistedState<number>('n_calc_v4v6_2', 0);
+  const [v8v10Percent, setV8v10Percent] = usePersistedState<number>('n_calc_v8v10', 0);
+  const [v8v10Percent2, setV8v10Percent2] = usePersistedState<number>('n_calc_v8v10_2', 0);
+
+  // Toggle for 1 vs 2 values per application
+  const [baseDoseMode, setBaseDoseMode] = usePersistedState<'single' | 'range'>('n_calc_doseMode', 'single');
+
+  // Split base configuration: dose with losses (Dose de N a aplicar) or net requirement (Necessidade Líquida)
+  const [splitBase, setSplitBase] = usePersistedState<'dose_perdas' | 'necessidade_liquida'>('n_calc_splitBase', 'dose_perdas');
+
+  // Active scenario preset
+  const [activePreset, setActivePreset] = usePersistedState<string>('n_calc_preset', 'personalizado');
+
+  // Animation state for filling fields when loading presets (single boolean to prevent re-render thrashing)
+  const [isFillingPreset, setIsFillingPreset] = useState(false);
+  const fillingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Tab state
+  const [activeTab, setActiveTab] = usePersistedState<TabId>(initialTab ? `n_calc_activeTab_${initialTab}` : 'n_calc_activeTab', initialTab ?? 'nitrogen');
+  const [isDisciplineHome, setIsDisciplineHome] = useState(!initialTab);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+
+  // Accessibility panel state
+  const [isAccessibilityPanelOpen, setIsAccessibilityPanelOpen] = useState(false);
+
+
+  // Handle preset loading — batch state updates with startTransition (instant, no lag)
+  const handleLoadPreset = useCallback((preset: Preset) => {
+    if (fillingTimerRef.current) clearTimeout(fillingTimerRef.current);
+
+    setActivePreset(preset.id);
+    setIsFillingPreset(true);
+    fillingTimerRef.current = setTimeout(() => {
+      setIsFillingPreset(false);
+    }, 350);
+
+    // Batch all value updates in a single transition (1 render instead of ~23)
+    startTransition(() => {
+      setYieldGoal(preset.yieldGoal);
+      setNRequirementPerBag(preset.nRequirementPerBag);
+      setMosNContribution(preset.mosNContribution);
+      setSoyNContribution(preset.soyNContribution);
+      setEfficiency(preset.efficiency * 100);
+      setUseDirectInput(false);
+      setLiquidNeedInput(0);
+      setEfficiencyAlreadyApplied(false);
+      setBaseDose(preset.baseDose);
+      setBaseDose2(preset.baseDose2);
+      setV4v6Percent(preset.v4v6Percent);
+      setV4v6Percent2(preset.v4v6Percent2);
+      setV8v10Percent(preset.v8v10Percent);
+      setV8v10Percent2(preset.v8v10Percent2);
+      setBaseDoseMode(preset.baseDose2 > 0 ? 'range' : 'single');
+    });
+  }, [setActivePreset, setBaseDose, setBaseDose2, setBaseDoseMode, setEfficiency, setEfficiencyAlreadyApplied, setLiquidNeedInput, setMosNContribution, setNRequirementPerBag, setSoyNContribution, setUseDirectInput, setV4v6Percent, setV4v6Percent2, setV8v10Percent, setV8v10Percent2, setYieldGoal]);
+
+  // Mark custom if any state changes
+  const handleCustomInputChange = useCallback((updater: () => void) => {
+    updater();
+    setActivePreset('personalizado');
+  }, [setActivePreset]);
+
+  // Memoized input change handlers — stable references for React.memo
+  const setYieldGoalValue = useCallback((v: number) => handleCustomInputChange(() => setYieldGoal(v)), [handleCustomInputChange, setYieldGoal]);
+  const setNRequirementPerBagValue = useCallback((v: number) => handleCustomInputChange(() => setNRequirementPerBag(Math.max(0, v))), [handleCustomInputChange, setNRequirementPerBag]);
+  const setMosNContributionValue = useCallback((v: number) => handleCustomInputChange(() => setMosNContribution(Math.max(0, v))), [handleCustomInputChange, setMosNContribution]);
+  const setSoyNContributionValue = useCallback((v: number) => handleCustomInputChange(() => setSoyNContribution(Math.max(0, v))), [handleCustomInputChange, setSoyNContribution]);
+  const setEfficiencyValue = useCallback((v: number) => handleCustomInputChange(() => setEfficiency(v)), [handleCustomInputChange, setEfficiency]);
+  const setEfficiencyBlur = useCallback((v: number) => handleCustomInputChange(() => setEfficiency(Math.min(100, Math.max(10, v)))), [handleCustomInputChange, setEfficiency]);
+  const setBaseDoseValue = useCallback((v: number) => handleCustomInputChange(() => setBaseDose(v)), [handleCustomInputChange, setBaseDose]);
+  const setBaseDose2Value = useCallback((v: number) => handleCustomInputChange(() => setBaseDose2(v)), [handleCustomInputChange, setBaseDose2]);
+  const setV4v6PercentValue = useCallback((v: number) => handleCustomInputChange(() => setV4v6Percent(v)), [handleCustomInputChange, setV4v6Percent]);
+  const setV4v6Percent2Value = useCallback((v: number) => handleCustomInputChange(() => setV4v6Percent2(v)), [handleCustomInputChange, setV4v6Percent2]);
+  const setV8v10PercentValue = useCallback((v: number) => handleCustomInputChange(() => setV8v10Percent(v)), [handleCustomInputChange, setV8v10Percent]);
+  const setV8v10Percent2Value = useCallback((v: number) => handleCustomInputChange(() => setV8v10Percent2(v)), [handleCustomInputChange, setV8v10Percent2]);
+  const setSplitBaseValue = useCallback((v: string) => handleCustomInputChange(() => setSplitBase(v as 'dose_perdas' | 'necessidade_liquida')), [handleCustomInputChange, setSplitBase]);
+
+  // Direct input mode handlers
+  const setUseDirectInputValue = useCallback((v: boolean) => {
+    handleCustomInputChange(() => {
+      setUseDirectInput(v);
+    });
+  }, [handleCustomInputChange, setUseDirectInput]);
+  const setLiquidNeedInputValue = useCallback((v: number) => handleCustomInputChange(() => setLiquidNeedInput(Math.max(0, v))), [handleCustomInputChange, setLiquidNeedInput]);
+  const setEfficiencyAlreadyAppliedValue = useCallback((v: boolean) => handleCustomInputChange(() => setEfficiencyAlreadyApplied(v)), [handleCustomInputChange, setEfficiencyAlreadyApplied]);
+
+  const handleBaseDoseModeChange = useCallback((v: string) => {
+    handleCustomInputChange(() => {
+      const newMode = v as 'single' | 'range';
+      setBaseDoseMode(newMode);
+      if (newMode === 'single') {
+        setBaseDose2(0);
+        setV4v6Percent2(0);
+        setV8v10Percent2(0);
+      }
+    });
+  }, [handleCustomInputChange, setBaseDoseMode, setBaseDose2, setV4v6Percent2, setV8v10Percent2]);
+
+  // Calculations — memoized to avoid recomputing on unrelated state changes
+  const calculations = useMemo(() => computeCalculations({
+    yieldGoal,
+    nRequirementPerBag,
+    mosNContribution,
+    soyNContribution,
+    efficiency,
+    baseDose,
+    baseDose2,
+    baseDoseMode,
+    v4v6Percent,
+    v4v6Percent2,
+    v8v10Percent,
+    v8v10Percent2,
+    splitBase,
+    useDirectInput,
+    liquidNeedInput,
+    efficiencyAlreadyApplied,
+  }), [yieldGoal, nRequirementPerBag, mosNContribution, soyNContribution, efficiency, baseDose, baseDose2, baseDoseMode, v4v6Percent, v4v6Percent2, v8v10Percent, v8v10Percent2, splitBase, useDirectInput, liquidNeedInput, efficiencyAlreadyApplied]);
+
+  // Handle dynamic layout print
+  const handlePrint = useCallback(() => {
+    window.print();
+  }, []);
+
+  const handleReset = useCallback(() => {
+    startTransition(() => {
+      setYieldGoal(0);
+      setNRequirementPerBag(0);
+      setMosNContribution(0);
+      setSoyNContribution(0);
+      setEfficiency(0);
+      setUseDirectInput(false);
+      setLiquidNeedInput(0);
+      setEfficiencyAlreadyApplied(false);
+      setBaseDose(0);
+      setBaseDose2(0);
+      setBaseDoseMode('single');
+      setV4v6Percent(0);
+      setV4v6Percent2(0);
+      setV8v10Percent(0);
+      setV8v10Percent2(0);
+      setActivePreset('personalizado');
+    });
+  }, [setActivePreset, setBaseDose, setBaseDose2, setBaseDoseMode, setEfficiency, setEfficiencyAlreadyApplied, setLiquidNeedInput, setMosNContribution, setNRequirementPerBag, setSoyNContribution, setUseDirectInput, setV4v6Percent, setV4v6Percent2, setV8v10Percent, setV8v10Percent2, setYieldGoal]);
+
+  const handleTabChange = useCallback((tab: TabId) => {
+    setActiveTab(tab);
+    setIsDisciplineHome(false);
+    router.push(toolRouteForTab(tab));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [router, setActiveTab]);
+
+  const handleOpenHome = useCallback(() => {
+    setIsDisciplineHome(true);
+    router.push('/');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [router]);
+
+  const handleToastDismiss = useCallback(() => setSaveToast(null), []);
+
+  // Gemini Live Voice Agent callbacks — memoized for stable references
+  const onSetYieldGoal = useCallback((val: number) => {
+    setYieldGoal(val);
+    setActivePreset('personalizado');
+  }, [setActivePreset, setYieldGoal]);
+
+  const onSetSoilParameters = useCallback(({ mos, soy, efficiency: eff }: { mos?: number; soy?: number; efficiency?: number }) => {
+    if (mos !== undefined) setMosNContribution(mos);
+    if (soy !== undefined) setSoyNContribution(soy);
+    if (eff !== undefined) setEfficiency(eff);
+    setActivePreset('personalizado');
+  }, [setActivePreset, setEfficiency, setMosNContribution, setSoyNContribution]);
+
+  const onSetLiquidNeed = useCallback((val: number) => {
+    setUseDirectInput(true);
+    setLiquidNeedInput(val);
+    setActivePreset('personalizado');
+  }, [setActivePreset, setLiquidNeedInput, setUseDirectInput]);
+
+  const onSetParceling = useCallback(({ baseDose: b, v4v6Percent: p1, v8v10Percent: p2 }: { baseDose?: number; v4v6Percent?: number; v8v10Percent?: number }) => {
+    if (b !== undefined) setBaseDose(b);
+    if (p1 !== undefined) setV4v6Percent(p1);
+    if (p2 !== undefined) setV8v10Percent(p2);
+    setActivePreset('personalizado');
+    setActiveTab('nitrogen');
+  }, [setActivePreset, setActiveTab, setBaseDose, setV4v6Percent, setV8v10Percent]);
+
+  const onLoadPreset = useCallback((presetId: string) => {
+    const p = PRESETS.find((pr) => pr.id === presetId);
+    if (p) handleLoadPreset(p);
+  }, [handleLoadPreset]);
+
+  const onSetNRequirementPerBag = useCallback((val: number) => {
+    setNRequirementPerBag(Math.max(0, val));
+    setActivePreset('personalizado');
+  }, [setActivePreset, setNRequirementPerBag]);
+
+  const onSetSplitBase = useCallback((base: 'dose_perdas' | 'necessidade_liquida') => {
+    setSplitBase(base);
+    setActivePreset('personalizado');
+  }, [setActivePreset, setSplitBase]);
+
+  const onNavigateTab = useCallback((tab: TabId) => {
+    setActiveTab(tab);
+  }, [setActiveTab]);
+
+  // ITR calculator params (lifted so the voice agent can fill them; same localStorage keys as before)
+  const [itrVtn, setItrVtn] = usePersistedState<number>('itr_vtn', 0);
+  const [itrAreaTotal, setItrAreaTotal] = usePersistedState<number>('itr_areaTotal', 0);
+  const [itrAreaTributavel, setItrAreaTributavel] = usePersistedState<number>('itr_areaTributavel', 0);
+  const [itrAreaAproveitavel, setItrAreaAproveitavel] = usePersistedState<number>('itr_areaAproveitavel', 0);
+  const [itrAreaUtilizada, setItrAreaUtilizada] = usePersistedState<number>('itr_areaUtilizada', 0);
+
+  // ABNT reference list (lifted from AbntReferenceFormatter so voice can add references)
+  const [abntReferences, setAbntReferences] = usePersistedState<ABNTReference[]>('abnt_references_v1', []);
+
+  // Fonte nitrogenada (lifted from FonteNitrogenadaCard so voice can choose the source)
+  const [fontePreset, setFontePreset] = usePersistedState<string>('fonte_nitrogenada_preset', 'ureia');
+  const [fonteTeorN, setFonteTeorN] = usePersistedState<number>('fonte_nitrogenada_teor', 45);
+
+  // Fill request for the corn yield calculator (voice → calculator, with animation)
+  const [cornYieldFill, setCornYieldFill] = useState<CornYieldFillRequest | null>(null);
+  const cornYieldFillSeqRef = useRef(0);
+
+  // ---- Pedidos/relatórios de voz para as abas Pesquisador / Redação / Libras ----
+  const [pesqSearchReq, setPesqSearchReq] = useState<{ seq: number; theme: string } | null>(null);
+  const [pesqArticleReq, setPesqArticleReq] = useState<{ seq: number; theme?: string; mode?: 'padrao' | 'aprofundado' } | null>(null);
+  const [pesqSourcesReport, setPesqSourcesReport] = useState<PesqSourcesReport | null>(null);
+  const [pesqArticleReport, setPesqArticleReport] = useState<PesqArticleReport | null>(null);
+  // Progresso da busca de fontes (portal a portal) — alimenta o card do header.
+  const [pesqSearchProgress, setPesqSearchProgress] = useState<FontesSearchProgress | null>(null);
+  // Último progresso SEM expirar — é o que a tool lerProgressoPesquisa lê.
+  const [pesqSearchSnapshot, setPesqSearchSnapshot] = useState<FontesSearchProgress | null>(null);
+  const onPesqSearchProgress = useCallback((p: FontesSearchProgress) => {
+    setPesqSearchProgress(p);
+    setPesqSearchSnapshot(p);
+  }, []);
+  // Fases finais ficam uns segundos no header e depois somem.
+  useEffect(() => {
+    if (pesqSearchProgress?.phase === 'searching') return;
+    const id = setTimeout(() => setPesqSearchProgress(null), 4000);
+    return () => clearTimeout(id);
+  }, [pesqSearchProgress]);
+  const [redacaoReq, setRedacaoReq] = useState<{ seq: number; action: 'pesquisar' | 'gerar' | 'validar' | 'recomecar'; tema?: string } | null>(null);
+  const [redacaoReport, setRedacaoReport] = useState<RedacaoVoiceReport | null>(null);
+  const [librasSearchReq, setLibrasSearchReq] = useState<{ seq: number; query: string } | null>(null);
+  const [librasPracticeReq, setLibrasPracticeReq] = useState<{ seq: number; templateId?: string } | null>(null);
+  const [librasQuizReq, setLibrasQuizReq] = useState<{ seq: number; moduleId?: string } | null>(null);
+  const [librasCoachReq, setLibrasCoachReq] = useState<{ seq: number; alvo?: string; segundos: number } | null>(null);
+  const [analiseReq, setAnaliseReq] = useState<{ seq: number; frase: Frase } | null>(null);
+  const voiceReqSeqRef = useRef(0);
+  // Reportes da aba Libras (voz): refs bastam — só as tools de leitura leem.
+  const librasSearchReportRef = useRef<LibrasVoiceSearchReport | null>(null);
+  const librasCoachReportRef = useRef<LibrasCoachReport | null>(null);
+
+
+  const onSetITRParameters = useCallback((params: { vtn: number; areaTotal: number; areaTributavel?: number; areaAproveitavel?: number; areaUtilizada?: number }) => {
+    setActivePreset('personalizado');
+    setActiveTab('itr');
+    setItrVtn(params.vtn);
+    setItrAreaTotal(params.areaTotal);
+    if (params.areaTributavel !== undefined) setItrAreaTributavel(params.areaTributavel);
+    if (params.areaAproveitavel !== undefined) setItrAreaAproveitavel(params.areaAproveitavel);
+    if (params.areaUtilizada !== undefined) setItrAreaUtilizada(params.areaUtilizada);
+  }, [setActivePreset, setActiveTab, setItrAreaAproveitavel, setItrAreaTributavel, setItrAreaTotal, setItrAreaUtilizada, setItrVtn]);
+
+  const onITRChange = useCallback(
+    (patch: Partial<{ vtn: number; areaTotal: number; areaTributavel: number; areaAproveitavel: number; areaUtilizada: number }>) => {
+      if (patch.vtn !== undefined) setItrVtn(patch.vtn);
+      if (patch.areaTotal !== undefined) setItrAreaTotal(patch.areaTotal);
+      if (patch.areaTributavel !== undefined) setItrAreaTributavel(patch.areaTributavel);
+      if (patch.areaAproveitavel !== undefined) setItrAreaAproveitavel(patch.areaAproveitavel);
+      if (patch.areaUtilizada !== undefined) setItrAreaUtilizada(patch.areaUtilizada);
+    },
+    [setItrAreaAproveitavel, setItrAreaTributavel, setItrAreaTotal, setItrAreaUtilizada, setItrVtn]
+  );
+
+  const onSetABNTReference = useCallback((ref: ABNTReference) => {
+    setAbntReferences((prev) => {
+      const exists = prev.some((r) => r.id === ref.id);
+      const next = exists ? prev.map((r) => (r.id === ref.id ? ref : r)) : [...prev, ref];
+      return sortReferences(next);
+    });
+    setActiveTab('abnt');
+  }, [setActiveTab, setAbntReferences]);
+
+  const onDeleteAbntReference = useCallback((id: string) => {
+    setAbntReferences((prev) => prev.filter((r) => r.id !== id));
+  }, [setAbntReferences]);
+
+  const onSetFonteNitrogenada = useCallback((params: { preset: string; customTeorN?: number }) => {
+    setFontePreset(params.preset);
+    if (typeof params.customTeorN === 'number') setFonteTeorN(params.customTeorN);
+  }, [setFontePreset, setFonteTeorN]);
+
+  const onSetCornYield = useCallback((params: CornYieldFillParams, applyToNitrogen?: boolean) => {
+    cornYieldFillSeqRef.current += 1;
+    setCornYieldFill({
+      seq: cornYieldFillSeqRef.current,
+      params,
+      applyToNitrogen: !!applyToNitrogen,
+    });
+  }, []);
+
+  const onSalvarCenario = useCallback(
+    (nome: string, notas?: string) => {
+      try {
+        const rec = SQLikeCalculationDB.insert({
+          name: nome,
+          ...(notas ? { notes: notas } : {}),
+          yield_goal: yieldGoal,
+          n_req_per_bag: nRequirementPerBag,
+          mos_n: mosNContribution,
+          soy_n: soyNContribution,
+          efficiency: efficiency,
+          base_dose: baseDose,
+          v4v6_percent: v4v6Percent,
+          v8v10_percent: v8v10Percent,
+          split_base: splitBase,
+          total_extraction: calculations.totalExtraction,
+          liquid_need: calculations.liquidNeed,
+          recommended_dose: calculations.recommendedDose,
+          selected_v4v6_val: calculations.v4v6_1_kg,
+          selected_v8v10_val: calculations.v8v10_1_kg,
+          sum_of_splits: calculations.sumOfSplits,
+        });
+        setSaveToast(`Cenário "${rec.name}" salvo!`);
+        setTimeout(() => setSaveToast(null), 4500);
+        return { success: true as const, id: rec.id };
+      } catch (e) {
+        return { success: false as const, error: e instanceof Error ? e.message : 'Erro ao salvar cenário.' };
+      }
+    },
+    [
+      yieldGoal,
+      nRequirementPerBag,
+      mosNContribution,
+      soyNContribution,
+      efficiency,
+      baseDose,
+      v4v6Percent,
+      v8v10Percent,
+      splitBase,
+      calculations,
+      setSaveToast,
+    ]
+  );
+
+  const onCarregarCenario = useCallback(
+    (id: string) => {
+      const rec = SQLikeCalculationDB.findById(id);
+      if (!rec) return { success: false as const, error: 'Cenário não encontrado.' };
+      startTransition(() => {
+        setYieldGoal(rec.yield_goal);
+        setNRequirementPerBag(rec.n_req_per_bag);
+        setMosNContribution(rec.mos_n);
+        setSoyNContribution(rec.soy_n);
+        setEfficiency(rec.efficiency);
+        setBaseDose(rec.base_dose);
+        setV4v6Percent(rec.v4v6_percent);
+        setV8v10Percent(rec.v8v10_percent);
+        setSplitBase(rec.split_base);
+        setBaseDoseMode('single');
+        setBaseDose2(0);
+        setV4v6Percent2(0);
+        setV8v10Percent2(0);
+        setUseDirectInput(false);
+        setLiquidNeedInput(0);
+        setEfficiencyAlreadyApplied(false);
+        setActivePreset('personalizado');
+      });
+      setActiveTab('nitrogen');
+      setSaveToast(`Cenário "${rec.name}" carregado!`);
+      setTimeout(() => setSaveToast(null), 4500);
+      return { success: true as const, name: rec.name };
+    },
+    [
+      setActivePreset,
+      setActiveTab,
+      setBaseDose,
+      setBaseDose2,
+      setBaseDoseMode,
+      setEfficiency,
+      setEfficiencyAlreadyApplied,
+      setLiquidNeedInput,
+      setMosNContribution,
+      setNRequirementPerBag,
+      setSaveToast,
+      setSoyNContribution,
+      setSplitBase,
+      setUseDirectInput,
+      setV4v6Percent,
+      setV4v6Percent2,
+      setV8v10Percent,
+      setV8v10Percent2,
+      setYieldGoal,
+    ]
+  );
+
+  // ---- Voice callbacks: Pesquisador Agro ----
+  const onPesquisarFontes = useCallback(
+    (tema: string) => {
+      voiceReqSeqRef.current += 1;
+      setPesqSearchReq({ seq: voiceReqSeqRef.current, theme: tema });
+      setPesqSearchSnapshot(null);
+      setActiveTab('pesquisador');
+    },
+    [setActiveTab]
+  );
+
+  const onGerarArtigo = useCallback(
+    (tema: string | undefined, mode?: 'padrao' | 'aprofundado') => {
+      voiceReqSeqRef.current += 1;
+      setPesqArticleReq({
+        seq: voiceReqSeqRef.current,
+        ...(tema ? { theme: tema } : {}),
+        mode: mode || 'padrao',
+      });
+      setActiveTab('pesquisador');
+    },
+    [setActiveTab]
+  );
+
+  const onPesqSourcesReport = useCallback((r: PesqSourcesReport) => setPesqSourcesReport(r), []);
+  const onPesqArticleReport = useCallback((r: PesqArticleReport) => setPesqArticleReport(r), []);
+
+  // ---- Voice callbacks: Pesquisador de Redação ----
+  const onRedacaoAction = useCallback(
+    (action: 'pesquisar' | 'gerar' | 'validar' | 'recomecar', tema?: string) => {
+      voiceReqSeqRef.current += 1;
+      setRedacaoReq({
+        seq: voiceReqSeqRef.current,
+        action,
+        ...(tema ? { tema } : {}),
+      });
+      setActiveTab('redacao');
+    },
+    [setActiveTab]
+  );
+
+  const onRedacaoReport = useCallback((r: RedacaoVoiceReport) => setRedacaoReport(r), []);
+
+  // ---- Voice callbacks: Libras no Agro ----
+  // As sessões ficam empilhadas na mesma página; a voz troca de aba e rola
+  // até a âncora (waitForElement espera a aba montar — sem delay fixo).
+  const onAbrirLibras = useCallback(
+    (subTab: LibrasSubTab) => {
+      setActiveTab('libras');
+      const sectionId = LIBRAS_SECTION_IDS[subTab];
+      void waitForElement(sectionId).then((el) => {
+        if (el) smoothScrollToSection(sectionId);
+      });
+    },
+    [setActiveTab]
+  );
+
+  const onBuscarSinal = useCallback(
+    (palavra: string) => {
+      voiceReqSeqRef.current += 1;
+      setLibrasSearchReq({ seq: voiceReqSeqRef.current, query: palavra });
+      setActiveTab('libras');
+      const sectionId = LIBRAS_SECTION_IDS.search;
+      void waitForElement(sectionId).then((el) => {
+        if (el) smoothScrollToSection(sectionId);
+      });
+    },
+    [setActiveTab]
+  );
+
+  // ---- Voice callbacks: prática e quiz de Libras ----
+  const onIniciarPraticaLibras = useCallback(
+    (templateId?: string) => {
+      voiceReqSeqRef.current += 1;
+      setLibrasPracticeReq({
+        seq: voiceReqSeqRef.current,
+        ...(templateId ? { templateId } : {}),
+      });
+      onAbrirLibras('practice');
+    },
+    [onAbrirLibras]
+  );
+
+  const onIniciarQuizLibras = useCallback(
+    (moduleId?: string) => {
+      voiceReqSeqRef.current += 1;
+      setLibrasQuizReq({ seq: voiceReqSeqRef.current, ...(moduleId ? { moduleId } : {}) });
+      onAbrirLibras('course');
+    },
+    [onAbrirLibras]
+  );
+
+  // ---- Voice callbacks: coach de câmera + reportes (agente Libras) ----
+  const onObservarSinal = useCallback(
+    (alvo: string | null, segundos: number) => {
+      voiceReqSeqRef.current += 1;
+      setLibrasCoachReq({
+        seq: voiceReqSeqRef.current,
+        ...(alvo ? { alvo } : {}),
+        segundos,
+      });
+      onAbrirLibras('practice');
+    },
+    [onAbrirLibras]
+  );
+
+  const onLibrasSearchReport = useCallback((r: LibrasVoiceSearchReport) => {
+    librasSearchReportRef.current = r;
+  }, []);
+  const onLibrasCoachReport = useCallback((r: LibrasCoachReport) => {
+    librasCoachReportRef.current = r;
+  }, []);
+  const getLibrasSearchReport = useCallback(() => librasSearchReportRef.current, []);
+  const getLibrasCoachReport = useCallback(() => librasCoachReportRef.current, []);
+
+  // Ponte do agente de voz "Libras" — memoizada para o hook não recriar o config.
+  const librasVoiceBridge: LibrasLiveBridgeContext = useMemo(
+    () => ({
+      onAbrirSecao: onAbrirLibras,
+      onBuscarSinal,
+      onIniciarPratica: onIniciarPraticaLibras,
+      onIniciarQuiz: onIniciarQuizLibras,
+      onObservarSinal,
+      getSearchReport: getLibrasSearchReport,
+      getCoachReport: getLibrasCoachReport,
+    }),
+    [
+      onAbrirLibras,
+      onBuscarSinal,
+      onIniciarPraticaLibras,
+      onIniciarQuizLibras,
+      onObservarSinal,
+      getLibrasSearchReport,
+      getLibrasCoachReport,
+    ]
+  );
+
+  // ---- Voice callbacks: análise morfológica (aba ABNT) ----
+  const onGerarFraseMorfologica = useCallback(
+    (frase: Frase) => {
+      voiceReqSeqRef.current += 1;
+      setAnaliseReq({ seq: voiceReqSeqRef.current, frase });
+      setActiveTab('abnt');
+      void waitForElement('analise_morfologica').then((el) => {
+        if (el) smoothScrollToSection('analise_morfologica');
+      });
+    },
+    [setActiveTab]
+  );
+
+  // ---- Voice callbacks: acessibilidade ----
+  const onAbrirAcessibilidade = useCallback(() => {
+    setIsAccessibilityPanelOpen(true);
+  }, []);
+
+  const voiceAgent = useGeminiLiveAgent({
+    yieldGoal,
+    nRequirementPerBag,
+    mosNContribution,
+    soyNContribution,
+    efficiency,
+    baseDose,
+    baseDose2,
+    baseDoseMode,
+    v4v6Percent,
+    v4v6Percent2,
+    v8v10Percent,
+    v8v10Percent2,
+    splitBase,
+    useDirectInput,
+    liquidNeedInput,
+    efficiencyAlreadyApplied,
+    activePreset,
+    activeTab,
+    totalExtraction: calculations.totalExtraction,
+    liquidNeed: calculations.liquidNeed,
+    recommendedDose: calculations.recommendedDose,
+    selectedV4V6Val: calculations.v4v6_1_kg,
+    selectedV8V10Val: calculations.v8v10_1_kg,
+    sumOfSplits: calculations.sumOfSplits,
+    targetSplitTotal: calculations.targetSplitTotal,
+    splitDiscrepancy: calculations.splitDiscrepancy,
+    onSetYieldGoal,
+    onSetNRequirementPerBag,
+    onSetSoilParameters,
+    onSetLiquidNeed,
+    onSetParceling,
+    onSetSplitBase,
+    onLoadPreset,
+    onNavigateTab,
+    onSetITRParameters,
+    onSetABNTReference,
+    fontePreset,
+    fonteTeorN,
+    onSetFonteNitrogenada,
+    onSetCornYield,
+    onSalvarCenario,
+    onCarregarCenario,
+    onRedefinir: handleReset,
+    pesqSourcesReport,
+    pesqArticleReport,
+    redacaoReq,
+    redacaoReport,
+    onPesquisarFontes,
+    onGerarArtigo,
+    onRedacaoAction,
+    onGerarFraseMorfologica,
+    onAbrirAcessibilidade,
+    pesqSearchSnapshot,
+  });
+
+  // Memoized tab contents to avoid unneeded re-renders when nitrogen parameters update
+  const handleApplyYieldGoal = useCallback((scHa: number) => {
+    setYieldGoal(scHa);
+    setActivePreset('personalizado');
+    setActiveTab('nitrogen');
+    setSaveToast(`Meta de ${scHa} sc/ha calculada e aplicada na Adubação Nitrogenada!`);
+    setTimeout(() => setSaveToast(null), 4500);
+  }, [setActivePreset, setActiveTab, setSaveToast, setYieldGoal]);
+
+  const productivityContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ProductivityHub
+          isConnected
+          onApplyYieldGoal={handleApplyYieldGoal}
+          fillRequest={cornYieldFill}
+        />
+      </div>
+    ),
+    [handleApplyYieldGoal, cornYieldFill],
+  );
+
+  const soybeanContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ProductivityHub
+          isConnected
+          initialCrop="soybean"
+          onApplyYieldGoal={handleApplyYieldGoal}
+          fillRequest={cornYieldFill}
+        />
+      </div>
+    ),
+    [handleApplyYieldGoal, cornYieldFill],
+  );
+
+  const itrContent = useMemo(
+    () => (
+      <div className="w-full" id="itr_section">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <div className="bg-white dark:bg-[#1C201A] p-5 sm:p-6 rounded-2xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328]">
+            <ITRCalculator
+              isConnected
+              values={{
+                vtn: itrVtn,
+                areaTotal: itrAreaTotal,
+                areaTributavel: itrAreaTributavel,
+                areaAproveitavel: itrAreaAproveitavel,
+                areaUtilizada: itrAreaUtilizada,
+              }}
+              onChange={onITRChange}
+            />
+          </div>
+        </ScrollStack>
+      </div>
+    ),
+    [
+      itrVtn,
+      itrAreaTotal,
+      itrAreaTributavel,
+      itrAreaAproveitavel,
+      itrAreaUtilizada,
+      onITRChange,
+    ]
+  );
+
+  const handleReferenceSelected = useCallback((ref: ABNTReference) => {
+    onSetABNTReference(ref);
+    setSaveToast(`Referência "${ref.title}" adicionada à lista ABNT!`);
+    setTimeout(() => setSaveToast(null), 4500);
+  }, [onSetABNTReference]);
+
+  const abntContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <div className="bg-white dark:bg-[#1C201A] p-5 sm:p-6 rounded-2xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6">
+            <div id="abnt_section" className="scroll-mt-24">
+              <AbntReferenceFormatter
+                isConnected
+                references={abntReferences}
+                onSaveReference={onSetABNTReference}
+                onDeleteReference={onDeleteAbntReference}
+              />
+            </div>
+            <BibliografiaAutoDetectCard
+              onReferenceSelected={handleReferenceSelected}
+              initialUrl=""
+            />
+            <AnaliseMorfologica pendingReq={analiseReq} />
+          </div>
+        </ScrollStack>
+      </div>
+    ),
+    [
+      abntReferences,
+      onSetABNTReference,
+      onDeleteAbntReference,
+      handleReferenceSelected,
+      analiseReq,
+    ]
+  );
+
+  const pesquisadorContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <PesquisadorAgro
+            isDark={isDark}
+            pendingSearch={pesqSearchReq}
+            pendingArticle={pesqArticleReq}
+            onSourcesReport={onPesqSourcesReport}
+            onArticleReport={onPesqArticleReport}
+            onSearchProgress={onPesqSearchProgress}
+          />
+        </ScrollStack>
+      </div>
+    ),
+    [isDark, pesqSearchReq, pesqArticleReq, onPesqSourcesReport, onPesqArticleReport, onPesqSearchProgress],
+  );
+
+  const librasContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <LibrasNoAgro
+            pendingSearch={librasSearchReq}
+            pendingPractice={librasPracticeReq}
+            pendingQuiz={librasQuizReq}
+            pendingCoach={librasCoachReq}
+            onSearchReport={onLibrasSearchReport}
+            onCoachReport={onLibrasCoachReport}
+            voiceBridge={librasVoiceBridge}
+          />
+        </ScrollStack>
+      </div>
+    ),
+    [
+      librasSearchReq,
+      librasPracticeReq,
+      librasQuizReq,
+      librasCoachReq,
+      onLibrasSearchReport,
+      onLibrasCoachReport,
+      librasVoiceBridge,
+    ]
+  );
+
+  const redacaoContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <PesquisadorRedacao
+            isDark={isDark}
+            pendingAction={redacaoReq}
+            onReport={onRedacaoReport}
+          />
+        </ScrollStack>
+      </div>
+    ),
+    [isDark, redacaoReq, onRedacaoReport],
+  );
+
+  const tratoristaContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <MecanizacaoTratores />
+        </ScrollStack>
+      </div>
+    ),
+    [],
+  );
+
+  const ibgeContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <IBGEAgroDashboard />
+        </ScrollStack>
+      </div>
+    ),
+    [],
+  );
+
+  const weatherContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <WeatherDashboard />
+        </ScrollStack>
+      </div>
+    ),
+    [],
+  );
+
+  const professorContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <ProfessorDocumentosDynamic />
+        </ScrollStack>
+      </div>
+    ),
+    [],
+  );
+
+  const tutorContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <div className="bg-white dark:bg-[#1C201A] p-4 sm:p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328]">
+            <TutorInteligente isDark={isDark} />
+          </div>
+        </ScrollStack>
+      </div>
+    ),
+    [isDark],
+  );
+
+  // ---- Hub de agentes de voz (global ↔ tutor) ----
+  // Preferência do supressor de ruído: local-first + sync de nuvem (logado).
+  useVoiceSettingsSync();
+
+  // Navegação disparada pelo hub (ex: ferramenta chamarAgente do agente de voz).
+  useEffect(() => {
+    voiceHub.setNavigator((_agentId, tab) => {
+      handleTabChange(tab as TabId);
+    });
+    return () => voiceHub.setNavigator(null);
+  }, [handleTabChange]);
+
+  // Sincroniza o agente ativo com a aba escolhida pelo usuário.
+  // Se houver sessão viva no agente anterior, faz o handoff (session resumption).
+  useEffect(() => {
+    voiceHub.syncTab(activeTab);
+  }, [activeTab]);
+
+  const hubSnapshot = useSyncExternalStore(
+    voiceHub.subscribe,
+    voiceHub.getSnapshot,
+    voiceHub.getSnapshot
+  );
+
+  // Encerra o handoff quando o agente destino conecta (ou falha).
+  useEffect(() => {
+    if (!hubSnapshot.handoff) return;
+    const st = voiceHub.getAgentState(hubSnapshot.activeAgentId);
+    if (st && (st.isConnected || st.status === 'error')) voiceHub.endHandoff();
+  }, [hubSnapshot]);
+
+  const activeRuntime = voiceHub.getAgentRuntime(hubSnapshot.activeAgentId);
+  const rawHudState: VoiceHUDState =
+    voiceHub.getAgentState(hubSnapshot.activeAgentId) ?? voiceAgent.state;
+  // Durante o handoff (troca de agente), a orb permanece viva em "conectando".
+  const hudAgentState: VoiceHUDState =
+    hubSnapshot.handoff && !rawHudState.isConnected && rawHudState.status !== 'error'
+      ? { ...rawHudState, isConnecting: true, status: 'connecting' }
+      : rawHudState;
+  const hudConnect = activeRuntime ? activeRuntime.connect : voiceAgent.connect;
+  const hudDisconnect = activeRuntime ? activeRuntime.disconnect : voiceAgent.disconnect;
+  const hudToggleMute = activeRuntime ? activeRuntime.toggleMute : voiceAgent.toggleMute;
+
+  // ---- Card do header: orb de status + rótulo vivo ----
+  const [typedTheme, setTypedTheme] = useState<string | null>(null);
+
+  // Digitação animada do tema quando a tool `pesquisarFontes` dispara uma busca.
+  // (todo setState acontece dentro de timeout — nunca síncrono no corpo do efeito)
+  useEffect(() => {
+    const theme = pesqSearchReq?.theme?.trim();
+    if (!hudAgentState.isConnected || !theme) {
+      const id = setTimeout(() => setTypedTheme(null), 0);
+      return () => clearTimeout(id);
+    }
+    const startedAt = Date.now();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = () => {
+      const chars = Math.min(
+        theme.length,
+        Math.max(0, Math.round(((Date.now() - startedAt) / 900) * theme.length))
+      );
+      setTypedTheme(theme.slice(0, chars));
+      if (chars >= theme.length) {
+        timer = setTimeout(() => setTypedTheme(null), 700);
+      } else {
+        timer = setTimeout(tick, 35);
+      }
+    };
+    timer = setTimeout(tick, 35);
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [pesqSearchReq, hudAgentState.isConnected]);
+
+  const fontesCountsText = Object.entries(pesqSearchProgress?.counts ?? {})
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name, n]) => `${name} ${n}`)
+    .join(' · ');
+
+  const activeVoiceLabel = hudAgentState.currentActionLabel?.trim() || null;
+  let orbState: OrbState;
+  let voiceLabel: string;
+  if (!hudAgentState.isConnected) {
+    orbState = 'breathing';
+    voiceLabel = VOICE_AGENT_LABELS[hubSnapshot.activeAgentId] ?? VOICE_AGENT_LABELS.global;
+  } else if (typedTheme !== null) {
+    // tool "digitando" o tema no pesquisador
+    orbState = 'working';
+    voiceLabel = `digitando: …${typedTheme.slice(-24)}▍`;
+  } else if (pesqSearchProgress?.phase === 'searching') {
+    orbState = 'searching';
+    voiceLabel = `Buscando fontes${fontesCountsText ? `… ${fontesCountsText}` : '…'}`;
+  } else if (pesqSearchProgress?.phase === 'done') {
+    orbState = 'breathing';
+    voiceLabel = `${pesqSearchProgress.total} fontes encontradas${
+      fontesCountsText ? ` · ${fontesCountsText}` : ''
+    }`;
+  } else if (pesqSearchProgress?.phase === 'error') {
+    orbState = 'shaping';
+    voiceLabel = 'Falha na busca de fontes';
+  } else {
+    switch (hudAgentState.status) {
+      case 'connecting':
+        orbState = 'connecting';
+        voiceLabel = 'Conectando…';
+        break;
+      case 'listening':
+        orbState = 'listening';
+        voiceLabel = activeVoiceLabel ?? 'Ouvindo…';
+        break;
+      case 'thinking':
+        // com tool em execução o rótulo diz qual (ex: "Consultando data local")
+        orbState = activeVoiceLabel ? 'searching' : 'working';
+        voiceLabel = activeVoiceLabel ?? 'Pensando…';
+        break;
+      case 'speaking':
+        orbState = 'composing';
+        voiceLabel = activeVoiceLabel ?? 'Falando…';
+        break;
+      case 'error':
+        orbState = 'shaping';
+        voiceLabel = 'Erro de conexão';
+        break;
+      default:
+        orbState = 'breathing';
+        voiceLabel = activeVoiceLabel ?? 'Pronto';
+    }
+  }
+
+  return (
+    <>
+      <LoadingSkeleton3D
+        onComplete={() => setIsLoading(false)}
+        duration={2500}
+      />
+
+      <main
+        id="main_container"
+        className="min-h-screen bg-[var(--ns-bg)] dark:bg-[#151A16] text-[var(--ns-ink)] dark:text-[#E8E6DF] antialiased pb-8 font-sans transition-colors duration-300 overflow-x-clip"
+        style={{ opacity: isLoading ? 0 : 1, transition: 'opacity 0.5s ease-in-out' }}
+      >
+      {/* HERO SECTION - rolls with page */}
+      <section className="bg-[#203B2A] dark:bg-[#1E2B20] text-white px-4 sm:px-6 lg:px-8 pt-6 pb-5 shadow-none border-b border-white/10">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <div className="flex items-center gap-3">
+                <div className="bg-white/10 dark:bg-white/5 text-white p-2.5 rounded-2xl border border-white/20 dark:border-white/10">
+                  <Sprout id="brand_icon" className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h1 id="app_title" className="text-2xl sm:text-3xl font-sans font-bold tracking-tight text-white">
+                    N-simple
+                  </h1>
+                  <p id="app_subtitle" className="text-xs sm:text-sm text-white/90 dark:text-white/80 mt-1 font-medium">
+                    Ferramentas agronômicas, pesquisa científica e aprendizagem para o agro
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-stretch md:self-auto flex-wrap">
+              {!isDisciplineHome && (
+                <button type="button" onClick={handleOpenHome} className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/20">Início</button>
+              )}
+              <div className="flex items-center">
+                <DarkMode3DToggle />
+              </div>
+
+              <ProfileMenu />
+
+              <button
+                id="btn_header_voice_agent"
+                onClick={() => {
+                  if (isDisciplineHome) router.push(toolRouteForTab(activeTab));
+                  setIsDisciplineHome(false);
+                  if (hudAgentState.isConnected) {
+                    hudDisconnect();
+                  } else {
+                    hudConnect();
+                  }
+                }}
+                className={`flex-1 md:flex-none flex items-center justify-center gap-2 font-bold py-2 px-3.5 rounded-xl transition-all text-sm active:scale-95 shadow-md ${
+                  hudAgentState.isConnected
+                    ? 'bg-[#2E6F40] text-white ring-2 ring-white/50'
+                    : 'bg-white dark:bg-[#2A3125] text-[#5A5A40] dark:text-[#E8E6DF] hover:bg-[#F9F8F6] dark:hover:bg-[#343D2F]'
+                }`}
+                title="Conversar por voz com o assistente ativo (Gemini Live API)"
+              >
+                <AgentStatusOrb
+                  state={orbState}
+                  size={20}
+                  theme={hudAgentState.isConnected ? 'dark' : 'auto'}
+                  className="shrink-0"
+                  ariaLabel={voiceLabel}
+                />
+                <span
+                  className="max-w-[13rem] truncate"
+                  title={voiceLabel}
+                >
+                  {voiceLabel}
+                </span>
+              </button>
+              <button
+                id="btn_header_accessibility"
+                onClick={() => setIsAccessibilityPanelOpen(true)}
+                className="p-2.5 bg-white/10 dark:bg-white/5 hover:bg-white/20 text-white rounded-xl border border-white/20 dark:border-white/10 transition-all active:scale-95"
+                title="Acessibilidade Libras"
+              >
+                <Hand className="h-4 w-4 text-white" />
+              </button>
+              <button
+                id="btn_print"
+                onClick={handlePrint}
+                className="p-2.5 bg-white/10 dark:bg-white/5 hover:bg-white/20 text-white rounded-xl border border-white/20 dark:border-white/10 transition-all active:scale-95"
+                title="Imprimir Relatório"
+              >
+                <Printer className="h-4 w-4 text-white" />
+              </button>
+              <button
+                id="btn_reset"
+                onClick={handleReset}
+                className="flex items-center justify-center p-2.5 bg-white/10 dark:bg-white/5 hover:bg-white/20 text-white rounded-xl border border-white/20 dark:border-white/10 transition-all active:scale-95"
+                title="Resetar para valores padrão"
+              >
+                <RotateCcw className="h-4 w-4 text-white" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* STICKY SECTION NAV - sticks to top when scrolling */}
+      <header
+        id="app_header"
+        className="sticky top-0 z-50 bg-[#203B2A] dark:bg-[#1E2B20] shadow-none border-b border-white/10 transition-colors"
+      >
+        {/* Mobile: horizontal nav inside sticky header */}
+        {!isDisciplineHome && (
+          <div className="lg:hidden px-4 sm:px-6 py-2">
+            <SectionNavGooey activeTab={activeTab} />
+          </div>
+        )}
+      </header>
+
+      {/* Desktop: fixed sidebar nav */}
+      {!isDisciplineHome && (
+        <aside className="hidden lg:block fixed top-0 left-0 h-screen w-[180px] bg-[#203B2A] dark:bg-[#1E2B20] shadow-none border-r border-white/10 p-2 z-[60]">
+          <SectionNavGooey activeTab={activeTab} />
+        </aside>
+      )}
+
+      {/* Main content area - offset for desktop sidebar */}
+      <div className={`${isDisciplineHome ? '' : 'lg:ml-[180px]'} px-4 sm:px-6 lg:px-8 py-8 space-y-8` }>
+
+        {/* TOAST NOTIFICATION */}
+        <AnimatePresence>
+          {saveToast && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="bg-[#5A5A40] dark:bg-[#242A20] text-white p-4 rounded-2xl flex items-center gap-3 shadow-md border border-white/10 dark:border-[#353D30]"
+            >
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold">
+                <CheckCircle2 className="h-5 w-5 text-[#D4A373] shrink-0" />
+                <span>{saveToast}</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {isDisciplineHome ? (
+          <DisciplineHub onOpenTab={handleTabChange} />
+        ) : (
+        <>
+        {/* TAB PANEL — GOOEY TABS WITH ANIMATED TRANSITIONS */}
+        <GooeyTabPanel
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          nitrogenContent={
+            <div className="w-full">
+              <ScrollStack peek={12} blur pinTop="4vh">
+        {/* INPUT SECTION — scenarios + inputs in one card */}
+            <div id="form_section" className="bg-white dark:bg-[#1C201A] p-5 sm:p-6 rounded-2xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-5 transition-colors">
+
+              {/* HEADER */}
+              <div className="flex items-center gap-3 border-b pb-4 border-[#F0EDE5] dark:border-[#2C3328]">
+                <div className="p-3 rounded-2xl bg-[#D4A373]/20 text-[#D4A373] border border-[#D4A373]/30">
+                  <Calculator className="h-6 w-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#5A5A40] dark:text-[#E8E7DF]">
+                    Calculadora de Nitrogênio
+                  </h2>
+                  <p className="text-xs sm:text-sm text-[#8C897E] dark:text-[#A6A395] mt-0.5">
+                    Cálculo de dose, extração, necessidade líquida e parcelamento de N para milho.
+                  </p>
+                </div>
+              </div>
+
+              {/* Scenario chips */}
+              <PresetMultiButton<Preset>
+                id="preset_selector"
+                presets={PRESETS}
+                activePreset={activePreset}
+                onPresetClick={handleLoadPreset}
+                isDark={isDark}
+              />
+
+              {/* Saved scenarios (voice + button save/load) */}
+              <SavedScenariosCard onLoad={onCarregarCenario} />
+
+              <div className="border-b border-[#F0EDE5] dark:border-[#2C3328] pb-4">
+                <h2 className="text-lg font-bold text-[#5A5A40] dark:text-[#E8E6DF] flex items-center gap-2">
+                  <Calculator className="h-5 w-5 text-[#5A5A40] dark:text-[#9CB386]" /> <ElasticText className="text-lg font-bold" mode="auto" startOnView loop={false}>Entrada de Dados</ElasticText>
+                </h2>
+                <p className="text-xs text-[#8C897E] dark:text-[#9EA399] mt-1">Ajuste os dados de produtividade e histórico do solo</p>
+              </div>
+
+              {/* Toggle: Modo de Entrada Direta */}
+              <div className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${
+                isDark ? 'border-[#2C3328] bg-[#1C201A]' : 'border-[#E5E2D9] bg-[#F9F8F6]'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <ArrowRightLeft className={`h-4 w-4 ${isDark ? 'text-[#9CB386]' : 'text-[#5A5A40]'}`} />
+                  <span className={`text-xs font-medium ${isDark ? 'text-[#9CB386]' : 'text-[#5A5A40]'}`}>
+                    Entrada Direta
+                  </span>
+                  <span className={`text-[10px] ${isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'}`}>
+                    (Necessidade Líquida)
+                  </span>
+                </div>
+                <button
+                  onClick={() => setUseDirectInputValue(!useDirectInput)}
+                  className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
+                    useDirectInput ? 'bg-[#2E6F40]' : isDark ? 'bg-[#393E32]' : 'bg-[#D1CFC4]'
+                  }`}
+                  aria-label="Alternar modo de entrada direta"
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${
+                    useDirectInput ? 'translate-x-5' : ''
+                  }`} />
+                </button>
+              </div>
+
+              <div className="space-y-5">
+                {!useDirectInput ? (
+                  <>
+                    {/* Modo normal: todos os inputs */}
+                    <Input3D
+                      id="input_group_yield_goal"
+                      label="Produtividade Alvo"
+                      unit="sc/ha"
+                      value={yieldGoal}
+                      onChange={setYieldGoalValue}
+                      step={5}
+                      min={50}
+                      max={250}
+                      placeholder="Ex: 160"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      hint="Meta de rendimento em sacas de 60kg por hectare."
+                      filling={isFillingPreset}
+                    />
+
+                    <Input3D
+                      label="N necessário por saca produzida"
+                      unit="kg N/sc"
+                      value={nRequirementPerBag}
+                      onChange={setNRequirementPerBagValue}
+                      step={0.05}
+                      min={0.5}
+                      max={2.5}
+                      placeholder="Ex: 1.35"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      hint="Extração unitária: 1.2 a 1.5 kg N por saca (padrão: 1.35)."
+                      filling={isFillingPreset}
+                    />
+
+                    <Input3D
+                      id="input_group_soil"
+                      label="N fornecido pela M.O. (MOS)"
+                      unit="kg N/ha"
+                      value={mosNContribution}
+                      onChange={setMosNContributionValue}
+                      step={1}
+                      min={0}
+                      max={150}
+                      placeholder="Ex: 40"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      hint="Mineralização da Matéria Orgânica do Solo."
+                      filling={isFillingPreset}
+                    />
+
+                    <Input3D
+                      label="Crédito de N pela Soja (cultura anterior)"
+                      unit="kg N/ha"
+                      value={soyNContribution}
+                      onChange={setSoyNContributionValue}
+                      step={1}
+                      min={0}
+                      max={100}
+                      placeholder="Ex: 20"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      hint="Crédito de N da soja: 15 a 30 kg N/ha na sucessão Soja-Milho."
+                      filling={isFillingPreset}
+                    />
+
+                    <Input3D
+                      id="input_group_efficiency"
+                      label="Eficiência de Aplicação (%)"
+                      unit="%"
+                      value={efficiency}
+                      onChange={setEfficiencyValue}
+                      onBlurCustom={setEfficiencyBlur}
+                      step={1}
+                      min={10}
+                      max={100}
+                      placeholder="Ex: 80"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      hint="Eficiência padrão: 80% (fator 0.8). Perdas por volatilização/lixiviação."
+                      filling={isFillingPreset}
+                    />
+                  </>
+                ) : (
+                  <>
+                    {/* Modo direto: necessidade líquida + eficiência */}
+                    <Input3D
+                      label="Necessidade Líquida de N"
+                      unit="kg N/ha"
+                      value={liquidNeedInput}
+                      onChange={setLiquidNeedInputValue}
+                      step={1}
+                      min={0}
+                      max={500}
+                      placeholder="Ex: 180"
+                      isDark={isDark}
+                      accentColor="#2E6F40"
+                      hint="N líquido já considerando MOS, Soja e extração unitária."
+                      filling={isFillingPreset}
+                    />
+
+                    {/* Checkbox inline: Eficiência já aplicada */}
+                    <label className={`flex items-center gap-2.5 cursor-pointer group`}>
+                      <div className="relative flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={efficiencyAlreadyApplied}
+                          onChange={(e) => setEfficiencyAlreadyAppliedValue(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className={`w-5 h-5 rounded-md border-2 transition-all duration-200 flex items-center justify-center ${
+                          efficiencyAlreadyApplied
+                            ? 'bg-[#2E6F40] border-[#2E6F40]'
+                            : isDark ? 'border-[#5A5A40] bg-[#242720]' : 'border-[#D1CFC4] bg-white'
+                        }`}>
+                          {efficiencyAlreadyApplied && (
+                            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+                      </div>
+                      <span className={`text-xs font-medium transition-colors ${
+                        efficiencyAlreadyApplied
+                          ? isDark ? 'text-[#9CB386]' : 'text-[#2E6F40]'
+                          : isDark ? 'text-[#A6A395]' : 'text-[#8C897E]'
+                      }`}>
+                        Eficiência já aplicada
+                      </span>
+                    </label>
+
+                    {!efficiencyAlreadyApplied && (
+                      <Input3D
+                        id="input_group_efficiency"
+                        label="Eficiência de Aplicação (%)"
+                        unit="%"
+                        value={efficiency}
+                        onChange={setEfficiencyValue}
+                        onBlurCustom={setEfficiencyBlur}
+                        step={1}
+                        min={10}
+                        max={100}
+                        placeholder="Ex: 80"
+                        isDark={isDark}
+                        accentColor="#5A5A40"
+                        hint="Eficiência padrão: 80% (fator 0.8). Perdas por volatilização/lixiviação."
+                        filling={isFillingPreset}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+
+            </div>
+
+        {/* PARCELAMENTO CONFIGURATION — standalone ScrollStack card */}
+            <div id="parcelamento_config" className="bg-white dark:bg-[#1C201A] p-5 sm:p-6 rounded-2xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6 transition-colors">
+              <div className="border-b border-[#F0EDE5] dark:border-[#2C3328] pb-4">
+                <h3 className="text-sm font-bold text-[#5A5A40] dark:text-[#E8E6DF] uppercase tracking-wider flex items-center gap-2">
+                  <Percent className="h-5 w-5 text-[#5A5A40] dark:text-[#9CB386]" /> Configuração do Parcelamento
+                </h3>
+                <p className="text-xs text-[#8C897E] dark:text-[#9EA399] mt-1">Configure as dosagens reais que deseja validar</p>
+              </div>
+
+              <div className="space-y-5">
+                {/* Switch split base */}
+                <Select3D
+                  label="Base para cálculo do parcelamento:"
+                  value={splitBase}
+                  onChange={setSplitBaseValue}
+                  isDark={isDark}
+                  accentColor="#D4A373"
+                  options={[
+                    {
+                      value: 'dose_perdas',
+                      label: `Dose com Perdas (${calculations.recommendedDose} kg N/ha)`,
+                      description: 'Inclui perdas por eficiência',
+                    },
+                    {
+                      value: 'necessidade_liquida',
+                      label: `Necessidade Líquida (${calculations.liquidNeed} kg N/ha)`,
+                      description: 'Sem correção de perdas',
+                    },
+                  ]}
+                />
+
+                {/* 1st Application — Base/Semeadura (kg N/ha) — Cell Division Animation */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-[#3D3D3D] dark:text-[#E8E6DF]">
+                      1ª Aplicação (Base / Semeadura)
+                    </span>
+                    <Select3D
+                      value={baseDoseMode}
+                      onChange={handleBaseDoseModeChange}
+                      isDark={isDark}
+                      accentColor="#D4A373"
+                      options={[
+                        { value: 'single', label: '1 valor' },
+                        { value: 'range', label: '2 valores' },
+                      ]}
+                      className="!inline-flex !w-auto"
+                    />
+                  </div>
+
+                  <CssGooeyStack collapsed={baseDoseMode === 'single'}>
+                    <Input3D
+                      label={baseDoseMode === 'range' ? 'Min (kg N/ha)' : 'Valor (kg N/ha)'}
+                      labelMorph
+                      unit="kg N/ha"
+                      value={baseDose}
+                      onChange={setBaseDoseValue}
+                      step={1}
+                      min={0}
+                      max={100}
+                      placeholder="Ex: 35"
+                      isDark={isDark}
+                      accentColor="#D4A373"
+                      filling={isFillingPreset}
+                    />
+                    <Input3D
+                      label="Max (kg N/ha)"
+                      unit="kg N/ha"
+                      value={baseDose2}
+                      onChange={setBaseDose2Value}
+                      step={1}
+                      min={0}
+                      max={100}
+                      placeholder="0"
+                      isDark={isDark}
+                      accentColor="#D4A373"
+                      filling={isFillingPreset}
+                    />
+                  </CssGooeyStack>
+
+                  <p className="text-[10px] text-[#8C897E] dark:text-[#9EA399] mt-1 leading-relaxed">
+                    * Faixa agronômica típica: 30 a 40 kg N/ha.
+                  </p>
+                </div>
+
+                {/* 2nd Application — V4-V6 (% values) — Cell Division Animation */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-[#3D3D3D] dark:text-[#E8E6DF]">
+                      2ª Aplicação (V4-V6) — Percentual
+                    </span>
+                    {baseDoseMode === 'single' ? (
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        isDark ? 'bg-[#2C3328] text-[#9CB386]' : 'bg-[#F0EDE5] text-[#5A5A40]'
+                      }`}>
+                        1 valor %
+                      </span>
+                    ) : (
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        isDark ? 'bg-[#2C3328] text-[#9CB386]' : 'bg-[#F0EDE5] text-[#5A5A40]'
+                      }`}>
+                        2 valores %
+                      </span>
+                    )}
+                  </div>
+
+                  <CssGooeyStack collapsed={baseDoseMode === 'single'}>
+                    <Input3D
+                      label={baseDoseMode === 'single' ? '% do total' : (baseDoseMode === 'range' ? 'Min %' : '% do total')}
+                      labelMorph
+                      unit="%"
+                      value={v4v6Percent}
+                      onChange={setV4v6PercentValue}
+                      step={1}
+                      min={0}
+                      max={100}
+                      placeholder="Ex: 50"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      filling={isFillingPreset}
+                    />
+                    <Input3D
+                      label="Max %"
+                      labelMorph
+                      unit="%"
+                      value={v4v6Percent2}
+                      onChange={setV4v6Percent2Value}
+                      step={1}
+                      min={0}
+                      max={100}
+                      placeholder="0"
+                      isDark={isDark}
+                      accentColor="#5A5A40"
+                      filling={isFillingPreset}
+                    />
+                  </CssGooeyStack>
+
+                  <p className="text-[10px] text-[#8C897E] dark:text-[#9EA399] leading-relaxed">
+                    * Faixa agronômica padrão: 50% a 60% do total.
+                  </p>
+                </div>
+
+                {/* 3rd Application — V8-V10 (% values, auto-calculated) — Cell Division Animation */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-[#3D3D3D] dark:text-[#E8E6DF]">
+                      3ª Aplicação (V8-V10) — Percentual
+                    </span>
+                    {baseDoseMode === 'single' ? (
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        isDark ? 'bg-[#2C3328] text-[#D4A373]' : 'bg-[#F0EDE5] text-[#8D6E63]'
+                      }`}>
+                        Auto-calculado
+                      </span>
+                    ) : (
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        isDark ? 'bg-[#2C3328] text-[#D4A373]' : 'bg-[#F0EDE5] text-[#8D6E63]'
+                      }`}>
+                        2 valores %
+                      </span>
+                    )}
+                  </div>
+
+                  {baseDoseMode === 'single' ? (
+                    <>
+                      <div className={`p-4 rounded-xl border text-center ${
+                        isDark ? 'bg-[#242720] border-[#393E32]' : 'bg-[#FAF9F5] border-[#E5E2D9]'
+                      }`}>
+                        <span className={`text-[10px] font-bold block mb-1 ${
+                          isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'
+                        }`}>Auto-calculado para fechar o balanço</span>
+                        <span className="text-lg font-bold text-[#8D6E63] dark:text-[#D4A373]">
+                          {calculations.v8v10_1_auto}%
+                        </span>
+                        <span className={`text-xs ml-2 ${
+                          isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'
+                        }`}>do total</span>
+                      </div>
+                    </>
+                  ) : (
+                    <CssGooeyStack collapsed={false}>
+                      <Input3D
+                        label={baseDoseMode === 'range' ? 'Min %' : '% do total'}
+                        labelMorph
+                        unit="%"
+                        value={v8v10Percent}
+                        onChange={setV8v10PercentValue}
+                        step={1}
+                        min={0}
+                        max={100}
+                        placeholder="Ex: 20"
+                        isDark={isDark}
+                        accentColor="#8D6E63"
+                        derived={v8v10Percent === 0}
+                        hint={v8v10Percent === 0 ? `Auto-calculado: ${calculations.v8v10_1_auto}%` : undefined}
+                        filling={isFillingPreset}
+                      />
+                      <Input3D
+                        label="Max %"
+                        labelMorph
+                        unit="%"
+                        value={v8v10Percent2}
+                        onChange={setV8v10Percent2Value}
+                        step={1}
+                        min={0}
+                        max={100}
+                        placeholder="0"
+                        isDark={isDark}
+                        accentColor="#8D6E63"
+                        derived={v8v10Percent2 === 0 && v4v6Percent2 > 0}
+                        hint={v8v10Percent2 === 0 && v4v6Percent2 > 0 ? `Auto-calculado: ${calculations.v8v10_2_auto}%` : undefined}
+                        filling={isFillingPreset}
+                      />
+                    </CssGooeyStack>
+                  )}
+
+                  <p className="text-[10px] text-[#8C897E] dark:text-[#9EA399] leading-relaxed">
+                    * Se deixar em 0%, o sistema calcula automaticamente para fechar o balanço. Faixa padrão: 20% a 30%.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+        {/* RESULTS SECTION — core metrics */}
+          <section id="results_section" className="space-y-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {!useDirectInput && (
+                <ExtracaoTotalCard
+                  totalExtraction={calculations.totalExtraction}
+                  yieldGoal={yieldGoal}
+                  nRequirementPerBag={nRequirementPerBag}
+                />
+              )}
+              {!(useDirectInput && efficiencyAlreadyApplied) && (
+                <NecessidadeLiquidaCard
+                  liquidNeed={calculations.liquidNeed}
+                  totalExtraction={useDirectInput ? 0 : calculations.totalExtraction}
+                  mosNContribution={useDirectInput ? 0 : mosNContribution}
+                  soyNContribution={useDirectInput ? 0 : soyNContribution}
+                  useDirectInput={useDirectInput}
+                />
+              )}
+              {!(useDirectInput && efficiencyAlreadyApplied) && (
+                <div id="card_dose_total" className="col-span-2 sm:col-span-3">
+                  <DoseRecomendadaCard
+                    recommendedDose={calculations.recommendedDose}
+                    liquidNeed={calculations.liquidNeed}
+                    efficiency={useDirectInput && efficiencyAlreadyApplied ? 100 : efficiency}
+                    efficiencyAlreadyApplied={useDirectInput && efficiencyAlreadyApplied}
+                    onSaveClick={() => onSalvarCenario(`Cenário ${yieldGoal} sc/ha`)}
+                  />
+                </div>
+              )}
+              <div id="fonte_nitrogenada_section" className="col-span-2 sm:col-span-3">
+                <FonteNitrogenadaCard
+                  liquidNeed={calculations.liquidNeed}
+                  selectedPreset={fontePreset}
+                  customTeorN={fonteTeorN}
+                  onChange={(patch) => {
+                    if (patch.preset !== undefined) setFontePreset(patch.preset);
+                    if (patch.customTeorN !== undefined) setFonteTeorN(patch.customTeorN);
+                  }}
+                />
+              </div>
+            </div>
+
+            {!useDirectInput && (
+              <SecondaryCreditsCard
+                totalExtraction={calculations.totalExtraction}
+                mosNContribution={mosNContribution}
+                soyNContribution={soyNContribution}
+              />
+            )}
+          </section>
+
+        {/* PARCELAMENTO SECTION — split schedule */}
+          <section id="parcelamento_results" className="space-y-6">
+            <ParcelamentoSection
+              calculations={calculations}
+              splitBase={splitBase}
+              v4v6Percent={v4v6Percent}
+              v4v6Percent2={v4v6Percent2}
+              v8v10Percent={v8v10Percent}
+              v8v10Percent2={v8v10Percent2}
+              baseDoseMode={baseDoseMode}
+            />
+          </section>
+
+        {/* BALANCO SECTION — balance validation */}
+          <section id="balanco_results" className="space-y-6">
+            <BalancoSection calculations={calculations} />
+          </section>
+
+        {/* DETAILED FORMULA AND MATHEMATICAL EXPLANATIONS PANEL */}
+        <DetailedMathPanel
+          calculations={calculations}
+          mosNContribution={mosNContribution}
+          soyNContribution={soyNContribution}
+          useDirectInput={useDirectInput}
+        />
+          </ScrollStack>
+            </div>
+          }
+          productivityContent={productivityContent}
+          sojaContent={soybeanContent}
+          itrContent={itrContent}
+          abntContent={abntContent}
+          pesquisadorContent={pesquisadorContent}
+          librasContent={librasContent}
+          redacaoContent={redacaoContent}
+          tutorContent={tutorContent}
+          tratoristaContent={tratoristaContent}
+          professorContent={professorContent}
+          ibgeContent={ibgeContent}
+          weatherContent={weatherContent}
+          showToolTabs={!standaloneToolPage}
+        />
+        </>
+        )}
+
+        {/* GEMINI LIVE VOICE ASSISTANT HUD WITH 3D ORB */}
+        <VoiceAssistantHUD
+          agentState={hudAgentState}
+          onConnect={() => { if (isDisciplineHome) router.push(toolRouteForTab(activeTab)); setIsDisciplineHome(false); hudConnect(); }}
+          onDisconnect={hudDisconnect}
+          onToggleMute={hudToggleMute}
+        />
+
+        {/* VLIBRAS WIDGET */}
+        <VLibrasWidget />
+
+        {/* ACCESSIBILITY PANEL */}
+        <AccessibilityPanel
+          isOpen={isAccessibilityPanelOpen}
+          onClose={() => setIsAccessibilityPanelOpen(false)}
+        />
+
+        {/* FOOTER */}
+        <footer className="p-4 text-center border-t border-[#F0EDE5] dark:border-[#2C3328] text-[10px] text-[#8C897E] dark:text-[#9EA399] bg-[#F9F8F6] dark:bg-[#1C201A] rounded-2xl transition-colors">
+          🌿 Desenvolvido para auxílio na tomada de decisão agronômica. Consulte sempre um Engenheiro Agrônomo.
+        </footer>
+
+      </div>
+
+      {/* Floating Google sign-in island (only when logged out) */}
+      <GoogleSignInIsland />
+    </main>
+    </>
+  );
+}
