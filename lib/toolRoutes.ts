@@ -13,6 +13,8 @@ export const TOOL_ROUTES: Record<TabId, string> = {
   tutor: '/tutor',
   tratorista: '/mecanizacao-agricola',
   professor: '/professor',
+  ibge: '/dados-agropecuarios-ibge',
+  weather: '/meteorologia-agricola',
 };
 
 export const TAB_BY_TOOL_ROUTE: Record<string, TabId> = {
@@ -26,6 +28,8 @@ export const TAB_BY_TOOL_ROUTE: Record<string, TabId> = {
   tutor: 'tutor',
   'mecanizacao-agricola': 'tratorista',
   professor: 'professor',
+  'dados-agropecuarios-ibge': 'ibge',
+  'meteorologia-agricola': 'weather',
 };
 
 export function toolRouteForTab(tab: TabId): string {
