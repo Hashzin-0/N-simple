@@ -839,21 +839,17 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
   const itrContent = useMemo(
     () => (
       <div className="w-full" id="itr_section">
-        <ScrollStack peek={12} blur pinTop="4vh">
-          <div className="bg-white dark:bg-[#1C201A] p-5 sm:p-6 rounded-2xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328]">
-            <ITRCalculator
-              isConnected
-              values={{
-                vtn: itrVtn,
-                areaTotal: itrAreaTotal,
-                areaTributavel: itrAreaTributavel,
-                areaAproveitavel: itrAreaAproveitavel,
-                areaUtilizada: itrAreaUtilizada,
-              }}
-              onChange={onITRChange}
-            />
-          </div>
-        </ScrollStack>
+        <ITRCalculator
+          isConnected
+          values={{
+            vtn: itrVtn,
+            areaTotal: itrAreaTotal,
+            areaTributavel: itrAreaTributavel,
+            areaAproveitavel: itrAreaAproveitavel,
+            areaUtilizada: itrAreaUtilizada,
+          }}
+          onChange={onITRChange}
+        />
       </div>
     ),
     [
@@ -876,7 +872,7 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
     () => (
       <div className="w-full">
         <ScrollStack peek={12} blur pinTop="4vh">
-          <div className="bg-white dark:bg-[#1C201A] p-5 sm:p-6 rounded-2xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6">
+          <div className="space-y-8">
             <div id="abnt_section" className="scroll-mt-24">
               <AbntReferenceFormatter
                 isConnected
@@ -1011,9 +1007,7 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
     () => (
       <div className="w-full">
         <ScrollStack peek={12} blur pinTop="4vh">
-          <div className="bg-white dark:bg-[#1C201A] p-4 sm:p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328]">
-            <TutorInteligente isDark={isDark} />
-          </div>
+          <TutorInteligente isDark={isDark} />
         </ScrollStack>
       </div>
     ),
@@ -1170,9 +1164,6 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
                   <h1 id="app_title" className="text-2xl sm:text-3xl font-sans font-bold tracking-tight text-white">
                     N-simple
                   </h1>
-                  <p id="app_subtitle" className="text-xs sm:text-sm text-white/90 dark:text-white/80 mt-1 font-medium">
-                    Ferramentas agronômicas, pesquisa científica e aprendizagem para o agro
-                  </p>
                 </div>
               </div>
             </div>
@@ -1302,21 +1293,6 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
         {/* INPUT SECTION — scenarios + inputs in one card */}
             <div id="form_section" className="bg-white dark:bg-[#1C201A] p-5 sm:p-6 rounded-2xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-5 transition-colors">
 
-              {/* HEADER */}
-              <div className="flex items-center gap-3 border-b pb-4 border-[#F0EDE5] dark:border-[#2C3328]">
-                <div className="p-3 rounded-2xl bg-[#D4A373]/20 text-[#D4A373] border border-[#D4A373]/30">
-                  <Calculator className="h-6 w-6" />
-                </div>
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#5A5A40] dark:text-[#E8E7DF]">
-                    Calculadora de Nitrogênio
-                  </h2>
-                  <p className="text-xs sm:text-sm text-[#8C897E] dark:text-[#A6A395] mt-0.5">
-                    Cálculo de dose, extração, necessidade líquida e parcelamento de N para milho.
-                  </p>
-                </div>
-              </div>
-
               {/* Scenario chips */}
               <PresetMultiButton<Preset>
                 id="preset_selector"
@@ -1333,7 +1309,6 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
                 <h2 className="text-lg font-bold text-[#5A5A40] dark:text-[#E8E6DF] flex items-center gap-2">
                   <Calculator className="h-5 w-5 text-[#5A5A40] dark:text-[#9CB386]" /> <ElasticText className="text-lg font-bold" mode="auto" startOnView loop={false}>Entrada de Dados</ElasticText>
                 </h2>
-                <p className="text-xs text-[#8C897E] dark:text-[#9EA399] mt-1">Ajuste os dados de produtividade e histórico do solo</p>
               </div>
 
               {/* Toggle: Modo de Entrada Direta */}
@@ -1855,7 +1830,7 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
         />
 
         {/* FOOTER */}
-        <footer className="p-4 text-center border-t border-[#F0EDE5] dark:border-[#2C3328] text-[10px] text-[#8C897E] dark:text-[#9EA399] bg-[#F9F8F6] dark:bg-[#1C201A] rounded-2xl transition-colors">
+        <footer className="border-t border-[#F0EDE5] dark:border-[#2C3328] py-4 text-center text-[10px] text-[#8C897E] dark:text-[#9EA399]">
           🌿 Desenvolvido para auxílio na tomada de decisão agronômica. Consulte sempre um Engenheiro Agrônomo.
         </footer>
 
