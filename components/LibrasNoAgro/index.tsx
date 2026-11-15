@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { useTheme } from '@/components/ThemeProvider';
 import { Search, BookOpen, Camera, Hand, Sparkles } from 'lucide-react';
 import LibrasSearch from './LibrasSearch';
 import LibrasCourse from './LibrasCourse';
@@ -62,7 +61,6 @@ export default React.memo(function LibrasNoAgro({
   onCoachReport,
   voiceBridge,
 }: LibrasNoAgroProps) {
-  const { isDark } = useTheme();
   const progress = useLibrasProgress();
   const voiceVideo = useLibrasVideo();
 
@@ -70,13 +68,7 @@ export default React.memo(function LibrasNoAgro({
   // o hub de agentes (`voiceHub`) cuida do handoff com global/tutor.
   useLibrasLiveAgent(voiceBridge);
 
-  const cardClass = `p-4 sm:p-6 rounded-3xl shadow-sm border ${
-    isDark ? 'bg-[#1C201A] border-[#2C3328]' : 'bg-white border-[#E5E2D9]'
-  }`;
-
-  const headerClass = `text-lg font-bold ${
-    isDark ? 'text-[#E8E6DF]' : 'text-[#3D3D3D]'
-  }`;
+  const headerClass = 'text-base font-semibold text-[#3D3D3D] dark:text-[#E8E6DF]';
 
   const renderContent = (id: SubTab) => {
     switch (id) {
@@ -106,26 +98,8 @@ export default React.memo(function LibrasNoAgro({
   };
 
   return (
-    <div id="libras_section" className="space-y-4 p-4 sm:p-6">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h2
-          className={`text-xl sm:text-2xl font-bold ${
-            isDark ? 'text-[#E8E6DF]' : 'text-[#3D3D3D]'
-          }`}
-        >
-          🤟 Libras no Agro
-        </h2>
-        <p
-          className={`text-sm max-w-md mx-auto ${
-            isDark ? 'text-[#9EA399]' : 'text-[#8C897E]'
-          }`}
-        >
-          Aprenda sinais em Libras relacionados ao agronegócio e à agropecuária
-        </p>
-      </div>
-
-      <div className="max-w-md mx-auto">
+    <div id="libras_section" className="space-y-5">
+      <div>
         <SaveProgressToggle id="libras_save_progress_toggle" />
       </div>
 
@@ -133,8 +107,8 @@ export default React.memo(function LibrasNoAgro({
       {SECTIONS.map((section) => {
         const Icon = section.icon;
         return (
-          <section key={section.id} id={section.domId} className={cardClass}>
-            <div className="flex items-center gap-2 mb-4">
+          <section key={section.id} id={section.domId} className="space-y-4 border-b border-[#E5E2D9] py-5 last:border-b-0 dark:border-[#30372D]">
+            <div className="flex items-center gap-2">
               <Icon className="size-5 text-[#2E6F40] dark:text-[#9CB386]" />
               <h3 className={headerClass}>{section.label}</h3>
             </div>
