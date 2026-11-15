@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { PenTool, RotateCcw, Wand2, Hammer } from 'lucide-react';
+import { RotateCcw, Wand2, Hammer } from 'lucide-react';
 import { useRedacaoState } from '@/hooks/useRedacaoState';
 import TemaInput from './TemaInput';
 import RepertorioBanco from './RepertorioBanco';
@@ -369,16 +369,8 @@ export default function PesquisadorRedacao({
   }, [state.isLoading, state.tema, state.redacao, state.validacao, state.context]);
 
   return (
-    <div className="bg-white dark:bg-[#1C201A] p-6 rounded-3xl shadow-sm border border-[#E5E2D9] dark:border-[#2C3328] space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div id="redacao_tema" className="flex items-center gap-2">
-          <PenTool className="size-5 text-[#2E6F40] dark:text-[#9CB386]" />
-          <h2 className="text-lg font-bold text-[#242A20] dark:text-[#F3F1EC]">
-            Pesquisador de Redação
-          </h2>
-        </div>
-        {state.passo !== 'tema' && (
+    <div id="redacao_tema" className="w-full space-y-6">
+      {state.passo !== 'tema' && (
           <button
             onClick={handleReset}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#8C897E] dark:text-[#9EA399] hover:bg-[#F3F1EC] dark:hover:bg-[#2C3328] transition-colors"
@@ -386,8 +378,7 @@ export default function PesquisadorRedacao({
             <RotateCcw className="size-3" />
             Recomeçar
           </button>
-        )}
-      </div>
+      )}
 
       {/* Tema Input */}
       <TemaInput
