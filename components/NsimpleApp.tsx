@@ -91,6 +91,8 @@ const TutorInteligente = dynamic(() => import('@/components/TutorInteligente'), 
 const PesquisadorRedacao = dynamic(() => import('@/components/PesquisadorRedacao'), { ssr: false });
 const AccessibilityPanel = dynamic(() => import('@/components/AccessibilityPanel'), { ssr: false });
 const ProfessorDocumentosDynamic = dynamic(() => import('@/components/ProfessorDocumentos'), { ssr: false });
+const IBGEAgroDashboard = dynamic(() => import('@/components/IBGEAgroDashboard'), { ssr: false });
+const WeatherDashboard = dynamic(() => import('@/components/WeatherDashboard'), { ssr: false });
 import VLibrasWidget from '@/components/LibrasWidget';
 
 const PRESETS: Preset[] = [
@@ -954,6 +956,28 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
     [],
   );
 
+  const ibgeContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <IBGEAgroDashboard />
+        </ScrollStack>
+      </div>
+    ),
+    [],
+  );
+
+  const weatherContent = useMemo(
+    () => (
+      <div className="w-full">
+        <ScrollStack peek={12} blur pinTop="4vh">
+          <WeatherDashboard />
+        </ScrollStack>
+      </div>
+    ),
+    [],
+  );
+
   const professorContent = useMemo(
     () => (
       <div className="w-full">
@@ -1794,6 +1818,8 @@ export default function NsimpleApp({ initialTab, standaloneToolPage = false }: N
           tutorContent={tutorContent}
           tratoristaContent={tratoristaContent}
           professorContent={professorContent}
+          ibgeContent={ibgeContent}
+          weatherContent={weatherContent}
           showToolTabs={!standaloneToolPage}
         />
         </>
