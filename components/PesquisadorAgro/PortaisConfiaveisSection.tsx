@@ -33,7 +33,8 @@ export default function PortaisConfiaveisSection({
   return (
     <section id="pesquisador_portais" className="space-y-6">
       {/* SECTION HEADER */}
-      <div className="border-b border-[#E5E2D9] pb-3 dark:border-[#30372D]">
+      <div className="space-y-3">
+        <div className="border-b border-[#E5E2D9] pb-3 dark:border-[#30372D]">
         <h2 className="text-lg font-semibold text-[#344333] dark:text-[#E5EADF]">Portais e acervos</h2>
       </div>
 
