@@ -29,6 +29,7 @@ import { gerarFraseLocal } from '@/lib/analiseMorfologica/gerarLocal';
 import { useTheme } from '@/components/ThemeProvider';
 import { toggleWidgetSetting, toggleRecognitionSetting } from '@/hooks/useLibrasSettings';
 import { applyNoiseGateToolArgs } from '@/lib/noiseGate';
+import { requestWeatherForecast } from '@/lib/weather/client';
 
 export interface LiveAgentState {
   isConnected: boolean;
@@ -926,64 +927,6 @@ const CAPACIDADES: { categoria: string; descricao: string; tools: string[] }[] =
   },
 ];
 
-/** Códigos WMO do Open-Meteo → descrição em pt-BR. */
-const WEATHER_CODES_PT: Record<number, string> = {
-  0: 'céu limpo',
-  1: 'predominantemente limpo',
-  2: 'parcialmente nublado',
-  3: 'encoberto',
-  45: 'nevoeiro',
-  48: 'nevoeiro com geada',
-  51: 'garoa fraca',
-  53: 'garoa',
-  55: 'garoa forte',
-  56: 'garoa congelante fraca',
-  57: 'garoa congelante',
-  61: 'chuva fraca',
-  63: 'chuva',
-  65: 'chuva forte',
-  66: 'chuva congelante fraca',
-  67: 'chuva congelante forte',
-  71: 'neve fraca',
-  73: 'neve',
-  75: 'neve forte',
-  77: 'grãos de neve',
-  80: 'pancadas de chuva fracas',
-  81: 'pancadas de chuva',
-  82: 'pancadas de chuva fortes',
-  85: 'pancadas de neve fracas',
-  86: 'pancadas de neve',
-  95: 'trovoada',
-  96: 'trovoada com granizo',
-  99: 'trovoada forte com granizo',
-};
-
-const weatherLabel = (code?: number) =>
-  (typeof code === 'number' ? WEATHER_CODES_PT[code] : undefined) ?? ' condição não informada';
-
-/** Resposta do endpoint de geocoding do Open-Meteo (direto e reverso). */
-interface OpenMeteoGeoResult {
-  results?: Array<{ latitude: number; longitude: number; name: string; admin1?: string; country?: string }>;
-}
-
-/** Resposta do endpoint de previsão do Open-Meteo. */
-interface OpenMeteoForecast {
-  current?: {
-    temperature_2m?: number;
-    precipitation?: number;
-    weather_code?: number;
-    wind_speed_10m?: number;
-  };
-  daily?: {
-    time?: string[];
-    weather_code?: number[];
-    temperature_2m_max?: number[];
-    temperature_2m_min?: number[];
-    precipitation_probability_max?: (number | null)[];
-    precipitation_sum?: (number | null)[];
-  };
-}
-
 /** Resposta de POST /api/evidence/search (memória de evidências). */
 interface EvidenceSearchResponse {
   decision?: string;
@@ -1743,123 +1686,75 @@ export function useGeminiLiveAgent(simContext: SimulatorContext) {
         const dias = Math.min(7, Math.max(1, Number.isFinite(diasRaw) && diasRaw > 0 ? Math.round(diasRaw) : 5));
         setActionLabel('Consultando previsão do tempo…');
 
-        const fetchJson = async (url: string, ms = 10000): Promise<unknown> => {
-          const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), ms);
-          try {
-            const r = await fetch(url, { signal: ctrl.signal });
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            return await r.json();
-          } finally {
-            clearTimeout(timer);
-          }
-        };
-
-        let lat: number;
-        let lon: number;
-        let nomeLocal: string;
-
         try {
+          let forecast;
           if (localArg) {
-            const geo = (await fetchJson(
-              `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
-                localArg
-              )}&count=1&language=pt&format=json`
-            )) as OpenMeteoGeoResult;
-            const place = geo?.results?.[0];
-            if (!place) {
-              return {
-                success: false,
-                error: `Não encontrei "${localArg}". Use o nome da cidade (ex: "Lavras").`,
-              };
-            }
-            lat = place.latitude;
-            lon = place.longitude;
-            nomeLocal = [place.name, place.admin1, place.country].filter(Boolean).join(', ');
+            forecast = await requestWeatherForecast({ city: localArg, days: dias });
           } else {
-            const pos = await new Promise<GeolocationPosition | null>((resolve) => {
+            const position = await new Promise<GeolocationPosition | null>((resolve) => {
               if (typeof navigator === 'undefined' || !navigator.geolocation) {
                 resolve(null);
                 return;
               }
               navigator.geolocation.getCurrentPosition(
-                (p) => resolve(p),
+                (result) => resolve(result),
                 () => resolve(null),
                 { timeout: 8000, maximumAge: 600000 }
               );
             });
-            if (!pos) {
+            if (!position) {
               return {
                 success: false,
-                error:
-                  'Não consegui usar a geolocalização. Diga a cidade (ex: local "Lavras") e tente de novo.',
+                error: 'Não consegui usar a geolocalização. Diga a cidade (ex: local "Lavras") e tente novamente.',
               };
             }
-            lat = pos.coords.latitude;
-            lon = pos.coords.longitude;
-            nomeLocal = 'sua localização';
-            try {
-              const rev = (await fetchJson(
-                `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=pt&format=json`
-              )) as OpenMeteoGeoResult;
-              const place = rev?.results?.[0];
-              if (place?.name) nomeLocal = [place.name, place.admin1].filter(Boolean).join(', ');
-            } catch {
-              // mantém "sua localização"
-            }
+            forecast = await requestWeatherForecast({
+              latitude: Math.round(position.coords.latitude * 100) / 100,
+              longitude: Math.round(position.coords.longitude * 100) / 100,
+              days: dias,
+            });
           }
 
-          const fc = (await fetchJson(
-            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-              `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum` +
-              `&current=temperature_2m,precipitation,weather_code,wind_speed_10m&timezone=auto&forecast_days=${dias}`,
-            12000
-          )) as OpenMeteoForecast;
-
-          const daily = fc.daily ?? {};
-          const diasList = (daily.time ?? []).map((data, i) => ({
-            data,
-            condicao: weatherLabel(daily.weather_code?.[i]),
-            temp_max_c: daily.temperature_2m_max?.[i] ?? null,
-            temp_min_c: daily.temperature_2m_min?.[i] ?? null,
-            prob_chuva_pct: daily.precipitation_probability_max?.[i] ?? null,
-            chuva_mm: daily.precipitation_sum?.[i] ?? null,
-          }));
-
-          if (diasList.length === 0) {
-            return { success: false, error: 'A previsão do tempo não retornou dados agora.' };
-          }
-
-          const agora = fc.current
-            ? {
-                temp_c: fc.current.temperature_2m ?? null,
-                condicao: weatherLabel(fc.current.weather_code),
-                vento_kmh: fc.current.wind_speed_10m ?? null,
-                chuva_agora_mm: fc.current.precipitation ?? null,
-              }
-            : null;
-
-          const resumo = diasList
+          const resumo = forecast.days
             .slice(0, 3)
-            .map((d) => {
-              const prob =
-                d.prob_chuva_pct !== null ? `, ${Math.round(Number(d.prob_chuva_pct))}% de chuva` : '';
-              const chuva = d.chuva_mm ? `, ${d.chuva_mm} mm` : '';
-              return `${d.data}: ${d.condicao}, mín ${d.temp_min_c}°C, máx ${d.temp_max_c}°C${prob}${chuva}`;
+            .map((day) => {
+              const probability = day.precipitationProbabilityPct !== null
+                ? `, ${Math.round(day.precipitationProbabilityPct)}% de chance de chuva`
+                : '';
+              const rain = day.precipitationMm !== null ? `, ${day.precipitationMm} mm` : '';
+              return `${day.date}: ${day.condition}, mín ${day.temperatureMinC}°C, máx ${day.temperatureMaxC}°C${probability}${rain}`;
             })
             .join('; ');
 
           return {
             success: true,
-            local: nomeLocal,
-            agora,
-            dias: diasList,
-            message: `Previsão para ${nomeLocal}. ${resumo}.`,
+            local: forecast.location,
+            agora: forecast.current
+              ? {
+                  temp_c: forecast.current.temperatureC,
+                  condicao: forecast.current.condition,
+                  vento_kmh: forecast.current.windKmh,
+                  chuva_agora_mm: forecast.current.precipitationMm,
+                  umidade_relativa_pct: forecast.current.relativeHumidityPct,
+                }
+              : null,
+            dias: forecast.days.map((day) => ({
+              data: day.date,
+              condicao: day.condition,
+              temp_max_c: day.temperatureMaxC,
+              temp_min_c: day.temperatureMinC,
+              prob_chuva_pct: day.precipitationProbabilityPct,
+              chuva_mm: day.precipitationMm,
+              et0_mm: day.referenceEvapotranspirationMm,
+            })),
+            message: `Previsão para ${forecast.location}. ${resumo}.`,
           };
-        } catch {
+        } catch (error) {
           return {
             success: false,
-            error: 'Não consegui consultar a previsão do tempo agora (rede ou serviço indisponível).',
+            error: error instanceof Error
+              ? error.message
+              : 'Não consegui consultar a previsão do tempo agora (rede ou serviço indisponível).',
           };
         }
       }
