@@ -2,15 +2,13 @@
 
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Copy, Check, Search } from 'lucide-react';
+import { Copy, Search } from 'lucide-react';
 import { useTheme } from '@/components/ThemeProvider';
 import { ABNTReference, ReferenceType } from '@/lib/abnt/types';
-import { REFERENCE_TYPES } from '@/lib/abnt/constants';
 import { formatReference, copyToClipboard } from '@/lib/abnt/utils';
 import ReferenceTypeSelector from './ReferenceTypeSelector';
 import ReferenceForm from './ReferenceForm';
 import ReferenceList from './ReferenceList';
-import { cn } from '@/lib/utils';
 
 interface AbntReferenceFormatterProps {
   isConnected?: boolean;
