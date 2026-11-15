@@ -383,6 +383,7 @@ export default function GooeyTabPanel({
         id={`tabpanel-${activeTab}`}
         role="tabpanel"
         aria-labelledby={showToolTabs ? `tab-btn-${activeTab}` : undefined}
+        aria-label={!showToolTabs ? 'Conteúdo da ferramenta' : undefined}
         className="relative z-0 w-full overflow-x-auto no-scrollbar"
       >
         <div key={activeTab} className="w-full min-w-0 py-2">
