@@ -101,3 +101,7 @@ scripts/        build e verificações manuais
 ## Licença
 
 Privado. Todos os direitos reservados.
+
+## Meteorologia
+
+O painel e a tool de voz compartilham `POST /api/agro/weather` e o serviço `lib/weather/openMeteo.ts`. `OPEN_METEO_API_BASE_URL` e `OPEN_METEO_API_KEY` são opcionais e exclusivamente server-side. O plano gratuito do Open-Meteo é destinado a uso não comercial; uso comercial exige licença contratada e atribuição CC BY 4.0.
