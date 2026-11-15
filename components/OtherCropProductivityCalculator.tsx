@@ -26,15 +26,11 @@ export default function OtherCropProductivityCalculator({ selectedCrop, onValues
   const subCardClass = isDark ? 'bg-[#242720] border-[#393E32]' : 'bg-[#FAF9F5] border-[#E5E2D9]';
 
   return (
-    <section id="other_crop_productivity_calculator" className="w-full space-y-5 rounded-3xl border border-[#E5E2D9] bg-[#FAF9F5] p-4 sm:p-6 dark:border-[#343B30] dark:bg-[#1A1E18]">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
+    <section id="other_crop_productivity_calculator" className="w-full space-y-5">
+      <div className="flex justify-end">
+        <div className="hidden">
           <div className="rounded-2xl border border-[#557A91]/25 bg-[#557A91]/10 p-3 text-[#557A91] dark:text-[#9DC0D2]"><Calculator className="h-6 w-6" /></div>
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#8C897E] dark:text-[#A6A395]">Calculadoras de produtividade</p>
-            <h2 className="text-xl font-bold text-[#454638] dark:text-[#E8E7DF] sm:text-2xl">Outras culturas</h2>
-            <p className="mt-1 text-xs text-[#777468] dark:text-[#A6A395]">Selecione uma cultura para abrir sua calculadora operacional.</p>
-          </div>
+          <div />
         </div>
         <button type="button" onClick={reset} className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E5E2D9] px-4 py-2 text-xs font-semibold text-[#5A5A40] transition hover:bg-white dark:border-[#393E32] dark:text-[#C7CEBC] dark:hover:bg-[#242720]"><RotateCcw className="h-3.5 w-3.5" /> Limpar dados</button>
       </div>
