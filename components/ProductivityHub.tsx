@@ -35,7 +35,6 @@ export default function ProductivityHub({ onApplyYieldGoal, isConnected, fillReq
   const [showActivities, setShowActivities] = useState(false);
   const [cropValues, setCropValues] = useState<Record<string, number>>({});
   const onValuesChange = useCallback((values: Record<string, number>) => setCropValues(values), []);
-  const active = CROPS.find((crop) => crop.id === activeCrop) ?? CROPS[0];
 
   const selectCrop = (id: ProductivityCrop) => {
     setActiveCrop(id);
